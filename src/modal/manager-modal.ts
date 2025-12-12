@@ -67,6 +67,9 @@ export class ManagerModal extends Modal {
     installVersion = "";
     installVersions: ReleaseVersion[] = [];
     searchBarEl?: HTMLElement;
+    groupDropdown?: DropdownComponent;
+    tagDropdown?: DropdownComponent;
+    delayDropdown?: DropdownComponent;
 
 
     // 编辑模式
@@ -303,6 +306,7 @@ export class ManagerModal extends Modal {
             this.editorMode = !this.editorMode;
             this.editorMode ? editorButton.setIcon("pen-off") : editorButton.setIcon("pen");
             this.reloadShowData();
+            if (!this.editorMode) this.refreshFilterOptions();
         });
 
         // [操作行] 插件设置
@@ -378,10 +382,10 @@ export class ManagerModal extends Modal {
         // [搜索行] 分组选择列表
         const groupCounts = this.settings.Plugins.reduce((acc: { [key: string]: number }, plugin) => { const groupId = plugin.group || ""; acc[groupId] = (acc[groupId] || 0) + 1; return acc; }, { "": 0 });
         const groups = this.settings.GROUPS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} [${groupCounts[item.id] || 0}]`; return acc; }, { "": this.manager.translator.t("通用_无分组_文本") });
-        const groupsDropdown = new DropdownComponent(searchBar.controlEl);
-        groupsDropdown.addOptions(groups);
-        groupsDropdown.setValue(this.settings.PERSISTENCE ? this.settings.FILTER_GROUP : this.group);
-        groupsDropdown.onChange((value) => {
+        this.groupDropdown = new DropdownComponent(searchBar.controlEl);
+        this.groupDropdown.addOptions(groups);
+        this.groupDropdown.setValue(this.settings.PERSISTENCE ? this.settings.FILTER_GROUP : this.group);
+        this.groupDropdown.onChange((value) => {
             if (this.settings.PERSISTENCE) {
                 this.settings.FILTER_GROUP = value;
                 this.manager.saveSettings();
@@ -394,10 +398,10 @@ export class ManagerModal extends Modal {
         // [搜索行] 标签选择列表
         const tagCounts: { [key: string]: number } = this.settings.Plugins.reduce((acc, plugin) => { plugin.tags.forEach((tag) => { acc[tag] = (acc[tag] || 0) + 1; }); return acc; }, {} as { [key: string]: number });
         const tags = this.settings.TAGS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} [${tagCounts[item.id] || 0}]`; return acc; }, { "": this.manager.translator.t("通用_无标签_文本") });
-        const tagsDropdown = new DropdownComponent(searchBar.controlEl);
-        tagsDropdown.addOptions(tags);
-        tagsDropdown.setValue(this.settings.PERSISTENCE ? this.settings.FILTER_TAG : this.tag);
-        tagsDropdown.onChange((value) => {
+        this.tagDropdown = new DropdownComponent(searchBar.controlEl);
+        this.tagDropdown.addOptions(tags);
+        this.tagDropdown.setValue(this.settings.PERSISTENCE ? this.settings.FILTER_TAG : this.tag);
+        this.tagDropdown.onChange((value) => {
             if (this.settings.PERSISTENCE) {
                 this.settings.FILTER_TAG = value;
                 this.manager.saveSettings();
@@ -411,10 +415,10 @@ export class ManagerModal extends Modal {
         if (this.settings.DELAY) {
             const delayCounts = this.settings.Plugins.reduce((acc: { [key: string]: number }, plugin) => { const delay = plugin.delay || ""; acc[delay] = (acc[delay] || 0) + 1; return acc; }, { "": 0 });
             const delays = this.settings.DELAYS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} (${delayCounts[item.id] || 0})`; return acc; }, { "": this.manager.translator.t("通用_无延迟_文本") });
-            const delaysDropdown = new DropdownComponent(searchBar.controlEl);
-            delaysDropdown.addOptions(delays);
-            delaysDropdown.setValue(this.settings.PERSISTENCE ? this.settings.FILTER_DELAY : this.delay);
-            delaysDropdown.onChange((value) => {
+            this.delayDropdown = new DropdownComponent(searchBar.controlEl);
+            this.delayDropdown.addOptions(delays);
+            this.delayDropdown.setValue(this.settings.PERSISTENCE ? this.settings.FILTER_DELAY : this.delay);
+            this.delayDropdown.onChange((value) => {
                 if (this.settings.PERSISTENCE) {
                     this.settings.FILTER_DELAY = value;
                     this.manager.saveSettings();
@@ -1015,6 +1019,35 @@ export class ManagerModal extends Modal {
             this.showData();
             modalElement.scrollTo(0, scrollTop);
         }
+    }
+
+    private refreshFilterOptions() {
+        // 重新计算并刷新分组/标签/延迟下拉的计数
+        if (this.groupDropdown) {
+            const groupCounts = this.settings.Plugins.reduce((acc: { [key: string]: number }, plugin) => { const groupId = plugin.group || ""; acc[groupId] = (acc[groupId] || 0) + 1; return acc; }, { "": 0 });
+            const groups = this.settings.GROUPS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} [${groupCounts[item.id] || 0}]`; return acc; }, { "": this.manager.translator.t("通用_无分组_文本") });
+            const current = this.settings.PERSISTENCE ? this.settings.FILTER_GROUP : this.group;
+            this.resetDropdown(this.groupDropdown, groups, current);
+        }
+        if (this.tagDropdown) {
+            const tagCounts: { [key: string]: number } = this.settings.Plugins.reduce((acc, plugin) => { plugin.tags.forEach((tag) => { acc[tag] = (acc[tag] || 0) + 1; }); return acc; }, {} as { [key: string]: number });
+            const tags = this.settings.TAGS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} [${tagCounts[item.id] || 0}]`; return acc; }, { "": this.manager.translator.t("通用_无标签_文本") });
+            const current = this.settings.PERSISTENCE ? this.settings.FILTER_TAG : this.tag;
+            this.resetDropdown(this.tagDropdown, tags, current);
+        }
+        if (this.settings.DELAY && this.delayDropdown) {
+            const delayCounts = this.settings.Plugins.reduce((acc: { [key: string]: number }, plugin) => { const delay = plugin.delay || ""; acc[delay] = (acc[delay] || 0) + 1; return acc; }, { "": 0 });
+            const delays = this.settings.DELAYS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} (${delayCounts[item.id] || 0})`; return acc; }, { "": this.manager.translator.t("通用_无延迟_文本") });
+            const current = this.settings.PERSISTENCE ? this.settings.FILTER_DELAY : this.delay;
+            this.resetDropdown(this.delayDropdown, delays, current);
+        }
+        this.renderContent();
+    }
+
+    private resetDropdown(dropdown: DropdownComponent, options: Record<string, string>, value: string) {
+        dropdown.selectEl.empty();
+        dropdown.addOptions(options);
+        dropdown.setValue(options[value] ? value : Object.keys(options)[0] || "");
     }
 
     public async onOpen() {
