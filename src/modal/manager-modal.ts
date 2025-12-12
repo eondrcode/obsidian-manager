@@ -80,6 +80,7 @@ export class ManagerModal extends Modal {
 
     searchEl: SearchComponent;
     footEl: HTMLDivElement;
+    modalContainer?: HTMLElement;
 
     constructor(app: App, manager: Manager) {
         super(app);
@@ -152,9 +153,11 @@ export class ManagerModal extends Modal {
     public async showHead() {
         //@ts-ignore
         const modalEl: HTMLElement = this.contentEl.parentElement;
+        this.modalContainer = modalEl;
         modalEl.addClass("manager-container");
         // 靠上
         if (!this.settings.CENTER) modalEl.addClass("manager-container__top");
+        if (this.editorMode) modalEl.addClass("manager-container--editing");
 
         modalEl.removeChild(modalEl.getElementsByClassName("modal-close-button")[0]);
         this.titleEl.parentElement?.addClass("manager-container__header");
@@ -306,6 +309,7 @@ export class ManagerModal extends Modal {
         editorButton.onClick(() => {
             this.editorMode = !this.editorMode;
             this.editorMode ? editorButton.setIcon("pen-off") : editorButton.setIcon("pen");
+            this.applyEditingStyle();
             if (!this.editorMode) {
                 this.refreshFilterOptions();
             } else {
@@ -1062,6 +1066,7 @@ export class ManagerModal extends Modal {
         await this.showHead();
         await this.showData();
         this.searchEl.inputEl.focus();
+        this.applyEditingStyle();
         // [功能] ctrl+f聚焦
         document.addEventListener("keydown", (event) => {
             if (event.ctrlKey && event.key.toLowerCase() === "f") {
@@ -1074,5 +1079,15 @@ export class ManagerModal extends Modal {
 
     public async onClose() {
         this.contentEl.empty();
+        if (this.modalContainer) this.modalContainer.removeClass("manager-container--editing");
+    }
+
+    private applyEditingStyle() {
+        if (!this.modalContainer) return;
+        if (this.editorMode) {
+            this.modalContainer.addClass("manager-container--editing");
+        } else {
+            this.modalContainer.removeClass("manager-container--editing");
+        }
     }
 }
