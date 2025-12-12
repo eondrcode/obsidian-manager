@@ -1,5 +1,6 @@
 import { Notice, normalizePath, requestUrl } from "obsidian";
 import Manager from "main";
+import { BPM_TAG_ID } from "./repo-resolver";
 
 interface ReleaseAsset {
 	name: string;
@@ -82,8 +83,9 @@ export const installPluginFromGithub = async (manager: Manager, repo: string, ve
 		const styles = stylesUrl ? await fetchText(stylesUrl, token) : null;
 
 		const adapter = manager.app.vault.adapter;
-		const pluginPath = normalizePath(`${manager.app.vault.configDir}/plugins/${manifest.id}/`);
-		if (!(await adapter.exists(pluginPath))) await adapter.mkdir(pluginPath);
+		const pluginDir = normalizePath(`${manager.app.vault.configDir}/plugins/${manifest.id}`);
+		const pluginPath = `${pluginDir}/`;
+		if (!(await adapter.exists(pluginDir))) await adapter.mkdir(pluginDir);
 
 		await adapter.write(`${pluginPath}manifest.json`, manifestText);
 		await adapter.write(`${pluginPath}main.js`, mainJs);
@@ -94,6 +96,18 @@ export const installPluginFromGithub = async (manager: Manager, repo: string, ve
 			await manager.appPlugins.disablePlugin(manifest.id);
 		} catch { /* noop */ }
 		await manager.appPlugins.enablePluginAndSave(manifest.id);
+
+		// 记录来源
+		if (!manager.settings.BPM_INSTALLED.includes(manifest.id)) {
+			manager.settings.BPM_INSTALLED.push(manifest.id);
+		}
+		await manager.repoResolver.setRepo(manifest.id, repo);
+		// 刷新设置并标签
+		await manager.appPlugins.loadManifests();
+		manager.synchronizePlugins(Object.values(manager.appPlugins.manifests).filter((pm: any) => pm.id !== manager.manifest.id) as any);
+		const mp = manager.settings.Plugins.find((p) => p.id === manifest.id);
+		if (mp && !mp.tags.includes(BPM_TAG_ID)) mp.tags.push(BPM_TAG_ID);
+		manager.saveSettings();
 
 		new Notice(`已安装/更新插件：${manifest.name || manifest.id}`);
 		return true;
@@ -125,8 +139,9 @@ export const installThemeFromGithub = async (manager: Manager, repo: string, ver
 
 		const themeCss = await fetchText(themeUrl, token);
 		const adapter = manager.app.vault.adapter;
-		const themePath = normalizePath(`${manager.app.vault.configDir}/themes/${manifest.name}/`);
-		if (!(await adapter.exists(themePath))) await adapter.mkdir(themePath);
+		const themeDir = normalizePath(`${manager.app.vault.configDir}/themes/${manifest.name}`);
+		const themePath = `${themeDir}/`;
+		if (!(await adapter.exists(themeDir))) await adapter.mkdir(themeDir);
 
 		await adapter.write(`${themePath}theme.css`, themeCss);
 		await adapter.write(`${themePath}manifest.json`, manifestText);

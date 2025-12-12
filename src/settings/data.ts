@@ -30,6 +30,11 @@ export interface ManagerSettings {
     // 命令组
     COMMAND_GROUP: boolean;
 
+    // GitHub 仓库映射
+    REPO_MAP: Record<string, string>;
+    // BPM 安装标记
+    BPM_INSTALLED: string[];
+
     // GitHub 令牌
     GITHUB_TOKEN: string;
 
@@ -56,6 +61,8 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     FADE_OUT_DISABLED_PLUGINS: true,
     COMMAND_ITEM: false,
     COMMAND_GROUP: false,
+    REPO_MAP: {},
+    BPM_INSTALLED: [],
     GITHUB_TOKEN: "",
     GROUPS: [
         {
@@ -69,6 +76,11 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
             "id": "default",
             "name": "默认标签",
             "color": "#A079FF"
+        },
+        {
+            "id": "bpm-install",
+            "name": "bpm安装",
+            "color": "#409EFF"
         },
     ],
     DELAYS: [

@@ -5,6 +5,7 @@ import { Translator } from './lang/inxdex';
 import { ManagerModal } from './modal/manager-modal';
 import Commands from './command';
 import Agreement from 'src/agreement';
+import { RepoResolver, ensureBpmTagExists, BPM_TAG_ID } from './repo-resolver';
 
 export default class Manager extends Plugin {
     public settings: ManagerSettings;
@@ -15,6 +16,7 @@ export default class Manager extends Plugin {
     public translator: Translator;
 
     public agreement: Agreement;
+    public repoResolver: RepoResolver;
 
     public async onload() {
         // @ts-ignore
@@ -23,6 +25,9 @@ export default class Manager extends Plugin {
 
         console.log(`%c ${this.manifest.name} %c v${this.manifest.version} `, `padding: 2px; border-radius: 2px 0 0 2px; color: #fff; background: #5B5B5B;`, `padding: 2px; border-radius: 0 2px 2px 0; color: #fff; background: #409EFF;`);
         await this.loadSettings();
+        ensureBpmTagExists(this);
+        this.ensureBpmTagAndRecords();
+        this.repoResolver = new RepoResolver(this);
         // 初始化语言系统
         this.translator = new Translator(this);
         // 初始化侧边栏图标
@@ -48,6 +53,15 @@ export default class Manager extends Plugin {
 
     public async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
     public async saveSettings() { await this.saveData(this.settings); }
+
+    public ensureBpmTagAndRecords() {
+        ensureBpmTagExists(this);
+        // 确保 BPM 安装的插件拥有标签
+        this.settings.BPM_INSTALLED.forEach((id) => {
+            const mp = this.settings.Plugins.find(p => p.id === id);
+            if (mp && !mp.tags.includes(BPM_TAG_ID)) mp.tags.push(BPM_TAG_ID);
+        });
+    }
 
     // 关闭延时 调用
     public disableDelay() {
@@ -140,6 +154,10 @@ export default class Manager extends Plugin {
                     'note': ''
                 });
             }
+            const mp = this.settings.Plugins.find(pm => pm.id === p1Item.id);
+            if (mp && this.settings.BPM_INSTALLED.includes(p1Item.id) && !mp.tags.includes(BPM_TAG_ID)) {
+                mp.tags.push(BPM_TAG_ID);
+            }
         });
         // 保存设置
         this.saveSettings();
@@ -191,4 +209,3 @@ export default class Manager extends Plugin {
         return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
     }
 }
-

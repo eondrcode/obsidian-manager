@@ -776,6 +776,21 @@ export class ManagerModal extends Modal {
                 }
 
                 if (!this.editorMode) {
+                    // [按钮] 打开仓库
+                    const openRepoButton = new ExtraButtonComponent(itemEl.controlEl);
+                    openRepoButton.setIcon("github");
+                    openRepoButton.setTooltip("正在检测仓库地址...");
+                    openRepoButton.setDisabled(true);
+                    const repo = await this.manager.repoResolver.resolveRepo(plugin.id);
+                    if (repo) {
+                        openRepoButton.setTooltip(`打开仓库：${repo}`);
+                        openRepoButton.setDisabled(false);
+                        openRepoButton.onClick(() => window.open(`https://github.com/${repo}`));
+                    } else {
+                        const isBpmInstall = this.manager.settings.BPM_INSTALLED.includes(plugin.id);
+                        openRepoButton.setTooltip(isBpmInstall ? "未记录仓库地址" : "本插件非官方/bpm安装，请手动添加来源");
+                    }
+
                     // [按钮] 打开设置
                     if (isEnabled) {
                         const openPluginSetting = new ExtraButtonComponent(itemEl.controlEl);
