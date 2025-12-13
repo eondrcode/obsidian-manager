@@ -62,6 +62,12 @@ export default class Manager extends Plugin {
     public async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
     public async saveSettings() { await this.saveData(this.settings); }
 
+    // 保存并同步单个插件到导出笔记
+    public async savePluginAndExport(pluginId: string) {
+        await this.saveSettings();
+        await this.exportPluginNote(pluginId);
+    }
+
     public ensureBpmTagAndRecords() {
         ensureBpmTagExists(this);
         // 确保 BPM 安装的插件拥有标签
@@ -174,13 +180,21 @@ export default class Manager extends Plugin {
                 const parsed = this.parseFrontmatter(old);
                 body = parsed.body || body;
             }
+            // 解析 repo 映射（官方清单 / BPM 安装 / 手动设置）
+            let repo = this.settings.REPO_MAP[mp.id] || "";
+            try {
+                const resolved = await this.repoResolver.resolveRepo(mp.id);
+                if (resolved) repo = resolved;
+            } catch (e) {
+                console.error("解析仓库映射失败", e);
+            }
             const frontmatter: Record<string, any> = {
                 "bpm_ro_id": mp.id,
                 "bpm_rw_name": mp.name,
                 "bpm_rw_desc": mp.desc,
                 "bpm_rw_note": mp.note,
                 "bpm_rw_enabled": mp.enabled,
-                "bpm_rwc_repo": this.settings.REPO_MAP[mp.id] || "",
+                "bpm_rwc_repo": repo,
                 "bpm_ro_group": mp.group,
                 "bpm_ro_tags": mp.tags,
                 "bpm_ro_delay": mp.delay,

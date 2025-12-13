@@ -75,6 +75,7 @@ export class RepoResolver {
 		const found = remote[pluginId];
 		if (found) {
 			this.manager.settings.REPO_MAP[pluginId] = found;
+			// 仅保存设置，避免导出时递归触发
 			await this.manager.saveSettings();
 			return found;
 		}
@@ -85,6 +86,7 @@ export class RepoResolver {
 		await this.ensureCacheLoaded();
 		this.cache[pluginId] = repo;
 		this.manager.settings.REPO_MAP[pluginId] = repo;
+		// 仅保存设置，避免与导出互相递归
 		await this.manager.saveSettings();
 		await this.writeCache();
 	}

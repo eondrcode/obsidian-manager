@@ -288,25 +288,28 @@ export class ManagerModal extends Modal {
         disableButton.setIcon("square");
         disableButton.setTooltip(this.manager.translator.t("管理器_一键禁用_描述"));
         this.bindLongPressTooltip(disableButton.buttonEl, this.manager.translator.t("管理器_一键禁用_描述"));
-        disableButton.onClick(async () => {
-            new DisableModal(this.app, this.manager, async () => {
-                for (const plugin of this.displayPlugins) {
-                    if (this.settings.DELAY) {
-                        const ManagerPlugin = this.settings.Plugins.find((p) => p.id === plugin.id);
-                        if (ManagerPlugin && ManagerPlugin.enabled) {
-                            await this.appPlugins.disablePlugin(plugin.id);
-                            ManagerPlugin.enabled = false;
-                            this.manager.saveSettings();
-                            this.reloadShowData();
-                        }
-                    } else {
-                        if (this.appPlugins.enabledPlugins.has(plugin.id)) {
-                            await this.appPlugins.disablePluginAndSave(plugin.id);
-                            this.reloadShowData();
-                        }
-                    }
-                    Commands(this.app, this.manager);
-                }
+                        disableButton.onClick(async () => {
+                            new DisableModal(this.app, this.manager, async () => {
+                                for (const plugin of this.displayPlugins) {
+                                    if (this.settings.DELAY) {
+                                        const ManagerPlugin = this.settings.Plugins.find((p) => p.id === plugin.id);
+                                        if (ManagerPlugin && ManagerPlugin.enabled) {
+                                            await this.appPlugins.disablePlugin(plugin.id);
+                                            ManagerPlugin.enabled = false;
+                                            await this.manager.savePluginAndExport(plugin.id);
+                                            this.reloadShowData();
+                                        }
+                                    } else {
+                                        if (this.appPlugins.enabledPlugins.has(plugin.id)) {
+                                            const ManagerPlugin = this.settings.Plugins.find((p) => p.id === plugin.id);
+                                            if (ManagerPlugin) ManagerPlugin.enabled = false;
+                                            await this.appPlugins.disablePluginAndSave(plugin.id);
+                                            await this.manager.savePluginAndExport(plugin.id);
+                                            this.reloadShowData();
+                                        }
+                                    }
+                                    Commands(this.app, this.manager);
+                                }
             }).open();
         });
 
@@ -315,25 +318,28 @@ export class ManagerModal extends Modal {
         enableButton.setIcon("square-check");
         enableButton.setTooltip(this.manager.translator.t("管理器_一键启用_描述"));
         this.bindLongPressTooltip(enableButton.buttonEl, this.manager.translator.t("管理器_一键启用_描述"));
-        enableButton.onClick(async () => {
-            new DisableModal(this.app, this.manager, async () => {
-                for (const plugin of this.displayPlugins) {
-                    if (this.settings.DELAY) {
-                        const ManagerPlugin = this.manager.settings.Plugins.find((mp) => mp.id === plugin.id);
-                        if (ManagerPlugin && !ManagerPlugin.enabled) {
-                            await this.appPlugins.enablePlugin(plugin.id);
-                            ManagerPlugin.enabled = true;
-                            this.manager.saveSettings();
-                            this.reloadShowData();
-                        }
-                    } else {
-                        if (!this.appPlugins.enabledPlugins.has(plugin.id)) {
-                            await this.appPlugins.enablePluginAndSave(plugin.id);
-                            this.reloadShowData();
-                        }
-                    }
-                    Commands(this.app, this.manager);
-                }
+                        enableButton.onClick(async () => {
+                            new DisableModal(this.app, this.manager, async () => {
+                                for (const plugin of this.displayPlugins) {
+                                    if (this.settings.DELAY) {
+                                        const ManagerPlugin = this.manager.settings.Plugins.find((mp) => mp.id === plugin.id);
+                                        if (ManagerPlugin && !ManagerPlugin.enabled) {
+                                            await this.appPlugins.enablePlugin(plugin.id);
+                                            ManagerPlugin.enabled = true;
+                                            await this.manager.savePluginAndExport(plugin.id);
+                                            this.reloadShowData();
+                                        }
+                                    } else {
+                                        if (!this.appPlugins.enabledPlugins.has(plugin.id)) {
+                                            const ManagerPlugin = this.manager.settings.Plugins.find((mp) => mp.id === plugin.id);
+                                            if (ManagerPlugin) ManagerPlugin.enabled = true;
+                                            await this.appPlugins.enablePluginAndSave(plugin.id);
+                                            await this.manager.savePluginAndExport(plugin.id);
+                                            this.reloadShowData();
+                                        }
+                                    }
+                                    Commands(this.app, this.manager);
+                                }
             }).open();
         });
 
@@ -775,10 +781,10 @@ export class ManagerModal extends Modal {
                 if (this.editorMode) {
                     title.setAttribute("style", "border-width: 1px;border-style: dashed;");
                     title.setAttribute("contenteditable", "true");
-                    title.addEventListener("input", () => {
+                    title.addEventListener("input", async () => {
                         if (title.textContent) {
                             ManagerPlugin.name = title.textContent;
-                            this.manager.saveSettings();
+                            await this.manager.savePluginAndExport(plugin.id);
                             Commands(this.app, this.manager);
                         }
                     });
@@ -813,10 +819,10 @@ export class ManagerModal extends Modal {
                 if (this.editorMode) {
                     desc.setAttribute("style", "border-width: 1px;border-style: dashed");
                     desc.setAttribute("contenteditable", "true");
-                    desc.addEventListener("input", () => {
+                    desc.addEventListener("input", async () => {
                         if (desc.textContent) {
                             ManagerPlugin.desc = desc.textContent;
-                            this.manager.saveSettings();
+                            await this.manager.savePluginAndExport(plugin.id);
                         }
                     });
                 }
@@ -906,26 +912,30 @@ export class ManagerModal extends Modal {
                     toggleSwitch.setTooltip(this.manager.translator.t("管理器_切换状态_描述"));
                     toggleSwitch.setValue(isEnabled);
                     toggleSwitch.onChange(async () => {
+                        const ManagerPlugin = this.settings.Plugins.find((p) => p.id === plugin.id);
                         if (this.settings.DELAY) {
                             if (toggleSwitch.getValue()) {
                                 if (this.settings.FADE_OUT_DISABLED_PLUGINS) itemEl.settingEl.removeClass("inactive"); // [淡化插件]
-                                ManagerPlugin.enabled = true;
-                                this.manager.saveSettings();
+                                if (ManagerPlugin) ManagerPlugin.enabled = true;
+                                await this.manager.savePluginAndExport(plugin.id);
                                 await this.appPlugins.enablePlugin(plugin.id);
                             } else {
                                 if (this.settings.FADE_OUT_DISABLED_PLUGINS) itemEl.settingEl.addClass("inactive"); // [淡化插件]
-                                ManagerPlugin.enabled = false;
-                                this.manager.saveSettings();
+                                if (ManagerPlugin) ManagerPlugin.enabled = false;
+                                await this.manager.savePluginAndExport(plugin.id);
                                 await this.appPlugins.disablePlugin(plugin.id);
                             }
                         } else {
                             if (toggleSwitch.getValue()) {
                                 if (this.settings.FADE_OUT_DISABLED_PLUGINS) itemEl.settingEl.removeClass("inactive"); // [淡化插件]
+                                if (ManagerPlugin) ManagerPlugin.enabled = true;
                                 await this.appPlugins.enablePluginAndSave(plugin.id);
                             } else {
                                 if (this.settings.FADE_OUT_DISABLED_PLUGINS) itemEl.settingEl.addClass("inactive"); // [淡化插件]
+                                if (ManagerPlugin) ManagerPlugin.enabled = false;
                                 await this.appPlugins.disablePluginAndSave(plugin.id);
                             }
+                            await this.manager.savePluginAndExport(plugin.id);
                         }
                         Commands(this.app, this.manager);
                         this.reloadShowData();
@@ -937,24 +947,24 @@ export class ManagerModal extends Modal {
                     const reloadButton = new ExtraButtonComponent(itemEl.controlEl);
                     reloadButton.setIcon("refresh-ccw");
                     reloadButton.setTooltip(this.manager.translator.t("管理器_还原内容_描述"));
-                    reloadButton.onClick(() => {
-                        ManagerPlugin.name = plugin.name;
-                        ManagerPlugin.desc = plugin.description;
-                        ManagerPlugin.group = "";
-                        ManagerPlugin.delay = "";
-                        ManagerPlugin.tags = [];
-                        this.manager.saveSettings();
-                        this.reloadShowData();
-                    });
+                        reloadButton.onClick(async () => {
+                            ManagerPlugin.name = plugin.name;
+                            ManagerPlugin.desc = plugin.description;
+                            ManagerPlugin.group = "";
+                            ManagerPlugin.delay = "";
+                            ManagerPlugin.tags = [];
+                            await this.manager.savePluginAndExport(plugin.id);
+                            this.reloadShowData();
+                        });
                     // [编辑] 延迟
                     if (this.settings.DELAY) {
                         const delays = this.settings.DELAYS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = item.name; return acc; }, { "": this.manager.translator.t("通用_无延迟_文本"), });
                         const delaysEl = new DropdownComponent(itemEl.controlEl);
                         delaysEl.addOptions(delays);
                         delaysEl.setValue(ManagerPlugin.delay);
-                        delaysEl.onChange((value) => {
+                        delaysEl.onChange(async (value) => {
                             ManagerPlugin.delay = value;
-                            this.manager.saveSettings();
+                            await this.manager.savePluginAndExport(plugin.id);
                             this.reloadShowData();
                         });
                     }

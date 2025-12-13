@@ -60,7 +60,7 @@ export class TagsModal extends Modal {
                 itemEl.addToggle(cb => cb
                     .setValue(this.managerPlugin.tags.includes(tag.id))
                     .setDisabled(tag.id === BPM_TAG_ID)
-                    .onChange((isChecked) => {
+                    .onChange(async (isChecked) => {
                         if (isChecked) {
                             // 添加开启的标签
                             if (!this.managerPlugin.tags.includes(tag.id)) {
@@ -70,7 +70,7 @@ export class TagsModal extends Modal {
                             // 移除关闭的标签
                             this.managerPlugin.tags = this.managerPlugin.tags.filter(t => t !== tag.id);
                         }
-                        this.manager.saveSettings();
+                        await this.manager.savePluginAndExport(this.managerPlugin.id);
                         this.managerModal.reloadShowData();
                     })
                 );

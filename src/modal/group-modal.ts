@@ -58,9 +58,9 @@ export class GroupModal extends Modal {
                 )
                 itemEl.addToggle(cb => cb
                     .setValue(group.id === this.managerPlugin.group)
-                    .onChange(() => {
+                    .onChange(async () => {
                         this.managerPlugin.group = this.managerPlugin.group === group.id ? '' : group.id;
-                        this.manager.saveSettings();
+                        await this.manager.savePluginAndExport(this.managerPlugin.id);
                         this.managerModal.reloadShowData();
                         this.reloadShowData();
                     })

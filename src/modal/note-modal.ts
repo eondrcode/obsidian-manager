@@ -42,9 +42,9 @@ export class NoteModal extends Modal {
     private async showData() {
         const textArea = new TextAreaComponent(this.contentEl);
         textArea.setValue(this.managerPlugin.note);
-        textArea.onChange((newValue) => {
+        textArea.onChange(async (newValue) => {
             this.managerPlugin.note = newValue;
-            this.manager.saveSettings();
+            await this.manager.savePluginAndExport(this.managerPlugin.id);
             this.managerModal.reloadShowData();
         });
     }
