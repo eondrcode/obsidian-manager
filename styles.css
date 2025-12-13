@@ -350,6 +350,7 @@ body.theme-dark {
 /* 目录容器 */
 .manager-item-container {
     overflow: auto;
+    padding: 8px;
 }
 
 .manager-item-container::-webkit-scrollbar {
@@ -359,17 +360,19 @@ body.theme-dark {
 /* 目录项 */
 .manager-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
+    gap: 12px;
     height: 100%;
-    padding: 6px 10px;
-    border: #fff solid 0px;
-    border-radius: var(--i18n-border-radius);
-    background-color: var(--background-modifier-hover);
-    margin-bottom: 6px;
+    padding: 10px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 12px;
+    background-color: var(--background-secondary);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+    margin-bottom: 10px;
 }
 
 .manager-item:first-child {
-    padding-top: 6px;
+    padding-top: 10px;
 }
 
 .manager-item:hover {
@@ -384,10 +387,14 @@ body.theme-dark {
 .manager-item__name-container {
     display: flex;
     align-items: center;
+    gap: 8px;
     height: auto;
     line-height: 20px;
     font-weight: bold;
     font-size: 15px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: var(--background-modifier-hover);
 }
 
 .manager-item__name-group {
@@ -401,9 +408,13 @@ body.theme-dark {
 }
 
 .manager-item__name-version {
-    display: flex;
-    font-size: 9px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
     margin-right: 5px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--background-modifier-border);
 }
 
 .manager-item__name-delay {
@@ -413,12 +424,18 @@ body.theme-dark {
 
 .manager-item__name-desc {
     margin-bottom: 4px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: var(--background-modifier-hover);
 }
 
 /* 目录项 描述行*/
 .manager-item__description-container {
     margin-left: 0px;
+    margin-top: 4px;
+    line-height: 1.4;
     transition: opacity 3s ease-out;
+    width: 100%;
 }
 
 
