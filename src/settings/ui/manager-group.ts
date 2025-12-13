@@ -6,7 +6,7 @@ export default class ManagerGroup extends BaseSetting {
     main(): void {
         let id = '';
         let name = '';
-        let color = '';
+        let color = this.manager.generateAutoColor(this.manager.settings.GROUPS.map(g => g.color));
         new Setting(this.containerEl)
             .setHeading()
             .setName(this.manager.translator.t('通用_新增_文本'))
@@ -34,7 +34,7 @@ export default class ManagerGroup extends BaseSetting {
                 .onClick(() => {
                     const containsId = this.manager.settings.GROUPS.some(tag => tag.id === id);
                     if (!containsId && id !== '') {
-                        if (color === '') color = '#000000';
+                        if (color === '') color = this.manager.generateAutoColor(this.manager.settings.GROUPS.map(g => g.color));
                         this.manager.settings.GROUPS.push({ id, name, color });
                         this.manager.saveSettings();
                         this.settingTab.groupDisplay();

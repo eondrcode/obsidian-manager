@@ -380,4 +380,47 @@ export default class Manager extends Plugin {
         const b = Math.min(255, Math.max(0, (rgb & 0xFF) + amount));
         return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
     }
+
+    /**
+     * 生成自动配色，使用“黄金角”分布避免颜色过于接近。
+     * existingColors: 已存在的颜色列表，用于避免重复/过近。
+     */
+    public generateAutoColor(existingColors: string[] = []): string {
+        const baseHue = (existingColors.length * 137.508) % 360;
+        let hue = baseHue;
+        const saturation = 68;
+        const lightness = 60;
+
+        const isClose = (hex: string) => {
+            const [r, g, b] = this.hexToRgbArray(hex);
+            for (const c of existingColors) {
+                const [cr, cg, cb] = this.hexToRgbArray(c);
+                const dist = Math.sqrt(
+                    Math.pow(r - cr, 2) + Math.pow(g - cg, 2) + Math.pow(b - cb, 2)
+                );
+                if (dist < 60) return true; // 阈值越小，颜色越分散
+            }
+            return false;
+        };
+
+        for (let i = 0; i < Math.max(existingColors.length + 6, 12); i++) {
+            const hex = this.hslToHex(hue, saturation, lightness);
+            if (!isClose(hex)) return hex;
+            hue = (hue + 27) % 360; // 继续偏移尝试
+        }
+        // 兜底
+        return '#A079FF';
+    }
+
+    private hslToHex(h: number, s: number, l: number): string {
+        s /= 100;
+        l /= 100;
+        const k = (n: number) => (n + h / 30) % 12;
+        const a = s * Math.min(l, 1 - l);
+        const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+        const r = Math.round(255 * f(0));
+        const g = Math.round(255 * f(8));
+        const b = Math.round(255 * f(4));
+        return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
+    }
 }

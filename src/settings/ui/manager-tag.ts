@@ -5,7 +5,7 @@ export default class ManagerTag extends BaseSetting {
     main(): void {
         let id = '';
         let name = '';
-        let color = '';
+        let color = this.manager.generateAutoColor(this.manager.settings.TAGS.map(t => t.color));
         new Setting(this.containerEl)
             .setHeading()
             .setName(this.manager.translator.t('通用_新增_文本'))
@@ -33,7 +33,7 @@ export default class ManagerTag extends BaseSetting {
                 .onClick(() => {
                     const containsId = this.manager.settings.TAGS.some(tag => tag.id === id);
                     if (!containsId && id !== '') {
-                        if (color === '') color = '#000000';
+                        if (color === '') color = this.manager.generateAutoColor(this.manager.settings.TAGS.map(t => t.color));
                         this.manager.settings.TAGS.push({ id, name, color });
                         this.manager.saveSettings();
                         this.settingTab.tagDisplay();
