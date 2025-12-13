@@ -5,6 +5,11 @@ import { Translator } from './lang/inxdex';
 import { ManagerModal } from './modal/manager-modal';
 import Commands from './command';
 import Agreement from 'src/agreement';
+import { RepoResolver, ensureBpmTagExists, BPM_TAG_ID } from './repo-resolver';
+import { normalizePath, TFile, stringifyYaml, parseYaml, EventRef, Notice } from 'obsidian';
+import { ManagerPlugin } from './data/types';
+import * as path from 'path';
+import { writeFile, readFile } from 'fs/promises';
 
 export default class Manager extends Plugin {
     public settings: ManagerSettings;
@@ -15,6 +20,10 @@ export default class Manager extends Plugin {
     public translator: Translator;
 
     public agreement: Agreement;
+    public repoResolver: RepoResolver;
+    private exportWatcher: EventRef | null = null;
+    private exportWriting = false;
+    private toggleNotice: Notice | null = null;
 
     public async onload() {
         // @ts-ignore
@@ -23,6 +32,9 @@ export default class Manager extends Plugin {
 
         console.log(`%c ${this.manifest.name} %c v${this.manifest.version} `, `padding: 2px; border-radius: 2px 0 0 2px; color: #fff; background: #5B5B5B;`, `padding: 2px; border-radius: 0 2px 2px 0; color: #fff; background: #409EFF;`);
         await this.loadSettings();
+        ensureBpmTagExists(this);
+        this.ensureBpmTagAndRecords();
+        this.repoResolver = new RepoResolver(this);
         // 初始化语言系统
         this.translator = new Translator(this);
         // 初始化侧边栏图标
@@ -33,6 +45,8 @@ export default class Manager extends Plugin {
         Commands(this.app, this);
 
         this.agreement = new Agreement(this);
+        this.setupExportWatcher();
+        if (this.settings.EXPORT_DIR) this.exportAllPluginNotes();
 
         this.registerObsidianProtocolHandler("BPM-plugin-install", async (params: ObsidianProtocolData) => {
             await this.agreement.parsePluginInstall(params);
@@ -44,10 +58,172 @@ export default class Manager extends Plugin {
 
     public async onunload() {
         if (this.settings.DELAY) this.disableDelaysForAllPlugins();
+        if (this.exportWatcher) this.app.vault.offref(this.exportWatcher);
     }
 
     public async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
     public async saveSettings() { await this.saveData(this.settings); }
+
+    public ensureBpmTagAndRecords() {
+        ensureBpmTagExists(this);
+        // 确保 BPM 安装的插件拥有标签
+        this.settings.BPM_INSTALLED.forEach((id) => {
+            const mp = this.settings.Plugins.find(p => p.id === id);
+            if (mp && !mp.tags.includes(BPM_TAG_ID)) mp.tags.push(BPM_TAG_ID);
+        });
+    }
+
+    public getExportDir(): string | null {
+        if (!this.settings.EXPORT_DIR) return null;
+        const base = (this.app.vault.adapter as any).getBasePath ? (this.app.vault.adapter as any).getBasePath() : "";
+        const dir = normalizePath(path.join(base, this.settings.EXPORT_DIR));
+        return dir;
+    }
+
+    public setupExportWatcher() {
+        if (this.exportWatcher) this.app.vault.offref(this.exportWatcher);
+        const dir = this.settings.EXPORT_DIR;
+        if (!dir) return;
+        this.exportWatcher = this.app.vault.on("modify", async (file) => { await this.handleExportedFileChange(file as TFile); });
+        this.registerEvent(this.exportWatcher);
+    }
+
+    private async handleExportedFileChange(file: TFile) {
+        if (this.exportWriting) return;
+        const exportDir = this.settings.EXPORT_DIR;
+        if (!exportDir) return;
+        if (!file.path.endsWith(".md")) return;
+        const normalized = normalizePath(file.path);
+        if (!normalized.startsWith(normalizePath(exportDir) + "/") && normalizePath(exportDir) !== normalized) return;
+        try {
+            const content = await this.app.vault.read(file);
+            const { frontmatter } = this.parseFrontmatter(content);
+            if (!frontmatter || !frontmatter["bpm_ro_id"]) return;
+            const id = String(frontmatter["bpm_ro_id"]);
+            const mp = this.settings.Plugins.find(p => p.id === id);
+            if (!mp) return;
+            const safe = (key: string) => frontmatter[key];
+            mp.name = safe("bpm_rw_name") ?? mp.name;
+            mp.desc = safe("bpm_rw_desc") ?? mp.desc;
+            mp.note = safe("bpm_rw_note") ?? mp.note;
+            if (typeof safe("bpm_rw_enabled") === "boolean") {
+                const targetEnabled = safe("bpm_rw_enabled") as boolean;
+                mp.enabled = targetEnabled;
+                if (id !== this.manifest.id) {
+                    const isEnabled = this.appPlugins.enabledPlugins.has(id);
+                    if (targetEnabled !== isEnabled) {
+                        this.showToggleNotice();
+                        try {
+                            if (targetEnabled) {
+                                await this.appPlugins.enablePluginAndSave(id);
+                            } else {
+                                await this.appPlugins.disablePluginAndSave(id);
+                            }
+                        } catch (e) {
+                            console.error("同步启用/禁用插件失败", e);
+                        } finally {
+                            this.hideToggleNotice();
+                        }
+                    }
+                }
+            }
+            // 条件可写 repo：仅非 BPM 安装且当前无官方映射
+            const repo = safe("bpm_rwc_repo");
+            const allowRepo = !this.settings.BPM_INSTALLED.includes(id) && !this.settings.REPO_MAP[id];
+            if (repo && allowRepo) {
+                this.settings.REPO_MAP[id] = repo;
+            }
+            await this.saveSettings();
+            this.reloadIfCurrentModal();
+        } catch (e) {
+            console.error("同步导入 BPM 笔记失败", e);
+        }
+    }
+
+    private parseFrontmatter(content: string): { frontmatter: any, body: string } {
+        if (!content.startsWith("---")) return { frontmatter: null, body: content };
+        const end = content.indexOf("\n---", 3);
+        if (end === -1) return { frontmatter: null, body: content };
+        const raw = content.slice(3, end).trim();
+        let fm: any = null;
+        try { fm = parseYaml(raw); } catch { fm = null; }
+        const body = content.slice(end + 4);
+        return { frontmatter: fm, body };
+    }
+
+    public async exportAllPluginNotes() {
+        if (!this.settings.EXPORT_DIR) return;
+        for (const plugin of this.settings.Plugins) {
+            await this.exportPluginNote(plugin.id);
+        }
+    }
+
+    public async exportPluginNote(pluginId: string) {
+        if (!this.settings.EXPORT_DIR) return;
+        const mp = this.settings.Plugins.find(p => p.id === pluginId);
+        if (!mp) return;
+        const dir = this.getExportDir();
+        if (!dir) return;
+        try {
+            const adapter = this.app.vault.adapter;
+            const vaultRelativeDir = normalizePath(this.settings.EXPORT_DIR);
+            if (!(await adapter.exists(vaultRelativeDir))) {
+                await adapter.mkdir(vaultRelativeDir);
+            }
+            const fileName = `${this.exportFileName(mp)}.md`;
+            const vaultPath = normalizePath(`${vaultRelativeDir}/${fileName}`);
+            const fullPath = normalizePath(path.join(dir, fileName));
+            let body = "\n\n下面是正文, 用户可以随便写";
+            if (await adapter.exists(vaultPath)) {
+                const old = await adapter.read(vaultPath);
+                const parsed = this.parseFrontmatter(old);
+                body = parsed.body || body;
+            }
+            const frontmatter: Record<string, any> = {
+                "bpm_ro_id": mp.id,
+                "bpm_rw_name": mp.name,
+                "bpm_rw_desc": mp.desc,
+                "bpm_rw_note": mp.note,
+                "bpm_rw_enabled": mp.enabled,
+                "bpm_rwc_repo": this.settings.REPO_MAP[mp.id] || "",
+                "bpm_ro_group": mp.group,
+                "bpm_ro_tags": mp.tags,
+                "bpm_ro_delay": mp.delay,
+                "bpm_ro_installed_via_bpm": this.settings.BPM_INSTALLED.includes(mp.id),
+                "bpm_ro_updated": new Date().toISOString(),
+            };
+            const yaml = stringifyYaml(frontmatter).trimEnd();
+            const content = `---\n${yaml}\n---${body.startsWith("\n") ? "" : "\n"}${body}`;
+            this.exportWriting = true;
+            await adapter.write(vaultPath, content);
+        } catch (e) {
+            console.error("导出 BPM 笔记失败", e);
+        } finally {
+            this.exportWriting = false;
+        }
+    }
+
+    private reloadIfCurrentModal() {
+        try { this.managerModal?.reloadShowData(); } catch { /* ignore */ }
+    }
+
+    private showToggleNotice() {
+        if (this.toggleNotice) return;
+        this.toggleNotice = new Notice("正在应用更改，请勿频繁操作。", 3000);
+    }
+
+    private hideToggleNotice() {
+        if (this.toggleNotice) {
+            this.toggleNotice.hide();
+            this.toggleNotice = null;
+        }
+    }
+
+    private exportFileName(mp: ManagerPlugin): string {
+        const base = (mp.name || mp.id || "plugin").trim();
+        const safe = base.replace(/[/\\?%*:|"<>]/g, "-").replace(/\s+/g, " ");
+        return safe || mp.id || "plugin";
+    }
 
     // 关闭延时 调用
     public disableDelay() {
@@ -140,9 +316,14 @@ export default class Manager extends Plugin {
                     'note': ''
                 });
             }
+            const mp = this.settings.Plugins.find(pm => pm.id === p1Item.id);
+            if (mp && this.settings.BPM_INSTALLED.includes(p1Item.id) && !mp.tags.includes(BPM_TAG_ID)) {
+                mp.tags.push(BPM_TAG_ID);
+            }
         });
         // 保存设置
         this.saveSettings();
+        this.exportAllPluginNotes();
     }
 
     // 工具函数
@@ -191,4 +372,3 @@ export default class Manager extends Plugin {
         return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
     }
 }
-

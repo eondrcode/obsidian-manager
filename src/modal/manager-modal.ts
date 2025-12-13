@@ -28,6 +28,8 @@ import { NoteModal } from "./note-modal";
 import { ShareModal } from "./share-modal";
 import { HideModal } from "./hide-modal";
 import { ShareTModal } from "./share-t-modal";
+import { installPluginFromGithub, installThemeFromGithub, fetchReleaseVersions, ReleaseVersion } from "../github-install";
+import { BPM_TAG_ID } from "src/repo-resolver";
 
 
 
@@ -59,6 +61,17 @@ export class ManagerModal extends Modal {
     // 搜索内容
     searchText = "";
 
+    // 安装模式
+    installMode = false;
+    installType: "plugin" | "theme" = "plugin";
+    installRepo = "";
+    installVersion = "";
+    installVersions: ReleaseVersion[] = [];
+    searchBarEl?: HTMLElement;
+    groupDropdown?: DropdownComponent;
+    tagDropdown?: DropdownComponent;
+    delayDropdown?: DropdownComponent;
+
 
     // 编辑模式
     editorMode = false;
@@ -67,6 +80,7 @@ export class ManagerModal extends Modal {
 
     searchEl: SearchComponent;
     footEl: HTMLDivElement;
+    modalContainer?: HTMLElement;
 
     constructor(app: App, manager: Manager) {
         super(app);
@@ -139,9 +153,11 @@ export class ManagerModal extends Modal {
     public async showHead() {
         //@ts-ignore
         const modalEl: HTMLElement = this.contentEl.parentElement;
+        this.modalContainer = modalEl;
         modalEl.addClass("manager-container");
         // 靠上
         if (!this.settings.CENTER) modalEl.addClass("manager-container__top");
+        if (this.editorMode) modalEl.addClass("manager-container--editing");
 
         modalEl.removeChild(modalEl.getElementsByClassName("modal-close-button")[0]);
         this.titleEl.parentElement?.addClass("manager-container__header");
@@ -293,7 +309,12 @@ export class ManagerModal extends Modal {
         editorButton.onClick(() => {
             this.editorMode = !this.editorMode;
             this.editorMode ? editorButton.setIcon("pen-off") : editorButton.setIcon("pen");
-            this.reloadShowData();
+            this.applyEditingStyle();
+            if (!this.editorMode) {
+                this.refreshFilterOptions();
+            } else {
+                this.renderContent();
+            }
         });
 
         // [操作行] 插件设置
@@ -304,6 +325,19 @@ export class ManagerModal extends Modal {
             this.appSetting.open();
             this.appSetting.openTabById(this.manager.manifest.id);
             // this.close();
+        });
+
+        // [操作行] 插件/主题安装模式
+        const installToggle = new ButtonComponent(actionBar.controlEl);
+        installToggle.setIcon("download");
+        installToggle.setTooltip("安装插件 / 主题（GitHub 仓库）");
+        installToggle.onClick(() => {
+            this.installMode = !this.installMode;
+            installToggle.setIcon(this.installMode ? "arrow-left" : "download");
+            if (this.searchBarEl) {
+                this.installMode ? this.searchBarEl.addClass("manager-display-none") : this.searchBarEl.removeClass("manager-display-none");
+            }
+            this.renderContent();
         });
 
 
@@ -331,6 +365,7 @@ export class ManagerModal extends Modal {
 
         // [搜索行]
         const searchBar = new Setting(this.titleEl).setClass("manager-bar__search").setName(this.manager.translator.t("通用_搜索_文本"));
+        this.searchBarEl = searchBar.settingEl;
 
         const filterOptions = {
             "all": this.manager.translator.t("筛选_全部_描述"),
@@ -355,10 +390,10 @@ export class ManagerModal extends Modal {
         // [搜索行] 分组选择列表
         const groupCounts = this.settings.Plugins.reduce((acc: { [key: string]: number }, plugin) => { const groupId = plugin.group || ""; acc[groupId] = (acc[groupId] || 0) + 1; return acc; }, { "": 0 });
         const groups = this.settings.GROUPS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} [${groupCounts[item.id] || 0}]`; return acc; }, { "": this.manager.translator.t("通用_无分组_文本") });
-        const groupsDropdown = new DropdownComponent(searchBar.controlEl);
-        groupsDropdown.addOptions(groups);
-        groupsDropdown.setValue(this.settings.PERSISTENCE ? this.settings.FILTER_GROUP : this.group);
-        groupsDropdown.onChange((value) => {
+        this.groupDropdown = new DropdownComponent(searchBar.controlEl);
+        this.groupDropdown.addOptions(groups);
+        this.groupDropdown.setValue(this.settings.PERSISTENCE ? this.settings.FILTER_GROUP : this.group);
+        this.groupDropdown.onChange((value) => {
             if (this.settings.PERSISTENCE) {
                 this.settings.FILTER_GROUP = value;
                 this.manager.saveSettings();
@@ -371,10 +406,10 @@ export class ManagerModal extends Modal {
         // [搜索行] 标签选择列表
         const tagCounts: { [key: string]: number } = this.settings.Plugins.reduce((acc, plugin) => { plugin.tags.forEach((tag) => { acc[tag] = (acc[tag] || 0) + 1; }); return acc; }, {} as { [key: string]: number });
         const tags = this.settings.TAGS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} [${tagCounts[item.id] || 0}]`; return acc; }, { "": this.manager.translator.t("通用_无标签_文本") });
-        const tagsDropdown = new DropdownComponent(searchBar.controlEl);
-        tagsDropdown.addOptions(tags);
-        tagsDropdown.setValue(this.settings.PERSISTENCE ? this.settings.FILTER_TAG : this.tag);
-        tagsDropdown.onChange((value) => {
+        this.tagDropdown = new DropdownComponent(searchBar.controlEl);
+        this.tagDropdown.addOptions(tags);
+        this.tagDropdown.setValue(this.settings.PERSISTENCE ? this.settings.FILTER_TAG : this.tag);
+        this.tagDropdown.onChange((value) => {
             if (this.settings.PERSISTENCE) {
                 this.settings.FILTER_TAG = value;
                 this.manager.saveSettings();
@@ -388,10 +423,10 @@ export class ManagerModal extends Modal {
         if (this.settings.DELAY) {
             const delayCounts = this.settings.Plugins.reduce((acc: { [key: string]: number }, plugin) => { const delay = plugin.delay || ""; acc[delay] = (acc[delay] || 0) + 1; return acc; }, { "": 0 });
             const delays = this.settings.DELAYS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} (${delayCounts[item.id] || 0})`; return acc; }, { "": this.manager.translator.t("通用_无延迟_文本") });
-            const delaysDropdown = new DropdownComponent(searchBar.controlEl);
-            delaysDropdown.addOptions(delays);
-            delaysDropdown.setValue(this.settings.PERSISTENCE ? this.settings.FILTER_DELAY : this.delay);
-            delaysDropdown.onChange((value) => {
+            this.delayDropdown = new DropdownComponent(searchBar.controlEl);
+            this.delayDropdown.addOptions(delays);
+            this.delayDropdown.setValue(this.settings.PERSISTENCE ? this.settings.FILTER_DELAY : this.delay);
+            this.delayDropdown.onChange((value) => {
                 if (this.settings.PERSISTENCE) {
                     this.settings.FILTER_DELAY = value;
                     this.manager.saveSettings();
@@ -739,9 +774,13 @@ export class ManagerModal extends Modal {
                 ManagerPlugin.tags.map((id: string) => {
                     const item = this.settings.TAGS.find((item) => item.id === id);
                     if (item) {
-                        const tag = this.manager.createTag(item.name, item.color, this.settings.TAG_STYLE);
-                        if (this.editorMode) tag.onclick = () => { new TagsModal(this.app, this.manager, this, ManagerPlugin).open(); };
-                        tags.appendChild(tag);
+                        if (item.id === BPM_TAG_ID && this.settings.HIDE_BPM_TAG) {
+                            // skip render
+                        } else {
+                            const tag = this.manager.createTag(item.name, item.color, this.settings.TAG_STYLE);
+                            if (this.editorMode && item.id !== BPM_TAG_ID) tag.onclick = () => { new TagsModal(this.app, this.manager, this, ManagerPlugin).open(); };
+                            tags.appendChild(tag);
+                        }
                     }
                 });
 
@@ -753,6 +792,21 @@ export class ManagerModal extends Modal {
                 }
 
                 if (!this.editorMode) {
+                    // [按钮] 打开仓库
+                    const openRepoButton = new ExtraButtonComponent(itemEl.controlEl);
+                    openRepoButton.setIcon("github");
+                    openRepoButton.setTooltip("正在检测仓库地址...");
+                    openRepoButton.setDisabled(true);
+                    const repo = await this.manager.repoResolver.resolveRepo(plugin.id);
+                    if (repo) {
+                        openRepoButton.setTooltip(`打开仓库：${repo}`);
+                        openRepoButton.setDisabled(false);
+                        openRepoButton.onClick(() => window.open(`https://github.com/${repo}`));
+                    } else {
+                        const isBpmInstall = this.manager.settings.BPM_INSTALLED.includes(plugin.id);
+                        openRepoButton.setTooltip(isBpmInstall ? "未记录仓库地址" : "本插件非官方/bpm安装，请手动添加来源");
+                    }
+
                     // [按钮] 打开设置
                     if (isEnabled) {
                         const openPluginSetting = new ExtraButtonComponent(itemEl.controlEl);
@@ -880,19 +934,139 @@ export class ManagerModal extends Modal {
         return summary;
     }
 
+    // 安装面板
+    private showInstallPanel() {
+        this.contentEl.empty();
+        const info = this.contentEl.createEl("div");
+        info.addClass("manager-install__info");
+        info.setText("从 GitHub 仓库安装插件或主题（读取最新发布资产）。");
+
+        const typeSetting = new Setting(this.contentEl)
+            .setName("类型")
+            .setDesc("选择要安装插件或主题");
+        typeSetting.addDropdown((dd) => {
+            dd.addOptions({ "plugin": "插件", "theme": "主题" });
+            dd.setValue(this.installType);
+            dd.onChange((v: "plugin" | "theme") => { this.installType = v; });
+        });
+
+        const repoSetting = new Setting(this.contentEl)
+            .setName("仓库")
+            .setDesc("GitHub 仓库路径，支持 <user>/<repo> 和 https://github.com/<user>/<repo> 两种形式。");
+        repoSetting.addText((text) => {
+            text.setPlaceholder("user/repo");
+            text.setValue(this.installRepo);
+            text.onChange((v) => { this.installRepo = v; this.installVersions = []; this.installVersion = ""; this.renderContent(); });
+        });
+
+        const versionSetting = new Setting(this.contentEl)
+            .setName("版本")
+            .setDesc("点击获取 GitHub 发布版本后可选择；不选择则默认最新。");
+        versionSetting.addDropdown((dd) => {
+            dd.addOption("", "最新发布");
+            this.installVersions.forEach((v) => dd.addOption(v.version, `${v.version}${v.prerelease ? " (pre)" : ""}`));
+            dd.setValue(this.installVersion);
+            dd.onChange((v) => { this.installVersion = v; });
+            dd.selectEl.style.minWidth = "200px";
+        });
+        versionSetting.addButton((btn) => {
+            btn.setButtonText("获取版本");
+            btn.setCta();
+            btn.onClick(async () => {
+                if (!this.installRepo) { new Notice("请先填写仓库路径"); return; }
+                btn.setDisabled(true);
+                btn.setButtonText("获取中...");
+                try {
+                    this.installVersions = await fetchReleaseVersions(this.manager, this.installRepo);
+                    if (this.installVersions.length === 0) new Notice("未找到发行版本，尝试手动填写 tag");
+                    this.installVersion = "";
+                } catch (e) {
+                    console.error(e);
+                    new Notice("获取发行版本失败，请检查仓库或网络");
+                }
+                btn.setDisabled(false);
+                btn.setButtonText("获取版本");
+                this.renderContent();
+            });
+        });
+
+        const action = new Setting(this.contentEl)
+            .setName("操作");
+        action.addButton((btn) => {
+            btn.setButtonText("开始安装");
+            btn.setCta();
+            btn.onClick(async () => {
+                if (!this.installRepo) { new Notice("请输入仓库路径"); return; }
+                btn.setDisabled(true);
+                const ok = this.installType === "plugin"
+                    ? await installPluginFromGithub(this.manager, this.installRepo, this.installVersion)
+                    : await installThemeFromGithub(this.manager, this.installRepo, this.installVersion);
+                btn.setDisabled(false);
+                if (ok) {
+                    this.installMode = false;
+                    if (this.searchBarEl) this.searchBarEl.removeClass("manager-display-none");
+                    this.renderContent();
+                }
+            });
+        });
+    }
+
+    private renderContent() {
+        this.contentEl.empty();
+        if (this.installMode) {
+            this.showInstallPanel();
+        } else {
+            this.showData();
+        }
+    }
+
     public async reloadShowData() {
         let scrollTop = 0;
         const modalElement: HTMLElement = this.contentEl;
         scrollTop = modalElement.scrollTop;
         modalElement.empty();
-        this.showData();
-        modalElement.scrollTo(0, scrollTop);
+        if (this.installMode) {
+            this.showInstallPanel();
+        } else {
+            this.showData();
+            modalElement.scrollTo(0, scrollTop);
+        }
+    }
+
+    private refreshFilterOptions() {
+        // 重新计算并刷新分组/标签/延迟下拉的计数
+        if (this.groupDropdown) {
+            const groupCounts = this.settings.Plugins.reduce((acc: { [key: string]: number }, plugin) => { const groupId = plugin.group || ""; acc[groupId] = (acc[groupId] || 0) + 1; return acc; }, { "": 0 });
+            const groups = this.settings.GROUPS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} [${groupCounts[item.id] || 0}]`; return acc; }, { "": this.manager.translator.t("通用_无分组_文本") });
+            const current = this.settings.PERSISTENCE ? this.settings.FILTER_GROUP : this.group;
+            this.resetDropdown(this.groupDropdown, groups, current);
+        }
+        if (this.tagDropdown) {
+            const tagCounts: { [key: string]: number } = this.settings.Plugins.reduce((acc, plugin) => { plugin.tags.forEach((tag) => { acc[tag] = (acc[tag] || 0) + 1; }); return acc; }, {} as { [key: string]: number });
+            const tags = this.settings.TAGS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} [${tagCounts[item.id] || 0}]`; return acc; }, { "": this.manager.translator.t("通用_无标签_文本") });
+            const current = this.settings.PERSISTENCE ? this.settings.FILTER_TAG : this.tag;
+            this.resetDropdown(this.tagDropdown, tags, current);
+        }
+        if (this.settings.DELAY && this.delayDropdown) {
+            const delayCounts = this.settings.Plugins.reduce((acc: { [key: string]: number }, plugin) => { const delay = plugin.delay || ""; acc[delay] = (acc[delay] || 0) + 1; return acc; }, { "": 0 });
+            const delays = this.settings.DELAYS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} (${delayCounts[item.id] || 0})`; return acc; }, { "": this.manager.translator.t("通用_无延迟_文本") });
+            const current = this.settings.PERSISTENCE ? this.settings.FILTER_DELAY : this.delay;
+            this.resetDropdown(this.delayDropdown, delays, current);
+        }
+        this.renderContent();
+    }
+
+    private resetDropdown(dropdown: DropdownComponent, options: Record<string, string>, value: string) {
+        dropdown.selectEl.empty();
+        dropdown.addOptions(options);
+        dropdown.setValue(options[value] ? value : Object.keys(options)[0] || "");
     }
 
     public async onOpen() {
         await this.showHead();
         await this.showData();
         this.searchEl.inputEl.focus();
+        this.applyEditingStyle();
         // [功能] ctrl+f聚焦
         document.addEventListener("keydown", (event) => {
             if (event.ctrlKey && event.key.toLowerCase() === "f") {
@@ -905,5 +1079,15 @@ export class ManagerModal extends Modal {
 
     public async onClose() {
         this.contentEl.empty();
+        if (this.modalContainer) this.modalContainer.removeClass("manager-container--editing");
+    }
+
+    private applyEditingStyle() {
+        if (!this.modalContainer) return;
+        if (this.editorMode) {
+            this.modalContainer.addClass("manager-container--editing");
+        } else {
+            this.modalContainer.removeClass("manager-container--editing");
+        }
     }
 }

@@ -21,5 +21,9 @@
   },
   "include": [
     "**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "obsidian42-brat/**"
   ]
 }

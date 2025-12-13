@@ -4,6 +4,7 @@ import Manager from 'main';
 import { ManagerModal } from './manager-modal';
 import { ManagerPlugin } from 'src/data/types';
 import Commands from 'src/command';
+import { BPM_TAG_ID } from 'src/repo-resolver';
 
 export class TagsModal extends Modal {
     settings: ManagerSettings;
@@ -12,6 +13,7 @@ export class TagsModal extends Modal {
     managerPlugin: ManagerPlugin;
     selected: string;
     add: boolean;
+    private defaultTagColor = '';
 
     constructor(app: App, manager: Manager, managerModal: ManagerModal, managerPlugin: ManagerPlugin) {
         super(app);
@@ -39,12 +41,17 @@ export class TagsModal extends Modal {
     }
 
     private async showData() {
+        // 预先生成缺省颜色，避免与现有标签颜色过近
+        if (!this.defaultTagColor) {
+            this.defaultTagColor = this.pickDistinctColor(this.settings.TAGS.map(t => t.color));
+        }
         for (const tag of this.settings.TAGS) {
             const itemEl = new Setting(this.contentEl)
             itemEl.setClass('manager-editor__item')
             if (this.selected == '' || this.selected != tag.id) {
                 itemEl.addExtraButton(cb => cb
                     .setIcon('settings')
+                    .setDisabled(tag.id === BPM_TAG_ID)
                     .onClick(() => {
                         this.selected = tag.id;
                         this.reloadShowData();
@@ -52,6 +59,7 @@ export class TagsModal extends Modal {
                 )
                 itemEl.addToggle(cb => cb
                     .setValue(this.managerPlugin.tags.includes(tag.id))
+                    .setDisabled(tag.id === BPM_TAG_ID)
                     .onChange((isChecked) => {
                         if (isChecked) {
                             // 添加开启的标签
@@ -72,6 +80,10 @@ export class TagsModal extends Modal {
                 tempEl.appendChild(tagEl);
             }
             if (this.selected != '' && this.selected == tag.id) {
+                if (tag.id === BPM_TAG_ID) {
+                    this.selected = '';
+                    continue;
+                }
                 itemEl.addColorPicker(cb => cb
                     .setValue(tag.color)
                     .onChange((value) => {
@@ -90,6 +102,7 @@ export class TagsModal extends Modal {
                 )
                 itemEl.addExtraButton(cb => cb
                     .setIcon('trash-2')
+                    .setDisabled(tag.id === BPM_TAG_ID)
                     .onClick(() => {
                         const hasTestTag = this.settings.Plugins.some(plugin => plugin.tags && plugin.tags.includes(tag.id));
                         if (!hasTestTag) {
@@ -121,7 +134,7 @@ export class TagsModal extends Modal {
         if (this.add) {
             let id = '';
             let name = '';
-            let color = '';
+            let color = this.pickDistinctColor(this.settings.TAGS.map(t => t.color));
             const foodBar = new Setting(this.contentEl).setClass('manager-bar__title');
             foodBar.infoEl.remove();
             foodBar.addColorPicker(cb => cb
@@ -142,8 +155,8 @@ export class TagsModal extends Modal {
                 .setIcon('plus')
                 .onClick(() => {
                     const containsId = this.manager.settings.TAGS.some(tag => tag.id === id);
-                    if (!containsId && id !== '') {
-                        if (color === '') color = '#000000';
+                    if (!containsId && id !== '' && id !== BPM_TAG_ID) {
+                        if (color === '') color = this.pickDistinctColor(this.settings.TAGS.map(t => t.color));
                         this.manager.settings.TAGS.push({ id, name, color });
                         this.manager.saveSettings();
                         this.add = false;
@@ -184,5 +197,24 @@ export class TagsModal extends Modal {
     async onClose() {
         this.contentEl.empty();
     }
-}
 
+    private pickDistinctColor(existing: string[]): string {
+        const palette = ['#FF6B6B', '#4ECDC4', '#FFD166', '#A78BFA', '#48BB78', '#F472B6', '#38BDF8', '#F59E0B', '#22D3EE', '#F97316', '#10B981', '#E11D48', '#6366F1', '#14B8A6'];
+        const toRgb = (hex: string) => {
+            const clean = hex.replace('#', '');
+            const num = parseInt(clean, 16);
+            return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+        };
+        const dist = (a: string, b: string) => {
+            const [ar, ag, ab] = toRgb(a);
+            const [br, bg, bb] = toRgb(b);
+            return Math.sqrt((ar - br) ** 2 + (ag - bg) ** 2 + (ab - bb) ** 2);
+        };
+        const MIN_DIST = 80;
+        for (const c of palette) {
+            const min = existing.length ? Math.min(...existing.map((ex) => dist(ex, c))) : Infinity;
+            if (min === Infinity || min > MIN_DIST) return c;
+        }
+        return palette[0];
+    }
+}

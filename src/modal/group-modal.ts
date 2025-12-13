@@ -12,6 +12,7 @@ export class GroupModal extends Modal {
     managerPlugin: ManagerPlugin;
     selected: string;
     add: boolean;
+    private defaultGroupColor = '';
 
     constructor(app: App, manager: Manager, managerModal: ManagerModal, managerPlugin: ManagerPlugin) {
         super(app);
@@ -40,6 +41,10 @@ export class GroupModal extends Modal {
     }
 
     private async showData() {
+        // 预先计算一个缺省颜色，避免与现有颜色过近
+        if (!this.defaultGroupColor) {
+            this.defaultGroupColor = this.pickDistinctColor(this.settings.GROUPS.map(g => g.color));
+        }
         for (const group of this.settings.GROUPS) {
             const itemEl = new Setting(this.contentEl)
             itemEl.setClass('manager-editor__item')
@@ -114,7 +119,7 @@ export class GroupModal extends Modal {
         if (this.add) {
             let id = '';
             let name = '';
-            let color = '';
+            let color = this.pickDistinctColor(this.settings.GROUPS.map(g => g.color));
             const foodBar = new Setting(this.contentEl).setClass('manager-bar__title');
             foodBar.infoEl.remove();
             foodBar.addColorPicker(cb => cb
@@ -138,7 +143,7 @@ export class GroupModal extends Modal {
                 .onClick(() => {
                     const containsId = this.manager.settings.GROUPS.some(tag => tag.id === id);
                     if (!containsId && id !== '') {
-                        if (color === '') color = '#000000';
+                        if (color === '') color = this.pickDistinctColor(this.settings.GROUPS.map(g => g.color));
                         this.manager.settings.GROUPS.push({ id, name, color });
                         this.manager.saveSettings();
                         this.add = false;
@@ -179,5 +184,24 @@ export class GroupModal extends Modal {
     async onClose() {
         this.contentEl.empty();
     }
-}
 
+    private pickDistinctColor(existing: string[]): string {
+        const palette = ['#FF6B6B', '#4ECDC4', '#FFD166', '#A78BFA', '#48BB78', '#F472B6', '#38BDF8', '#F59E0B', '#22D3EE', '#F97316', '#10B981', '#E11D48', '#6366F1', '#14B8A6'];
+        const toRgb = (hex: string) => {
+            const clean = hex.replace('#', '');
+            const num = parseInt(clean, 16);
+            return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+        };
+        const dist = (a: string, b: string) => {
+            const [ar, ag, ab] = toRgb(a);
+            const [br, bg, bb] = toRgb(b);
+            return Math.sqrt((ar - br) ** 2 + (ag - bg) ** 2 + (ab - bb) ** 2);
+        };
+        const MIN_DIST = 80;
+        for (const c of palette) {
+            const min = existing.length ? Math.min(...existing.map((ex) => dist(ex, c))) : Infinity;
+            if (min === Infinity || min > MIN_DIST) return c;
+        }
+        return palette[0];
+    }
+}
