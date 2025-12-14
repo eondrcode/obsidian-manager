@@ -38,6 +38,7 @@ export default class Manager extends Plugin {
     private exportWriting = false;
     private toggleNotice: Notice | null = null;
     public updateStatus: Record<string, UpdateStatus> = {};
+    private updateProgressNotice: Notice | null = null;
 
     public async onload() {
         // @ts-ignore
@@ -68,6 +69,7 @@ export default class Manager extends Plugin {
         this.agreement = new Agreement(this);
         this.setupExportWatcher();
         if (this.settings.EXPORT_DIR) this.exportAllPluginNotes();
+        this.startupCheckForUpdates();
 
         this.registerObsidianProtocolHandler("BPM-plugin-install", async (params: ObsidianProtocolData) => {
             await this.agreement.parsePluginInstall(params);
@@ -89,6 +91,92 @@ export default class Manager extends Plugin {
     public async savePluginAndExport(pluginId: string) {
         await this.saveSettings();
         await this.exportPluginNote(pluginId);
+    }
+
+    public showUpdateProgress(total: number): { dispose: () => void; update: (processed: number, currentId?: string) => void; cancel: () => void; isCancelled: () => boolean } {
+        if (this.updateProgressNotice) this.updateProgressNotice.hide();
+        const notice = new Notice("", 0);
+        notice.noticeEl.empty();
+        const wrap = document.createElement("div");
+        wrap.addClass("bpm-update-progress");
+        const text = document.createElement("div");
+        text.setText(this.translator.t("通知_检测更新中文案"));
+        const sub = document.createElement("div");
+        sub.addClass("bpm-update-progress__sub");
+        const bar = document.createElement("div");
+        bar.addClass("bpm-progress");
+        const fill = document.createElement("div");
+        fill.addClass("bpm-progress__bar");
+        bar.appendChild(fill);
+        const cancelBtn = document.createElement("button");
+        cancelBtn.textContent = this.translator.t("通用_取消_文本") || "Cancel";
+        cancelBtn.addClass("bpm-progress__cancel");
+        let processed = 0;
+        let cancelled = false;
+        cancelBtn.onclick = () => { cancelled = true; };
+        const update = (p: number, currentId?: string) => {
+            processed = p;
+            const ratio = total > 0 ? Math.min(1, processed / total) : 0;
+            fill.style.width = `${ratio * 100}%`;
+            sub.setText(`${processed}/${total}${currentId ? ` · ${currentId}` : ""}`);
+        };
+        wrap.appendChild(text);
+        wrap.appendChild(sub);
+        wrap.appendChild(bar);
+        wrap.appendChild(cancelBtn);
+        notice.noticeEl.appendChild(wrap);
+        this.updateProgressNotice = notice;
+        return {
+            dispose: () => {
+                notice.hide();
+                if (this.updateProgressNotice === notice) this.updateProgressNotice = null;
+            },
+            update,
+            cancel: () => { cancelled = true; },
+            isCancelled: () => cancelled
+        };
+    }
+
+    public async checkUpdatesWithNotice(): Promise<Record<string, UpdateStatus>> {
+        const manifests = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id) as PluginManifest[];
+        const progress = this.showUpdateProgress(manifests.length);
+        let processed = 0;
+        try {
+            const res = await this.checkUpdates({
+                onProgress: (id?: string) => {
+                    processed++;
+                    progress.update(processed, id);
+                },
+                isCancelled: () => progress.isCancelled()
+            });
+            return res;
+        } finally {
+            progress.dispose();
+        }
+    }
+
+    private async startupCheckForUpdates() {
+        if (!this.settings.STARTUP_CHECK_UPDATES) return;
+        try {
+            const manifests = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id) as PluginManifest[];
+            const progress = this.showUpdateProgress(manifests.length);
+            let processed = 0;
+            const status = await this.checkUpdates({
+                onProgress: () => { processed++; progress.update(processed); },
+                isCancelled: () => progress.isCancelled()
+            });
+            const count = Object.values(status || {}).filter(s => s.hasUpdate).length;
+            if (count > 0) {
+                const msg = this.translator.t("通知_可更新数量").replace("{count}", `${count}`);
+                new Notice(msg, 5000);
+            }
+            progress.dispose();
+        } catch (e) {
+            if (this.settings.DEBUG) console.error("[BPM] startup check updates failed", e);
+            if (!this.settings.GITHUB_TOKEN) {
+                new Notice(this.translator.t("通知_检查更新失败_建议Token"));
+            }
+        }
     }
 
     public ensureBpmTagAndRecords() {
@@ -495,13 +583,14 @@ export default class Manager extends Plugin {
     }
 
     // 检测插件更新：官方 + GitHub（BPM 或用户指定仓库）
-    public async checkUpdates(): Promise<Record<string, UpdateStatus>> {
+    public async checkUpdates(opts?: { onProgress?: (id?: string) => void; isCancelled?: () => boolean }): Promise<Record<string, UpdateStatus>> {
         const manifests = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id) as PluginManifest[];
         const officialMap = await this.fetchOfficialStats();
         const statusMap: Record<string, UpdateStatus> = {};
 
         if (this.settings.DEBUG) console.log("[BPM] checkUpdates start, total manifests:", manifests.length);
         for (const pm of manifests) {
+            if (opts?.isCancelled?.()) break;
             const localVersion = pm.version || "0.0.0";
             const st: UpdateStatus = { source: 'unknown', localVersion, checkedAt: Date.now() };
             try {
@@ -548,6 +637,7 @@ export default class Manager extends Plugin {
                 console.error("[BPM] checkUpdates error", pm.id, e);
             }
             statusMap[pm.id] = st;
+            opts?.onProgress?.(pm.id);
         }
         this.updateStatus = statusMap;
         return statusMap;

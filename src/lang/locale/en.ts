@@ -15,6 +15,7 @@ export default {
     通用_关闭_文本: 'Disable',
     通用_开启_文本: 'Enable',
     通用_保存_文本: 'Save settings',
+    通用_取消_文本: 'Cancel',
 
     导出_正文提示: 'Body section: you can edit or replace this content.',
 
@@ -27,6 +28,7 @@ export default {
     设置_基础设置_导出提示_描述: 'Read-only: bpm_ro_id/name/group/tags/delay/installed_via_bpm/updated; writable: bpm_rw_desc/note/enabled; conditional: bpm_rwc_repo (only when official match is missing and not BPM-installed).',
     设置_基础设置_GITHUB_TOKEN_标题: 'GitHub API Token',
     设置_基础设置_GITHUB_TOKEN_描述: 'Used to download plugins/themes from GitHub and reduce rate limits. Optional.',
+    设置_基础设置_GITHUB_TOKEN_权限: 'Required scope: Public repositories',
     命令行_启用_文本: 'Enable',
     命令行_禁用_文本: 'Disable',
     命令行_分组_文本: 'Group',
@@ -113,6 +115,8 @@ export default {
     设置_基础设置_延时启动_描述: 'Enabling the delayed startup feature can optimize the loading order, but please note that this may cause compatibility issues with some plugins.',
     设置_基础设置_淡化插件_标题: 'Fade Plugins',
     设置_基础设置_淡化插件_描述: 'Provide a visual fade effect for disabled plugins to clearly distinguish between enabled and disabled plugins.',
+    设置_基础设置_启动检查更新_标题: 'Check updates on startup',
+    设置_基础设置_启动检查更新_描述: 'When BPM opens, automatically check for plugin updates and briefly show the count.',
 
     设置_基础设置_筛选持久化_标题: 'Filter Persistence',
     设置_基础设置_筛选持久化_描述: 'After enabling, you will see the same plugin list every time you open the manager.',
@@ -139,6 +143,9 @@ export default {
 
     设置_提示_一_标题: 'If You Encounter Conflicts with Other Plugins',
     设置_提示_一_描述: 'Due to limited capabilities, I cannot fix this issue. Please disable delayed startup to resolve all conflict issues.',
+    通知_检测更新中文案: 'Checking plugin updates...',
+    通知_可更新数量: '{count} plugins have updates available',
+    通知_检查更新失败_建议Token: 'Network/API limited. Please configure a GitHub Token (Public repositories scope) and retry.',
 
     命令_管理面板_描述: 'Open the plugin manager',
     标签_BPM安装_名称: 'bpm install',

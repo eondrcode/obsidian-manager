@@ -54,6 +54,16 @@ export default class ManagerBasis extends BaseSetting {
             this.manager.saveSettings();
         });
 
+        const startupCheckBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t('设置_基础设置_启动检查更新_标题'))
+            .setDesc(this.manager.translator.t('设置_基础设置_启动检查更新_描述'));
+        const startupCheckToggle = new ToggleComponent(startupCheckBar.controlEl);
+        startupCheckToggle.setValue(this.settings.STARTUP_CHECK_UPDATES);
+        startupCheckToggle.onChange((value) => {
+            this.settings.STARTUP_CHECK_UPDATES = value;
+            this.manager.saveSettings();
+        });
+
         const CommandItemBar = new Setting(this.containerEl)
             .setName(this.manager.translator.t('设置_基础设置_单独命令_标题'))
             .setDesc(this.manager.translator.t('设置_基础设置_单独命令_描述'));
@@ -115,7 +125,7 @@ export default class ManagerBasis extends BaseSetting {
 
         const tokenBar = new Setting(this.containerEl)
             .setName(this.manager.translator.t('设置_基础设置_GITHUB_TOKEN_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_GITHUB_TOKEN_描述'));
+            .setDesc(`${this.manager.translator.t('设置_基础设置_GITHUB_TOKEN_描述')} (${this.manager.translator.t('设置_基础设置_GITHUB_TOKEN_权限')})`);
         const tokenInput = new TextComponent(tokenBar.controlEl);
         tokenInput.setPlaceholder("ghp_xxx");
         tokenInput.setValue(this.settings.GITHUB_TOKEN || "");

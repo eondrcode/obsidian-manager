@@ -87,6 +87,9 @@ export default {
 
     设置_提示_一_标题: 'Si vous rencontrez des conflits avec d\'autres plugins',
     设置_提示_一_描述: 'En raison de capacités limitées, je ne peux pas résoudre ce problème. Veuillez désactiver le démarrage différé pour résoudre tous les problèmes de conflit.',
+    设置_基础设置_启动检查更新_标题: 'Vérifier les mises à jour au démarrage',
+    设置_基础设置_启动检查更新_描述: 'À l\'ouverture de BPM, vérifier automatiquement les mises à jour et afficher brièvement le nombre.',
+    通知_可更新数量: '{count} plugins ont des mises à jour disponibles',
 
     命令_管理面板_描述: 'Ouvrez le gestionnaire de plugins',
     管理器_下载更新_描述: 'Télécharger une mise à jour (choisir la version, y compris pré-release)',

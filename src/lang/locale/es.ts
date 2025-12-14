@@ -71,6 +71,8 @@ export default {
     设置_基础设置_单独命令_描述: 'Habilite esta opción para controlar el estado habilitado y deshabilitado de cada plugin por separado. (Reinicie Obsidian para que surtan efecto)',
     设置_基础设置_分组命令_标题: 'Controlar comandos de plugins por grupo',
     设置_基础设置_分组命令_描述: 'Habilite esta opción para habilitar o deshabilitar todos los plugins de un grupo específico con un solo clic. (Reinicie Obsidian para que surtan efecto)',
+    设置_基础设置_启动检查更新_标题: 'Comprobar actualizaciones al inicio',
+    设置_基础设置_启动检查更新_描述: 'Al abrir BPM, comprueba automáticamente actualizaciones y muestra un aviso breve con el recuento.',
     标签_BPM安装_名称: 'bpm install',
 
     设置_延迟设置_通知_一: '[Retraso] Añadido',
@@ -90,6 +92,8 @@ export default {
 
     设置_提示_一_标题: 'Si encuentra conflictos con otros plugins',
     设置_提示_一_描述: 'Debido a capacidades limitadas, no puedo solucionar este problema. Por favor, deshabilite el inicio con retraso para resolver todos los problemas de conflicto.',
+    通知_检测更新中: 'Comprobando actualizaciones…',
+    通知_可更新数量: '{count} plugins tienen actualizaciones disponibles',
 
     命令_管理面板_描述: 'Abrir el administrador de plugins',
     管理器_下载更新_描述: 'Descargar actualización (elige versión, incl. pre-release)',

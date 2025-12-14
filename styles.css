@@ -612,6 +612,39 @@ body.theme-dark {
     margin-top: 10px;
 }
 
+.bpm-update-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 180px;
+}
+
+.bpm-progress {
+    position: relative;
+    width: 100%;
+    height: 6px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--background-modifier-border);
+}
+
+.bpm-progress__bar {
+    position: absolute;
+    inset: 0;
+    background: var(--text-accent);
+    transition: width 0.2s ease;
+}
+
+.bpm-progress__cancel {
+    align-self: flex-end;
+    background: transparent;
+    border: 1px solid var(--text-accent);
+    color: var(--text-accent);
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+}
+
 /* 笔记模块 CSS
 ---------------------------------------------------------------- */
 .manager-note__container {

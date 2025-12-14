@@ -218,7 +218,7 @@ export class ManagerModal extends Modal {
         updateButton.onClick(async () => {
             updateButton.setDisabled(true);
             try {
-                await this.manager.checkUpdates();
+                await this.manager.checkUpdatesWithNotice();
                 const count = Object.values(this.manager.updateStatus || {}).filter(s => s.hasUpdate).length;
                 new Notice(`检查完成，发现 ${count} 个插件有可用更新`);
                 this.reloadShowData();

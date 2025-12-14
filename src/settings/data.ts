@@ -35,7 +35,8 @@ export interface ManagerSettings {
     COMMAND_ITEM: boolean;
     // 命令组
     COMMAND_GROUP: boolean;
-
+    // 启动时检测更新
+    STARTUP_CHECK_UPDATES: boolean;
     // GitHub 仓库映射
     REPO_MAP: Record<string, string>;
     // BPM 安装标记
@@ -74,6 +75,7 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     FADE_OUT_DISABLED_PLUGINS: true,
     COMMAND_ITEM: false,
     COMMAND_GROUP: false,
+    STARTUP_CHECK_UPDATES: false,
     REPO_MAP: {},
     BPM_INSTALLED: [],
     HIDE_BPM_TAG: false,
