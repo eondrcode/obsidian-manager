@@ -526,74 +526,77 @@ export class ManagerModal extends Modal {
             const ManagerPlugin = this.manager.settings.Plugins.find((mp) => mp.id === plugin.id);
             const pluginDir = normalizePath(`${this.app.vault.configDir}/${plugin.dir ? plugin.dir : ""}`);
             if (this.settings.DEBUG) console.log("[BPM] render item", plugin.id, "children before add:", this.contentEl.children.length);
+            if (!ManagerPlugin) continue;
             // 插件是否开启
-            const isEnabled = this.settings.DELAY ? ManagerPlugin?.enabled : this.appPlugins.enabledPlugins.has(plugin.id);
-            if (ManagerPlugin) {
-                const itemEl = new Setting(this.contentEl);
-                itemEl.settingEl.setAttr("data-plugin-id", plugin.id);
-                itemEl.setClass("manager-item");
-                itemEl.nameEl.addClass("manager-item__name-container");
-                itemEl.descEl.addClass("manager-item__description-container");
-                itemEl.controlEl.addClass("manager-item__controls");
-                // [过滤] 条件
-                switch (this.filter) {
-                    case "enabled":
-                        if (!isEnabled) continue; // 仅显示启用插件
-                        break;
-                    case "disabled":
-                        if (isEnabled) continue; // 仅显示禁用插件
-                        break;
-                    case "grouped":
-                        if (ManagerPlugin.group === "") continue; // 仅显示有分组的插件
-                        break;
-                    case "ungrouped":
-                        if (ManagerPlugin.group !== "") continue; // 仅显示未分组插件
-                        break;
-                    case "tagged":
-                        if (ManagerPlugin.tags.length === 0) continue; // 修正为标签数组长度判断
-                        break;
-                    case "untagged":
-                        if (ManagerPlugin.tags.length > 0) continue;  // 修正为标签数组长度判断
-                        break;
-                    case "noted":
-                        if (!ManagerPlugin.note || ManagerPlugin.note === "") continue; // 新增笔记判断
-                        break;
-                    default:
-                        break; // 其他情况显示所有插件
-                }
-                // [过滤] 筛选
-                if (this.settings.PERSISTENCE) {
-                    // [搜索] 分组
-                    if (this.settings.FILTER_GROUP !== "" && ManagerPlugin.group !== this.settings.FILTER_GROUP) continue;
-                    // [搜索] 标签
-                    if (this.settings.FILTER_TAG !== "" && !ManagerPlugin.tags.includes(this.settings.FILTER_TAG)) continue;
-                    // [搜索] 标签
-                    if (this.settings.FILTER_DELAY !== "" && ManagerPlugin.delay !== this.settings.FILTER_DELAY) continue;
-                } else {
-                    // [搜索] 分组
-                    if (this.group !== "" && ManagerPlugin.group !== this.group) continue;
-                    // [搜索] 标签
-                    if (this.tag !== "" && !ManagerPlugin.tags.includes(this.tag)) continue;
-                    // [搜索] 标签
-                    if (this.delay !== "" && ManagerPlugin.delay !== this.delay) continue;
-                }
-                // [过滤] 搜索
-                if (this.searchText !== "" && ManagerPlugin.name.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1 && ManagerPlugin.desc.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1 && plugin.author.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1) continue;
-                // [过滤] 隐藏
-                if (this.settings.HIDES.includes(plugin.id)) continue;
-                // [过滤] 自身
-                if (plugin.id === this.manager.manifest.id) continue;
+            const isEnabled = this.settings.DELAY ? ManagerPlugin.enabled : this.appPlugins.enabledPlugins.has(plugin.id);
+            // [过滤] 条件
+            switch (this.filter) {
+                case "enabled":
+                    if (!isEnabled) continue; // 仅显示启用插件
+                    break;
+                case "disabled":
+                    if (isEnabled) continue; // 仅显示禁用插件
+                    break;
+                case "grouped":
+                    if (ManagerPlugin.group === "") continue; // 仅显示有分组的插件
+                    break;
+                case "ungrouped":
+                    if (ManagerPlugin.group !== "") continue; // 仅显示未分组插件
+                    break;
+                case "tagged":
+                    if (ManagerPlugin.tags.length === 0) continue; // 修正为标签数组长度判断
+                    break;
+                case "untagged":
+                    if (ManagerPlugin.tags.length > 0) continue;  // 修正为标签数组长度判断
+                    break;
+                case "noted":
+                    if (!ManagerPlugin.note || ManagerPlugin.note === "") continue; // 新增笔记判断
+                    break;
+                default:
+                    break; // 其他情况显示所有插件
+            }
+            // [过滤] 筛选
+            if (this.settings.PERSISTENCE) {
+                // [搜索] 分组
+                if (this.settings.FILTER_GROUP !== "" && ManagerPlugin.group !== this.settings.FILTER_GROUP) continue;
+                // [搜索] 标签
+                if (this.settings.FILTER_TAG !== "" && !ManagerPlugin.tags.includes(this.settings.FILTER_TAG)) continue;
+                // [搜索] 标签
+                if (this.settings.FILTER_DELAY !== "" && ManagerPlugin.delay !== this.settings.FILTER_DELAY) continue;
+            } else {
+                // [搜索] 分组
+                if (this.group !== "" && ManagerPlugin.group !== this.group) continue;
+                // [搜索] 标签
+                if (this.tag !== "" && !ManagerPlugin.tags.includes(this.tag)) continue;
+                // [搜索] 标签
+                if (this.delay !== "" && ManagerPlugin.delay !== this.delay) continue;
+            }
+            // [过滤] 搜索
+            if (this.searchText !== "" && ManagerPlugin.name.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1 && ManagerPlugin.desc.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1 && plugin.author.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1) continue;
+            // [过滤] 隐藏
+            if (this.settings.HIDES.includes(plugin.id)) continue;
+            // [过滤] 自身
+            if (plugin.id === this.manager.manifest.id) continue;
+
+            const itemEl = new Setting(this.contentEl);
+            itemEl.settingEl.setAttr("data-plugin-id", plugin.id);
+            itemEl.setClass("manager-item");
+            itemEl.nameEl.addClass("manager-item__name-container");
+            itemEl.descEl.addClass("manager-item__description-container");
+            itemEl.controlEl.addClass("manager-item__controls");
 
                 // [右键操作]
                 itemEl.settingEl.addEventListener("contextmenu", (event) => {
                     event.preventDefault(); // 阻止默认的右键菜单
                     const menu = new Menu();
                     // 第一组：插件信息类
-                    // [菜单] GITHUB
                     menu.addItem((item) =>
-                        item.setTitle(this.manager.translator.t("菜单_GitHub_标题"))
-                            .setIcon("github")
-                            .onClick(() => { window.open(`obsidian://BPM-plugin-github?id=${plugin.id}`) })
+                        item.setTitle(this.manager.translator.t("菜单_检查更新_标题"))
+                            .setIcon("rss")
+                            .onClick(async () => {
+                                await this.manager.checkUpdateForPlugin(plugin.id);
+                                await this.reloadShowData();
+                            })
                     );
                     menu.addSeparator(); // 分隔符
                     // 第二组：插件管理类
@@ -827,7 +830,7 @@ export class ManagerModal extends Modal {
                             const versions = updateInfo.versions && updateInfo.versions.length > 0
                                 ? updateInfo.versions
                                 : [{ version: updateInfo.remoteVersion!, prerelease: false }];
-                            new UpdateModal(this.app, this.manager, plugin.id, versions, updateInfo.remoteVersion).open();
+                            new UpdateModal(this.app, this.manager, plugin.id, versions, updateInfo.remoteVersion, updateInfo.repo || undefined).open();
                         });
                     }
                 }
@@ -985,15 +988,15 @@ export class ManagerModal extends Modal {
                     const reloadButton = new ExtraButtonComponent(itemEl.controlEl);
                     reloadButton.setIcon("refresh-ccw");
                     reloadButton.setTooltip(this.manager.translator.t("管理器_还原内容_描述"));
-                        reloadButton.onClick(async () => {
-                            ManagerPlugin.name = plugin.name;
-                            ManagerPlugin.desc = plugin.description;
-                            ManagerPlugin.group = "";
-                            ManagerPlugin.delay = "";
-                            ManagerPlugin.tags = [];
-                            await this.manager.savePluginAndExport(plugin.id);
-                            this.reloadShowData();
-                        });
+                    reloadButton.onClick(async () => {
+                        ManagerPlugin.name = plugin.name;
+                        ManagerPlugin.desc = plugin.description;
+                        ManagerPlugin.group = "";
+                        ManagerPlugin.delay = "";
+                        ManagerPlugin.tags = [];
+                        await this.manager.savePluginAndExport(plugin.id);
+                        this.reloadShowData();
+                    });
                     // [编辑] 延迟
                     if (this.settings.DELAY) {
                         const delays = this.settings.DELAYS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = item.name; return acc; }, { "": this.manager.translator.t("通用_无延迟_文本"), });
@@ -1005,13 +1008,12 @@ export class ManagerModal extends Modal {
                             await this.manager.savePluginAndExport(plugin.id);
                             this.reloadShowData();
                         });
+                    }
             }
         }
         if (this.settings.DEBUG) {
             const cards = Array.from(this.contentEl.querySelectorAll(".manager-item"));
             console.log("[BPM] render showData after loop, cards:", cards.length, "ids:", cards.map(el => el.getAttribute("data-plugin-id")).filter(Boolean).join(","));
-        }
-    }
         }
         // 计算页尾
         this.footEl.innerHTML = this.count();

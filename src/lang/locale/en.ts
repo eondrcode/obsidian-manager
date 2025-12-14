@@ -36,6 +36,7 @@ export default {
     菜单_笔记_标题: 'Note',
     菜单_快捷键_标题: 'Hotkeys',
     菜单_GitHub_标题: 'GitHub',
+    菜单_检查更新_标题: 'Check update',
     菜单_单次启动_描述: 'Single start',
     菜单_重启插件_描述: 'Restart plugin',
 

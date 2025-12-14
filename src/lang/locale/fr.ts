@@ -28,6 +28,7 @@ export default {
     管理器_打开目录_描述: 'Ouvrez le répertoire des plugins',
     管理器_删除插件_描述: 'Supprimez complètement le plugin',
     管理器_切换状态_描述: 'Basculer l\'état du plugin',
+    菜单_检查更新_标题: 'Vérifier la mise à jour',
 
     卸载_标题: 'Désinstaller le plugin',
     卸载_提示: 'Êtes-vous sûr de vouloir désinstaller ce plugin ? Cela supprimera le dossier du plugin.',

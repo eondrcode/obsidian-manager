@@ -553,6 +553,55 @@ export default class Manager extends Plugin {
         return statusMap;
     }
 
+    public async checkUpdateForPlugin(pluginId: string): Promise<UpdateStatus | null> {
+        const pm = this.appPlugins.manifests[pluginId] as PluginManifest | undefined;
+        if (!pm) return null;
+        const localVersion = pm.version || "0.0.0";
+        const st: UpdateStatus = { source: "unknown", localVersion, checkedAt: Date.now() };
+        try {
+            const officialMap = await this.fetchOfficialStats();
+            const official = officialMap[pm.id];
+            if (official) {
+                st.source = "official";
+                st.remoteVersion = official;
+                try {
+                    st.repo = await this.repoResolver.resolveRepo(pm.id);
+                    if (st.repo) st.versions = await this.fetchGithubVersions(st.repo);
+                } catch {
+                    // ignore
+                }
+                st.hasUpdate = this.compareVersions(official, localVersion) > 0;
+                this.updateStatus[pm.id] = st;
+                if (this.settings.DEBUG) console.log("[BPM] single update official", pm.id, localVersion, "->", st.remoteVersion);
+                return st;
+            }
+
+            let repo: string | null = this.settings.REPO_MAP[pm.id] || null;
+            if (!repo) {
+                try { repo = await this.repoResolver.resolveRepo(pm.id); } catch { repo = null; }
+            }
+            if (repo) {
+                st.source = "github";
+                st.repo = repo;
+                st.versions = await this.fetchGithubVersions(repo);
+                const pick = st.versions?.find(v => !v.prerelease) ?? st.versions?.[0] ?? null;
+                st.remoteVersion = pick?.version ?? await this.fetchGithubManifestVersion(repo);
+                st.hasUpdate = st.remoteVersion ? this.compareVersions(st.remoteVersion, localVersion) > 0 : false;
+                if (!st.remoteVersion) st.message = "未获取到远端版本";
+                if (this.settings.DEBUG) console.log("[BPM] single update github", pm.id, repo, localVersion, "->", st.remoteVersion);
+            } else {
+                st.source = "unknown";
+                st.message = "无来源，无法检测";
+                if (this.settings.DEBUG) console.log("[BPM] single update unknown source", pm.id);
+            }
+        } catch (e) {
+            st.error = (e as Error)?.message || String(e);
+            console.error("[BPM] checkUpdateForPlugin error", pm.id, e);
+        }
+        this.updateStatus[pm.id] = st;
+        return st;
+    }
+
     private async fetchOfficialStats(): Promise<Record<string, string>> {
         const url = "https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugin-stats.json";
         try {
