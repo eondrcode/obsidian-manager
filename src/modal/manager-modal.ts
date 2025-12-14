@@ -380,8 +380,9 @@ export class ManagerModal extends Modal {
         // [操作行] 插件/主题安装模式
         const installToggle = new ButtonComponent(actionBar.controlEl);
         installToggle.setIcon("download");
-        installToggle.setTooltip("安装插件 / 主题（GitHub 仓库）");
-        this.bindLongPressTooltip(installToggle.buttonEl, "安装插件 / 主题（GitHub 仓库）");
+        const installTooltip = this.manager.translator.t("管理器_安装_GITHUB_描述");
+        installToggle.setTooltip(installTooltip);
+        this.bindLongPressTooltip(installToggle.buttonEl, installTooltip);
         installToggle.onClick(() => {
             this.installMode = !this.installMode;
             installToggle.setIcon(this.installMode ? "arrow-left" : "download");
@@ -1071,66 +1072,67 @@ export class ManagerModal extends Modal {
     // 安装面板
     private showInstallPanel() {
         this.contentEl.empty();
+        const t = (k: any) => this.manager.translator.t(k);
         const info = this.contentEl.createEl("div");
         info.addClass("manager-install__info");
-        info.setText("从 GitHub 仓库安装插件或主题（读取最新发布资产）。");
+        info.setText(t("管理器_安装_介绍"));
 
         const typeSetting = new Setting(this.contentEl)
-            .setName("类型")
-            .setDesc("选择要安装插件或主题");
+            .setName(t("管理器_安装_类型_标题"))
+            .setDesc(t("管理器_安装_类型_描述"));
         typeSetting.addDropdown((dd) => {
-            dd.addOptions({ "plugin": "插件", "theme": "主题" });
+            dd.addOptions({ "plugin": t("管理器_安装_类型_插件"), "theme": t("管理器_安装_类型_主题") });
             dd.setValue(this.installType);
             dd.onChange((v: "plugin" | "theme") => { this.installType = v; });
         });
 
         const repoSetting = new Setting(this.contentEl)
-            .setName("仓库")
-            .setDesc("GitHub 仓库路径，支持 <user>/<repo> 和 https://github.com/<user>/<repo> 两种形式。");
+            .setName(t("管理器_安装_仓库_标题"))
+            .setDesc(t("管理器_安装_仓库_描述"));
         repoSetting.addText((text) => {
-            text.setPlaceholder("user/repo");
+            text.setPlaceholder(t("管理器_安装_仓库_占位"));
             text.setValue(this.installRepo);
             text.onChange((v) => { this.installRepo = v; this.installVersions = []; this.installVersion = ""; this.renderContent(); });
         });
 
         const versionSetting = new Setting(this.contentEl)
-            .setName("版本")
-            .setDesc("点击获取 GitHub 发布版本后可选择；不选择则默认最新。");
+            .setName(t("管理器_安装_版本_标题"))
+            .setDesc(t("管理器_安装_版本_描述"));
         versionSetting.addDropdown((dd) => {
-            dd.addOption("", "最新发布");
+            dd.addOption("", t("管理器_安装_版本_默认最新"));
             this.installVersions.forEach((v) => dd.addOption(v.version, `${v.version}${v.prerelease ? " (pre)" : ""}`));
             dd.setValue(this.installVersion);
             dd.onChange((v) => { this.installVersion = v; });
             dd.selectEl.style.minWidth = "200px";
         });
         versionSetting.addButton((btn) => {
-            btn.setButtonText("获取版本");
+            btn.setButtonText(t("管理器_安装_版本_获取按钮"));
             btn.setCta();
             btn.onClick(async () => {
-                if (!this.installRepo) { new Notice("请先填写仓库路径"); return; }
+                if (!this.installRepo) { new Notice(t("管理器_安装_仓库为空提示")); return; }
                 btn.setDisabled(true);
-                btn.setButtonText("获取中...");
+                btn.setButtonText(t("管理器_安装_版本_获取中"));
                 try {
                     this.installVersions = await fetchReleaseVersions(this.manager, this.installRepo);
-                    if (this.installVersions.length === 0) new Notice("未找到发行版本，尝试手动填写 tag");
+                    if (this.installVersions.length === 0) new Notice(t("管理器_安装_版本_空提示"));
                     this.installVersion = "";
                 } catch (e) {
                     console.error(e);
-                    new Notice("获取发行版本失败，请检查仓库或网络");
+                    new Notice(t("管理器_安装_版本_失败提示"));
                 }
                 btn.setDisabled(false);
-                btn.setButtonText("获取版本");
+                btn.setButtonText(t("管理器_安装_版本_获取按钮"));
                 this.renderContent();
             });
         });
 
         const action = new Setting(this.contentEl)
-            .setName("操作");
+            .setName(t("管理器_安装_操作_标题"));
         action.addButton((btn) => {
-            btn.setButtonText("开始安装");
+            btn.setButtonText(t("管理器_安装_操作_按钮"));
             btn.setCta();
             btn.onClick(async () => {
-                if (!this.installRepo) { new Notice("请输入仓库路径"); return; }
+                if (!this.installRepo) { new Notice(t("管理器_安装_仓库为空提示")); return; }
                 btn.setDisabled(true);
                 const ok = this.installType === "plugin"
                     ? await installPluginFromGithub(this.manager, this.installRepo, this.installVersion)

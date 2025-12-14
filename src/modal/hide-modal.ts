@@ -81,7 +81,7 @@ export class HideModal extends Modal {
         this.contentEl.addClass("manager-item-container");
 
         // [操作行]
-        const actionBar = new Setting(this.titleEl).setClass("manager-bar__action").setName('隐藏插件');
+        const actionBar = new Setting(this.titleEl).setClass("manager-bar__action").setName(this.manager.translator.t("菜单_隐藏插件_标题"));
 
         // [操作行] 关闭
         const closeButton = new ButtonComponent(actionBar.controlEl);
