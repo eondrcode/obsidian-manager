@@ -215,12 +215,17 @@ export class ManagerModal extends Modal {
         updateButton.setTooltip(this.manager.translator.t("管理器_检查更新_描述"));
         this.bindLongPressTooltip(updateButton.buttonEl, this.manager.translator.t("管理器_检查更新_描述"));
         updateButton.onClick(async () => {
+            updateButton.setDisabled(true);
             try {
-                const result = await this.appPlugins.checkForUpdates();
-                this.appSetting.open();
-                this.appSetting.openTabById("community-plugins");
+                await this.manager.checkUpdates();
+                const count = Object.values(this.manager.updateStatus || {}).filter(s => s.hasUpdate).length;
+                new Notice(`检查完成，发现 ${count} 个插件有可用更新`);
+                this.reloadShowData();
             } catch (error) {
-                console.error("检查更新时出错:", error); // 处理可能出现的错误
+                console.error("检查更新时出错:", error);
+                new Notice("检查更新失败，请稍后重试");
+            } finally {
+                updateButton.setDisabled(false);
             }
         });
 
@@ -501,15 +506,34 @@ export class ManagerModal extends Modal {
     }
 
     public async showData() {
-        const plugins: PluginManifest[] = Object.values(this.appPlugins.manifests);
-        plugins.sort((item1, item2) => { return item1.name.localeCompare(item2.name); });
+        // 使用 manifests 按 id 去重，防止重复渲染
+        const manifestMap = this.appPlugins.manifests;
+        console.log("[BPM] render showData manifests size:", Object.keys(manifestMap).length);
+        const uniqMap = new Map<string, PluginManifest>();
+        Object.values(manifestMap).forEach((mf: PluginManifest) => {
+            if (mf.id !== this.manager.manifest.id) uniqMap.set(mf.id, mf);
+        });
+        const uniquePlugins = Array.from(uniqMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+        console.log("[BPM] render showData uniquePlugins:", uniquePlugins.map(p => p.id).join(","));
+
+        console.log("[BPM] render showData before loop, children:", this.contentEl.children.length);
         this.displayPlugins = [];
-        for (const plugin of plugins) {
+        const renderedIds = new Set<string>();
+        for (const plugin of uniquePlugins) {
+            if (renderedIds.has(plugin.id)) continue;
+            renderedIds.add(plugin.id);
             const ManagerPlugin = this.manager.settings.Plugins.find((mp) => mp.id === plugin.id);
             const pluginDir = normalizePath(`${this.app.vault.configDir}/${plugin.dir ? plugin.dir : ""}`);
+            console.log("[BPM] render item", plugin.id, "children before add:", this.contentEl.children.length);
             // 插件是否开启
             const isEnabled = this.settings.DELAY ? ManagerPlugin?.enabled : this.appPlugins.enabledPlugins.has(plugin.id);
             if (ManagerPlugin) {
+                const itemEl = new Setting(this.contentEl);
+                itemEl.settingEl.setAttr("data-plugin-id", plugin.id);
+                itemEl.setClass("manager-item");
+                itemEl.nameEl.addClass("manager-item__name-container");
+                itemEl.descEl.addClass("manager-item__description-container");
+                itemEl.controlEl.addClass("manager-item__controls");
                 // [过滤] 条件
                 switch (this.filter) {
                     case "enabled":
@@ -558,11 +582,6 @@ export class ManagerModal extends Modal {
                 if (this.settings.HIDES.includes(plugin.id)) continue;
                 // [过滤] 自身
                 if (plugin.id === this.manager.manifest.id) continue;
-
-                const itemEl = new Setting(this.contentEl);
-                itemEl.setClass("manager-item");
-                itemEl.nameEl.addClass("manager-item__name-container");
-                itemEl.descEl.addClass("manager-item__description-container");
 
                 // [右键操作]
                 itemEl.settingEl.addEventListener("contextmenu", (event) => {
@@ -792,6 +811,11 @@ export class ManagerModal extends Modal {
                 // [默认] 版本
                 const version = createSpan({ text: `[${plugin.version}]`, cls: ["manager-item__name-version"], });
                 itemEl.nameEl.appendChild(version);
+                const updateInfo = this.manager.updateStatus?.[plugin.id];
+                if (updateInfo?.hasUpdate && updateInfo.remoteVersion) {
+                    const remote = createSpan({ text: ` → ${updateInfo.remoteVersion}`, cls: ["manager-item__name-remote"] });
+                    itemEl.nameEl.appendChild(remote);
+                }
 
                 // [默认] 笔记图标
                 if (ManagerPlugin.note?.length > 0) {
@@ -965,9 +989,11 @@ export class ManagerModal extends Modal {
                             await this.manager.savePluginAndExport(plugin.id);
                             this.reloadShowData();
                         });
-                    }
-                }
             }
+        }
+        const cards = Array.from(this.contentEl.querySelectorAll(".manager-item"));
+        console.log("[BPM] render showData after loop, cards:", cards.length, "ids:", cards.map(el => el.getAttribute("data-plugin-id")).filter(Boolean).join(","));
+    }
         }
         // 计算页尾
         this.footEl.innerHTML = this.count();
@@ -1095,6 +1121,7 @@ export class ManagerModal extends Modal {
     }
 
     public async reloadShowData() {
+        console.log("[BPM] reloadShowData start, children before empty:", this.contentEl.children.length);
         let scrollTop = 0;
         const modalElement: HTMLElement = this.contentEl;
         scrollTop = modalElement.scrollTop;
@@ -1105,6 +1132,7 @@ export class ManagerModal extends Modal {
             this.showData();
             modalElement.scrollTo(0, scrollTop);
         }
+        console.log("[BPM] reloadShowData end, children after render:", this.contentEl.children.length);
     }
 
     private refreshFilterOptions() {

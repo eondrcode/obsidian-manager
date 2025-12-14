@@ -6,9 +6,20 @@ import { ManagerModal } from './modal/manager-modal';
 import Commands from './command';
 import Agreement from 'src/agreement';
 import { RepoResolver, ensureBpmTagExists, BPM_TAG_ID } from './repo-resolver';
-import { normalizePath, TFile, stringifyYaml, parseYaml, EventRef, Notice, Platform } from 'obsidian';
+import { normalizePath, TFile, stringifyYaml, parseYaml, EventRef, Notice, Platform, requestUrl } from 'obsidian';
 import { ManagerPlugin } from './data/types';
 import { runMigrations } from './migrations';
+
+type UpdateSource = 'official' | 'github' | 'unknown';
+interface UpdateStatus {
+    source: UpdateSource;
+    localVersion?: string;
+    remoteVersion?: string | null;
+    hasUpdate?: boolean;
+    message?: string;
+    error?: string;
+    checkedAt?: number;
+}
 
 export default class Manager extends Plugin {
     public settings: ManagerSettings;
@@ -23,6 +34,7 @@ export default class Manager extends Plugin {
     private exportWatcher: EventRef | null = null;
     private exportWriting = false;
     private toggleNotice: Notice | null = null;
+    public updateStatus: Record<string, UpdateStatus> = {};
 
     public async onload() {
         // @ts-ignore
@@ -463,6 +475,138 @@ export default class Manager extends Plugin {
             'es': 'es',
         };
         return map[lower] || map[lower.split('-')[0]] || 'en';
+    }
+
+    // 版本比较：>0 表示 a>b
+    private compareVersions(a: string = "0.0.0", b: string = "0.0.0"): number {
+        const pa = a.split(".").map(Number);
+        const pb = b.split(".").map(Number);
+        const len = Math.max(pa.length, pb.length);
+        for (let i = 0; i < len; i++) {
+            const ai = pa[i] || 0;
+            const bi = pb[i] || 0;
+            if (ai > bi) return 1;
+            if (ai < bi) return -1;
+        }
+        return 0;
+    }
+
+    // 检测插件更新：官方 + GitHub（BPM 或用户指定仓库）
+    public async checkUpdates(): Promise<Record<string, UpdateStatus>> {
+        const manifests = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id) as PluginManifest[];
+        const officialMap = await this.fetchOfficialStats();
+        const statusMap: Record<string, UpdateStatus> = {};
+
+        console.log("[BPM] checkUpdates start, total manifests:", manifests.length);
+        for (const pm of manifests) {
+            const localVersion = pm.version || "0.0.0";
+            const st: UpdateStatus = { source: 'unknown', localVersion, checkedAt: Date.now() };
+            try {
+                // 1) 官方来源
+                const official = officialMap[pm.id];
+                if (official) {
+                    st.source = 'official';
+                    st.remoteVersion = official;
+                    st.hasUpdate = this.compareVersions(official, localVersion) > 0;
+                    statusMap[pm.id] = st;
+                    console.log("[BPM] update official match", pm.id, localVersion, "->", st.remoteVersion);
+                    continue;
+                }
+                // 2) GitHub：BPM 安装或有仓库映射 / 用户填写
+                let repo: string | null = this.settings.REPO_MAP[pm.id] || null;
+                if (!repo) {
+                    try {
+                        repo = await this.repoResolver.resolveRepo(pm.id);
+                    } catch {
+                        // ignore
+                    }
+                }
+                if (repo) {
+                    st.source = 'github';
+                    st.remoteVersion = await this.fetchGithubManifestVersion(repo);
+                    st.hasUpdate = st.remoteVersion ? this.compareVersions(st.remoteVersion, localVersion) > 0 : false;
+                    if (!st.remoteVersion) st.message = '未获取到远端版本';
+                    console.log("[BPM] update github match", pm.id, repo, localVersion, "->", st.remoteVersion);
+                } else {
+                    st.source = 'unknown';
+                    st.message = '无来源，无法检测';
+                    console.log("[BPM] update unknown source", pm.id);
+                }
+            } catch (e) {
+                st.error = (e as Error)?.message || String(e);
+                console.error("[BPM] checkUpdates error", pm.id, e);
+            }
+            statusMap[pm.id] = st;
+        }
+        this.updateStatus = statusMap;
+        return statusMap;
+    }
+
+    private async fetchOfficialStats(): Promise<Record<string, string>> {
+        const url = "https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugin-stats.json";
+        try {
+            const res = await requestUrl({ url });
+            const json = res.json as Record<string, any>;
+            const map: Record<string, string> = {};
+            Object.entries(json || {}).forEach(([id, entry]) => {
+                if (entry && typeof entry === "object") {
+                    const latest = this.getLatestVersionFromStats(entry as Record<string, any>);
+                    if (latest) map[id] = latest;
+                }
+            });
+            return map;
+        } catch (e) {
+            console.error("获取官方插件 stats 失败", e);
+            return {};
+        }
+    }
+
+    private getLatestVersionFromStats(entry: Record<string, any>): string | null {
+        const versions = Object.keys(entry || {}).filter(k => k !== "downloads" && k !== "updated");
+        if (versions.length === 0) return null;
+        let latest = versions[0];
+        for (const v of versions) {
+            if (this.compareVersions(v, latest) > 0) latest = v;
+        }
+        return latest;
+    }
+
+    private async fetchGithubManifestVersion(repo: string): Promise<string | null> {
+        const headers: Record<string, string> = {
+            "User-Agent": "better-plugins-manager"
+        };
+        if (this.settings.GITHUB_TOKEN) headers["Authorization"] = `Bearer ${this.settings.GITHUB_TOKEN}`;
+
+        // 1) 尝试最新 release 的 manifest.json
+        try {
+            const release = await requestUrl({ url: `https://api.github.com/repos/${repo}/releases/latest`, headers });
+            const assets = (release.json?.assets || []) as { name: string; browser_download_url: string }[];
+            const manifestAsset = assets.find(a => a.name === "manifest.json");
+            if (manifestAsset?.browser_download_url) {
+                const manifestRes = await requestUrl({ url: manifestAsset.browser_download_url, headers });
+                const manifest = manifestRes.json as { version?: string };
+                if (manifest?.version) return manifest.version;
+            }
+        } catch {
+            // ignore and fallback
+        }
+
+        // 2) 尝试默认分支 (HEAD) raw manifest
+        const candidates = [
+            `https://raw.githubusercontent.com/${repo}/HEAD/manifest.json`,
+            `https://raw.githubusercontent.com/${repo}/main/manifest.json`,
+            `https://raw.githubusercontent.com/${repo}/master/manifest.json`,
+        ];
+        for (const url of candidates) {
+            try {
+                const res = await requestUrl({ url, headers });
+                const manifest = res.json as { version?: string };
+                if (manifest?.version) return manifest.version;
+            } catch {
+                // try next
+            }
+        }
+        return null;
     }
 
     /**

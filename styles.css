@@ -417,6 +417,14 @@ body.theme-dark {
     border-radius: 6px;
     background: var(--background-modifier-border);
 }
+.manager-item__name-remote {
+    display: inline-flex;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-accent);
+    margin-left: 4px;
+}
 
 .manager-item__name-delay {
     font-weight: bold;
