@@ -16,6 +16,8 @@ export interface ManagerSettings {
     LANGUAGE_INITIALIZED?: boolean;
     // 已执行的迁移版本
     MIGRATION_VERSION?: string;
+    // 调试开关
+    DEBUG: boolean;
     // 居中
     CENTER: boolean;
     // 样式
@@ -63,6 +65,7 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     LANGUAGE: "",
     LANGUAGE_INITIALIZED: false,
     MIGRATION_VERSION: "",
+    DEBUG: false,
     CENTER: false,
     ITEM_STYLE: "alwaysExpand",
     GROUP_STYLE: "a",

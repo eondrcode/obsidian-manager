@@ -91,4 +91,11 @@ export default {
     设置_提示_一_描述: 'Debido a capacidades limitadas, no puedo solucionar este problema. Por favor, deshabilite el inicio con retraso para resolver todos los problemas de conflicto.',
 
     命令_管理面板_描述: 'Abrir el administrador de plugins',
+    管理器_下载更新_描述: 'Descargar actualización (elige versión, incl. pre-release)',
+    安装_成功_提示: 'Instalado/actualizado: ',
+    安装_错误_限速: 'Solicitud a GitHub limitada (403). Configure un token y reintente.',
+    安装_错误_缺少资源: 'No se encontraron assets/archivos de la release. Verifique repositorio/versión.',
+    安装_错误_通用: 'Fallo al instalar. Verifique repositorio/versión o red.',
+    设置_基础设置_调试模式_标题: 'Modo depuración',
+    设置_基础设置_调试模式_描述: 'Si está desactivado, solo se muestran errores; si está activado, se imprimen logs de depuración.',
 }

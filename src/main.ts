@@ -9,6 +9,7 @@ import { RepoResolver, ensureBpmTagExists, BPM_TAG_ID } from './repo-resolver';
 import { normalizePath, TFile, stringifyYaml, parseYaml, EventRef, Notice, Platform, requestUrl } from 'obsidian';
 import { ManagerPlugin } from './data/types';
 import { runMigrations } from './migrations';
+import { fetchReleaseVersions, installPluginFromGithub, ReleaseVersion, sanitizeRepo } from './github-install';
 
 type UpdateSource = 'official' | 'github' | 'unknown';
 interface UpdateStatus {
@@ -19,6 +20,8 @@ interface UpdateStatus {
     message?: string;
     error?: string;
     checkedAt?: number;
+    repo?: string | null;
+    versions?: ReleaseVersion[];
 }
 
 export default class Manager extends Plugin {
@@ -497,7 +500,7 @@ export default class Manager extends Plugin {
         const officialMap = await this.fetchOfficialStats();
         const statusMap: Record<string, UpdateStatus> = {};
 
-        console.log("[BPM] checkUpdates start, total manifests:", manifests.length);
+        if (this.settings.DEBUG) console.log("[BPM] checkUpdates start, total manifests:", manifests.length);
         for (const pm of manifests) {
             const localVersion = pm.version || "0.0.0";
             const st: UpdateStatus = { source: 'unknown', localVersion, checkedAt: Date.now() };
@@ -507,9 +510,13 @@ export default class Manager extends Plugin {
                 if (official) {
                     st.source = 'official';
                     st.remoteVersion = official;
+                    st.repo = await this.repoResolver.resolveRepo(pm.id);
+                    if (st.repo) {
+                        st.versions = await this.fetchGithubVersions(st.repo);
+                    }
                     st.hasUpdate = this.compareVersions(official, localVersion) > 0;
                     statusMap[pm.id] = st;
-                    console.log("[BPM] update official match", pm.id, localVersion, "->", st.remoteVersion);
+                    if (this.settings.DEBUG) console.log("[BPM] update official match", pm.id, localVersion, "->", st.remoteVersion);
                     continue;
                 }
                 // 2) GitHub：BPM 安装或有仓库映射 / 用户填写
@@ -523,14 +530,18 @@ export default class Manager extends Plugin {
                 }
                 if (repo) {
                     st.source = 'github';
-                    st.remoteVersion = await this.fetchGithubManifestVersion(repo);
+                    st.repo = repo;
+                    st.versions = await this.fetchGithubVersions(repo);
+                    // 选择一个默认的远端版本：优先最新稳定，否则第一个
+                    const pick = st.versions?.find(v => !v.prerelease) ?? st.versions?.[0] ?? null;
+                    st.remoteVersion = pick?.version ?? await this.fetchGithubManifestVersion(repo);
                     st.hasUpdate = st.remoteVersion ? this.compareVersions(st.remoteVersion, localVersion) > 0 : false;
                     if (!st.remoteVersion) st.message = '未获取到远端版本';
-                    console.log("[BPM] update github match", pm.id, repo, localVersion, "->", st.remoteVersion);
+                    if (this.settings.DEBUG) console.log("[BPM] update github match", pm.id, repo, localVersion, "->", st.remoteVersion);
                 } else {
                     st.source = 'unknown';
                     st.message = '无来源，无法检测';
-                    console.log("[BPM] update unknown source", pm.id);
+                    if (this.settings.DEBUG) console.log("[BPM] update unknown source", pm.id);
                 }
             } catch (e) {
                 st.error = (e as Error)?.message || String(e);
@@ -607,6 +618,35 @@ export default class Manager extends Plugin {
             }
         }
         return null;
+    }
+
+    private async fetchGithubVersions(repoInput: string): Promise<ReleaseVersion[]> {
+        try {
+            return await fetchReleaseVersions(this, repoInput);
+        } catch (e) {
+            console.error("[BPM] fetchGithubVersions error", repoInput, e);
+            return [];
+        }
+    }
+
+    public async downloadUpdate(pluginId: string, version?: string): Promise<boolean> {
+        const st = this.updateStatus[pluginId];
+        let repo = st?.repo || this.settings.REPO_MAP[pluginId] || null;
+        if (!repo) {
+            try {
+                repo = await this.repoResolver.resolveRepo(pluginId);
+            } catch { repo = null; }
+        }
+        if (!repo) {
+            new Notice("缺少仓库来源，无法下载更新");
+            return false;
+        }
+        const ok = await installPluginFromGithub(this, repo, version);
+        if (ok) {
+            await this.checkUpdates();
+            this.reloadIfCurrentModal();
+        }
+        return ok;
     }
 
     /**

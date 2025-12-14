@@ -34,15 +34,23 @@ export const sanitizeRepo = (input: string): string => {
 	return repo;
 };
 
+const enrichError = (res: any, msg?: string) => {
+	const err: any = new Error(msg || `GitHub request failed: ${res?.status}`);
+	err.status = res?.status;
+	err.rateRemaining = res?.headers?.["x-ratelimit-remaining"];
+	err.rateReset = res?.headers?.["x-ratelimit-reset"];
+	return err;
+};
+
 const fetchJson = async (url: string, token?: string) => {
 	const res = await requestUrl({ url, headers: buildHeaders(token) });
-	if (res.status >= 400) throw new Error(`GitHub request failed: ${res.status}`);
+	if (res.status >= 400) throw enrichError(res);
 	return res.json as Record<string, unknown>;
 };
 
 const fetchText = async (url: string, token?: string) => {
 	const res = await requestUrl({ url, headers: buildHeaders(token) });
-	if (res.status >= 400) throw new Error(`GitHub request failed: ${res.status}`);
+	if (res.status >= 400) throw enrichError(res);
 	return res.text;
 };
 
@@ -59,6 +67,21 @@ export interface ReleaseVersion {
 	version: string;
 	prerelease: boolean;
 }
+
+const fetchRawFromTag = async (repo: string, tag: string, file: string, token?: string) => {
+	const candidates = [
+		`https://raw.githubusercontent.com/${repo}/${tag}/${file}`,
+		`https://raw.githubusercontent.com/${repo}/v${tag}/${file}`,
+	];
+	for (const url of candidates) {
+		try {
+			return await fetchText(url, token);
+		} catch {
+			// try next
+		}
+	}
+	throw new Error(`raw file missing: ${file}`);
+};
 
 export const fetchReleaseVersions = async (manager: Manager, repoInput: string): Promise<ReleaseVersion[]> => {
 	const repo = sanitizeRepo(repoInput);
@@ -77,24 +100,44 @@ export const installPluginFromGithub = async (manager: Manager, repoInput: strin
 		const repo = sanitizeRepo(repoInput);
 		const token = manager.settings.GITHUB_TOKEN?.trim() || undefined;
 		const release = await getRelease(repo, version, token);
+		const tag = release.tag_name || version || "";
 
 		const manifestUrl = pickAsset(release, "manifest.json");
 		const mainJsUrl = pickAsset(release, "main.js");
-		if (!manifestUrl || !mainJsUrl) {
-			new Notice("未找到 manifest.json 或 main.js 资源，请确认该仓库的发布资产。");
+		let manifestText: string | null = null;
+		let mainJs: string | null = null;
+		let styles: string | null = null;
+
+		// 优先 release 资产
+		try {
+			if (manifestUrl) manifestText = await fetchText(manifestUrl, token);
+			if (mainJsUrl) mainJs = await fetchText(mainJsUrl, token);
+			const stylesUrl = pickAsset(release, "styles.css");
+			if (stylesUrl) styles = await fetchText(stylesUrl, token);
+		} catch { /* fallback below */ }
+
+		// 资产缺失则回退到 tag raw 文件
+		if (!manifestText || !mainJs) {
+			if (!tag) throw new Error("未找到发布 tag，无法下载原始文件");
+			try {
+				manifestText = await fetchRawFromTag(repo, tag, "manifest.json", token);
+				mainJs = await fetchRawFromTag(repo, tag, "main.js", token);
+				try { styles = await fetchRawFromTag(repo, tag, "styles.css", token); } catch { /* optional */ }
+			} catch (e) {
+				console.error("fallback to raw tag failed", e);
+			}
+		}
+
+		if (!manifestText || !mainJs) {
+			new Notice("未找到 manifest.json 或 main.js，请检查发布资产或仓库 tag。");
 			return false;
 		}
 
-		const manifestText = await fetchText(manifestUrl, token);
 		const manifest = JSON.parse(manifestText) as { id: string; name: string };
 		if (!manifest?.id) {
 			new Notice("manifest.json 缺少 id 字段，无法安装。");
 			return false;
 		}
-
-		const stylesUrl = pickAsset(release, "styles.css");
-		const mainJs = await fetchText(mainJsUrl, token);
-		const styles = stylesUrl ? await fetchText(stylesUrl, token) : null;
 
 		const adapter = manager.app.vault.adapter;
 		const pluginDir = normalizePath(`${manager.app.vault.configDir}/plugins/${manifest.id}`);
@@ -124,11 +167,18 @@ export const installPluginFromGithub = async (manager: Manager, repoInput: strin
 		manager.saveSettings();
 		manager.exportPluginNote(manifest.id);
 
-		new Notice(`已安装/更新插件：${manifest.name || manifest.id}`);
+		new Notice(`${manager.translator.t("安装_成功_提示")}${manifest.name || manifest.id}`);
 		return true;
 	} catch (error) {
+		const err: any = error;
 		console.error(error);
-		new Notice("安装失败，请检查仓库地址/版本或网络状态。");
+		if (err?.status === 403 && !manager.settings.GITHUB_TOKEN) {
+			new Notice(manager.translator.t("安装_错误_限速"));
+		} else if (err?.status === 404) {
+			new Notice(manager.translator.t("安装_错误_缺少资源"));
+		} else {
+			new Notice(manager.translator.t("安装_错误_通用"));
+		}
 		return false;
 	}
 };

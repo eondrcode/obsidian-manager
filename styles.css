@@ -417,13 +417,26 @@ body.theme-dark {
     border-radius: 6px;
     background: var(--background-modifier-border);
 }
+.manager-item__versions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+}
 .manager-item__name-remote {
     display: inline-flex;
     align-items: center;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--text-accent);
     color: var(--text-accent);
-    margin-left: 4px;
+    background: transparent;
+}
+.manager-item__name-remote-arrow {
+    font-size: 12px;
+    color: var(--text-muted);
 }
 
 .manager-item__name-delay {

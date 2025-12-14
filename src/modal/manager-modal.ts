@@ -31,6 +31,7 @@ import { ShareTModal } from "./share-t-modal";
 import { installPluginFromGithub, installThemeFromGithub, fetchReleaseVersions, ReleaseVersion } from "../github-install";
 import { BPM_TAG_ID } from "src/repo-resolver";
 import { normalizePath } from "obsidian";
+import { UpdateModal } from "./update-modal";
 
 
 
@@ -508,15 +509,15 @@ export class ManagerModal extends Modal {
     public async showData() {
         // 使用 manifests 按 id 去重，防止重复渲染
         const manifestMap = this.appPlugins.manifests;
-        console.log("[BPM] render showData manifests size:", Object.keys(manifestMap).length);
+        if (this.settings.DEBUG) console.log("[BPM] render showData manifests size:", Object.keys(manifestMap).length);
         const uniqMap = new Map<string, PluginManifest>();
         Object.values(manifestMap).forEach((mf: PluginManifest) => {
             if (mf.id !== this.manager.manifest.id) uniqMap.set(mf.id, mf);
         });
         const uniquePlugins = Array.from(uniqMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-        console.log("[BPM] render showData uniquePlugins:", uniquePlugins.map(p => p.id).join(","));
+        if (this.settings.DEBUG) console.log("[BPM] render showData uniquePlugins:", uniquePlugins.map(p => p.id).join(","));
 
-        console.log("[BPM] render showData before loop, children:", this.contentEl.children.length);
+        if (this.settings.DEBUG) console.log("[BPM] render showData before loop, children:", this.contentEl.children.length);
         this.displayPlugins = [];
         const renderedIds = new Set<string>();
         for (const plugin of uniquePlugins) {
@@ -524,7 +525,7 @@ export class ManagerModal extends Modal {
             renderedIds.add(plugin.id);
             const ManagerPlugin = this.manager.settings.Plugins.find((mp) => mp.id === plugin.id);
             const pluginDir = normalizePath(`${this.app.vault.configDir}/${plugin.dir ? plugin.dir : ""}`);
-            console.log("[BPM] render item", plugin.id, "children before add:", this.contentEl.children.length);
+            if (this.settings.DEBUG) console.log("[BPM] render item", plugin.id, "children before add:", this.contentEl.children.length);
             // 插件是否开启
             const isEnabled = this.settings.DELAY ? ManagerPlugin?.enabled : this.appPlugins.enabledPlugins.has(plugin.id);
             if (ManagerPlugin) {
@@ -809,13 +810,28 @@ export class ManagerModal extends Modal {
                 itemEl.nameEl.appendChild(title);
 
                 // [默认] 版本
+                const versionWrap = createDiv({ cls: "manager-item__versions" });
                 const version = createSpan({ text: `[${plugin.version}]`, cls: ["manager-item__name-version"], });
-                itemEl.nameEl.appendChild(version);
+                versionWrap.appendChild(version);
                 const updateInfo = this.manager.updateStatus?.[plugin.id];
                 if (updateInfo?.hasUpdate && updateInfo.remoteVersion) {
-                    const remote = createSpan({ text: ` → ${updateInfo.remoteVersion}`, cls: ["manager-item__name-remote"] });
-                    itemEl.nameEl.appendChild(remote);
+                    const arrow = createSpan({ text: " → ", cls: ["manager-item__name-remote-arrow"] });
+                    versionWrap.appendChild(arrow);
+                    const remote = createSpan({ text: `${updateInfo.remoteVersion}`, cls: ["manager-item__name-remote"] });
+                    versionWrap.appendChild(remote);
+                    if (!this.editorMode) {
+                        const downloadBtn = new ExtraButtonComponent(itemEl.controlEl);
+                        downloadBtn.setIcon("download");
+                        downloadBtn.setTooltip(this.manager.translator.t("管理器_下载更新_描述"));
+                        downloadBtn.onClick(() => {
+                            const versions = updateInfo.versions && updateInfo.versions.length > 0
+                                ? updateInfo.versions
+                                : [{ version: updateInfo.remoteVersion!, prerelease: false }];
+                            new UpdateModal(this.app, this.manager, plugin.id, versions, updateInfo.remoteVersion).open();
+                        });
+                    }
                 }
+                itemEl.nameEl.appendChild(versionWrap);
 
                 // [默认] 笔记图标
                 if (ManagerPlugin.note?.length > 0) {
@@ -991,8 +1007,10 @@ export class ManagerModal extends Modal {
                         });
             }
         }
-        const cards = Array.from(this.contentEl.querySelectorAll(".manager-item"));
-        console.log("[BPM] render showData after loop, cards:", cards.length, "ids:", cards.map(el => el.getAttribute("data-plugin-id")).filter(Boolean).join(","));
+        if (this.settings.DEBUG) {
+            const cards = Array.from(this.contentEl.querySelectorAll(".manager-item"));
+            console.log("[BPM] render showData after loop, cards:", cards.length, "ids:", cards.map(el => el.getAttribute("data-plugin-id")).filter(Boolean).join(","));
+        }
     }
         }
         // 计算页尾

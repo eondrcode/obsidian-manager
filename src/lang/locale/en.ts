@@ -141,4 +141,11 @@ export default {
 
     命令_管理面板_描述: 'Open the plugin manager',
     标签_BPM安装_名称: 'bpm install',
+    管理器_下载更新_描述: 'Download an update (choose version, incl. pre-release)',
+    安装_成功_提示: 'Installed/updated: ',
+    安装_错误_限速: 'GitHub rate-limited (403). Please set a GitHub token and retry.',
+    安装_错误_缺少资源: 'Release assets/files not found. Please check repo/version.',
+    安装_错误_通用: 'Install failed. Please check repo/version or network.',
+    设置_基础设置_调试模式_标题: 'Debug mode',
+    设置_基础设置_调试模式_描述: 'When off, only errors are logged; when on, debug logs are printed.',
 }

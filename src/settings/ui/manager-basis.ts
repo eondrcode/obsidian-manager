@@ -44,6 +44,16 @@ export default class ManagerBasis extends BaseSetting {
             this.manager.saveSettings();
         });
 
+        const debugBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t('设置_基础设置_调试模式_标题'))
+            .setDesc(this.manager.translator.t('设置_基础设置_调试模式_描述'));
+        const debugToggle = new ToggleComponent(debugBar.controlEl);
+        debugToggle.setValue(this.settings.DEBUG);
+        debugToggle.onChange((value) => {
+            this.settings.DEBUG = value;
+            this.manager.saveSettings();
+        });
+
         const CommandItemBar = new Setting(this.containerEl)
             .setName(this.manager.translator.t('设置_基础设置_单独命令_标题'))
             .setDesc(this.manager.translator.t('设置_基础设置_单独命令_描述'));

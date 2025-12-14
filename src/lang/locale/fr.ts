@@ -88,4 +88,11 @@ export default {
     设置_提示_一_描述: 'En raison de capacités limitées, je ne peux pas résoudre ce problème. Veuillez désactiver le démarrage différé pour résoudre tous les problèmes de conflit.',
 
     命令_管理面板_描述: 'Ouvrez le gestionnaire de plugins',
+    管理器_下载更新_描述: 'Télécharger une mise à jour (choisir la version, y compris pré-release)',
+    安装_成功_提示: 'Installé/mis à jour : ',
+    安装_错误_限速: 'Requête GitHub limitée (403). Configurez un token puis réessayez.',
+    安装_错误_缺少资源: 'Assets/fichiers de release introuvables. Vérifiez dépôt/version.',
+    安装_错误_通用: "Échec de l'installation. Vérifiez dépôt/version ou réseau.",
+    设置_基础设置_调试模式_标题: 'Mode debug',
+    设置_基础设置_调试模式_描述: 'Désactivé : seulement les erreurs. Activé : logs de debug affichés.',
 }
