@@ -95,7 +95,7 @@ export const fetchReleaseVersions = async (manager: Manager, repoInput: string):
 	})).filter((r) => r.version);
 };
 
-export const installPluginFromGithub = async (manager: Manager, repoInput: string, version?: string): Promise<boolean> => {
+export const installPluginFromGithub = async (manager: Manager, repoInput: string, version?: string, markAsBpm: boolean = true): Promise<boolean> => {
 	try {
 		const repo = sanitizeRepo(repoInput);
 		const token = manager.settings.GITHUB_TOKEN?.trim() || undefined;
@@ -154,16 +154,18 @@ export const installPluginFromGithub = async (manager: Manager, repoInput: strin
 		} catch { /* noop */ }
 		await manager.appPlugins.enablePluginAndSave(manifest.id);
 
-		// 记录来源
-		if (!manager.settings.BPM_INSTALLED.includes(manifest.id)) {
-			manager.settings.BPM_INSTALLED.push(manifest.id);
+		// 记录来源：仅在明确从 BPM 下载页面安装时标记 bpm 安装
+		if (markAsBpm) {
+			if (!manager.settings.BPM_INSTALLED.includes(manifest.id)) {
+				manager.settings.BPM_INSTALLED.push(manifest.id);
+			}
+			const mp = manager.settings.Plugins.find((p) => p.id === manifest.id);
+			if (mp && !mp.tags.includes(BPM_TAG_ID)) mp.tags.push(BPM_TAG_ID);
 		}
 		await manager.repoResolver.setRepo(manifest.id, repo);
 		// 刷新设置并标签
 		await manager.appPlugins.loadManifests();
 		manager.synchronizePlugins(Object.values(manager.appPlugins.manifests).filter((pm: any) => pm.id !== manager.manifest.id) as any);
-		const mp = manager.settings.Plugins.find((p) => p.id === manifest.id);
-		if (mp && !mp.tags.includes(BPM_TAG_ID)) mp.tags.push(BPM_TAG_ID);
 		manager.saveSettings();
 		manager.exportPluginNote(manifest.id);
 

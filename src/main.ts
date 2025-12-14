@@ -690,7 +690,7 @@ export default class Manager extends Plugin {
             new Notice("缺少仓库来源，无法下载更新");
             return false;
         }
-        const ok = await installPluginFromGithub(this, repo, version);
+        const ok = await installPluginFromGithub(this, repo, version, false);
         if (ok) {
             await this.checkUpdates();
             this.reloadIfCurrentModal();
