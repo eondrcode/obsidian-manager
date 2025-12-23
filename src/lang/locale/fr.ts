@@ -58,6 +58,15 @@ export default {
     管理器_安装_版本_失败提示: 'Échec de la récupération des releases, vérifiez le dépôt ou le réseau.',
     管理器_安装_操作_标题: 'Action',
     管理器_安装_操作_按钮: 'Installer maintenant',
+    管理器_选择版本_标题: 'Choisir la version',
+    管理器_选择版本_版本_标题: 'Version',
+    管理器_选择版本_获取中: 'Récupération des versions disponibles…',
+    管理器_选择版本_获取失败提示: 'Échec de récupération de la liste des versions. Réessayez plus tard.',
+    管理器_选择版本_无版本提示: 'Aucune liste de versions. Essai avec la version détectée ou la dernière.',
+    管理器_选择版本_下载按钮: 'Télécharger la mise à jour',
+    管理器_选择版本_成功提示: 'Plugin téléchargé et mis à jour',
+    管理器_重载插件_开始提示: 'Actualisation des manifests…',
+    管理器_重载插件_失败提示: 'Échec du rechargement. Réessayez (voir la console).',
 
     筛选_全部_描述: 'Tout',
     筛选_仅启用_描述: 'Activés uniquement',
@@ -151,6 +160,7 @@ export default {
     通知_检查更新失败_建议Token: 'Échec réseau/API. Configurez un token GitHub (Public repositories) puis réessayez.',
     通知_检测更新中文案: 'Vérification des mises à jour de plugins...',
     通知_可更新数量: '{count} plugins ont des mises à jour disponibles',
+    通知_获取版本中文案: 'Récupération des infos de versions distantes…',
 
     设置_延迟设置_通知_一: '[Retard] Ajouté',
     设置_延迟设置_通知_二: '[Retard] ID existant ou vide',

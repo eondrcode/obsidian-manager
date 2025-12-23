@@ -468,6 +468,9 @@ body.theme-dark {
     gap: 6px;
     margin-left: 4px;
 }
+.manager-item__versions--clickable {
+    cursor: pointer;
+}
 .manager-item__name-remote {
     display: inline-flex;
     align-items: center;

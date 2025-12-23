@@ -35,9 +35,12 @@ export class Translator {
 
 	// 方法用于获取翻译后的字符串
 	public t(str: keyof typeof zh_cn): string {
-		const language = this.normalizeLang(this.manager.settings.LANGUAGE || 'zh-cn'); // 默认使用 'zh-cn'
-		const locale = this.localeMap[language] || zh_cn; // 如果 language 不存在，则使用 zh_cn
-		return locale[str] || zh_cn[str]; // 如果 str 在 locale 中不存在，则使用 zh_cn 中的默认值
+		// 基准语言使用英文：缺失翻译时优先回退到英文，再回退到中文兜底
+		const language = this.normalizeLang(this.manager.settings.LANGUAGE || 'en');
+		const locale = this.localeMap[language] || en;
+		const base: any = en;
+		const fallback: any = zh_cn;
+		return (locale as any)[str] || base[str] || fallback[str];
 	}
 
 	private normalizeLang(lang: string): string {

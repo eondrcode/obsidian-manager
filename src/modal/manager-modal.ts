@@ -77,6 +77,36 @@ export class ManagerModal extends Modal {
     filterCollapsed = false;
     private reloadingManifests = false;
 
+    private showInlineProgress(text: string, subText?: string) {
+        const notice = new Notice("", 0);
+        notice.noticeEl.empty();
+        const wrap = document.createElement("div");
+        wrap.addClass("bpm-update-progress");
+        const title = document.createElement("div");
+        title.setText(text);
+        const sub = document.createElement("div");
+        sub.addClass("bpm-update-progress__sub");
+        if (subText) sub.setText(subText);
+        const bar = document.createElement("div");
+        bar.addClass("bpm-progress");
+        const fill = document.createElement("div");
+        fill.addClass("bpm-progress__bar");
+        fill.style.width = "0%";
+        bar.appendChild(fill);
+        wrap.appendChild(title);
+        wrap.appendChild(sub);
+        wrap.appendChild(bar);
+        notice.noticeEl.appendChild(wrap);
+        return {
+            update: (processed: number, total = 1, current?: string) => {
+                const ratio = total > 0 ? Math.min(1, processed / total) : 0;
+                fill.style.width = `${ratio * 100}%`;
+                sub.setText(`${processed}/${total}${current ? ` · ${current}` : ""}`);
+            },
+            hide: () => notice.hide()
+        };
+    }
+
 
     // 编辑模式
     editorMode = false;
@@ -861,6 +891,28 @@ export class ManagerModal extends Modal {
                 const versionWrap = createDiv({ cls: "manager-item__versions" });
                 const version = createSpan({ text: `[${plugin.version}]`, cls: ["manager-item__name-version"], });
                 versionWrap.appendChild(version);
+                if (!this.editorMode) {
+                    versionWrap.addClass("manager-item__versions--clickable");
+                    versionWrap.addEventListener("click", async () => {
+                        const progress = this.showInlineProgress(this.manager.translator.t("通知_获取版本中文案"), plugin.id);
+                        progress.update(0, 1, plugin.id);
+                        try {
+                            const st = await this.manager.checkUpdateForPlugin(plugin.id);
+                            progress.update(1, 1, plugin.id);
+                            const versions = st?.versions && st.versions.length > 0
+                                ? st.versions
+                                : st?.remoteVersion
+                                    ? [{ version: st.remoteVersion, prerelease: /-/.test(st.remoteVersion) }]
+                                    : [];
+                            new UpdateModal(this.app, this.manager, plugin.id, versions, st?.remoteVersion ?? null, st?.repo || undefined).open();
+                        } catch (e) {
+                            console.error("[BPM] fetch remote versions failed", e);
+                            new Notice(this.manager.translator.t("管理器_选择版本_获取失败提示"), 4000);
+                        } finally {
+                            progress.hide();
+                        }
+                    });
+                }
                 const updateInfo = this.manager.updateStatus?.[plugin.id];
                 if (updateInfo?.hasUpdate && updateInfo.remoteVersion) {
                     const arrow = createSpan({ text: "→", cls: ["manager-item__name-remote-arrow"] });

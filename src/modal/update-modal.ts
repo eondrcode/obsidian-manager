@@ -20,19 +20,21 @@ export class UpdateModal extends Modal {
 
     async onOpen() {
         const { contentEl } = this;
+        const t = (k: any) => this.manager.translator.t(k);
         contentEl.empty();
-        const title = contentEl.createEl("h3", { text: "选择版本" });
+
+        const title = contentEl.createEl("h3", { text: t("管理器_选择版本_标题") });
         title.style.marginBottom = "8px";
 
         let versionList = [...this.versions];
         if (versionList.length === 0 && this.repo) {
             const loading = contentEl.createDiv();
-            loading.setText("正在获取可用版本...");
+            loading.setText(t("管理器_选择版本_获取中"));
             try {
                 versionList = await fetchReleaseVersions(this.manager, this.repo);
             } catch (e) {
                 console.error("fetch versions in modal failed", e);
-                new Notice("获取版本列表失败，请稍后再试");
+                new Notice(t("管理器_选择版本_获取失败提示"), 4000);
             } finally {
                 loading.remove();
             }
@@ -42,7 +44,7 @@ export class UpdateModal extends Modal {
         let selected = this.defaultVersion || (versionList[0]?.version ?? "");
         if (versionList.length > 0) {
             new Setting(contentEl)
-                .setName("版本")
+                .setName(t("管理器_选择版本_版本_标题"))
                 .addDropdown((dd: DropdownComponent) => {
                     versionList.forEach(v => {
                         dd.addOption(v.version, `${v.version}${v.prerelease ? " (pre)" : ""}`);
@@ -52,19 +54,19 @@ export class UpdateModal extends Modal {
                 });
         } else {
             const info = contentEl.createDiv();
-            info.setText("未获取到版本列表，将尝试使用检测到的版本或最新版。");
+            info.setText(t("管理器_选择版本_无版本提示"));
         }
 
         new Setting(contentEl)
             .addButton((btn) => {
-                btn.setButtonText("下载更新");
+                btn.setButtonText(t("管理器_选择版本_下载按钮"));
                 btn.setCta();
                 btn.onClick(async () => {
                     btn.setDisabled(true);
                     try {
                         const ok = await this.manager.downloadUpdate(this.pluginId, selected);
                         if (ok) {
-                            new Notice("已下载并更新插件");
+                            new Notice(t("管理器_选择版本_成功提示"), 3000);
                             this.close();
                         }
                     } finally {
@@ -73,8 +75,9 @@ export class UpdateModal extends Modal {
                 });
             })
             .addButton((btn) => {
-                btn.setButtonText("取消");
+                btn.setButtonText(t("通用_取消_文本"));
                 btn.onClick(() => this.close());
             });
     }
 }
+

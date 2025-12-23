@@ -63,6 +63,13 @@ export default {
     管理器_安装_版本_失败提示: 'Failed to fetch releases, check repo or network.',
     管理器_安装_操作_标题: 'Action',
     管理器_安装_操作_按钮: 'Install now',
+    管理器_选择版本_标题: 'Select version',
+    管理器_选择版本_版本_标题: 'Version',
+    管理器_选择版本_获取中: 'Fetching available versions…',
+    管理器_选择版本_获取失败提示: 'Failed to fetch version list. Please try again later.',
+    管理器_选择版本_无版本提示: 'No version list available. Will try the detected or latest version.',
+    管理器_选择版本_下载按钮: 'Download update',
+    管理器_选择版本_成功提示: 'Downloaded and updated plugin',
 
     筛选_全部_描述: 'All',
     筛选_仅启用_描述: 'Enabled only',
@@ -174,6 +181,7 @@ export default {
     通知_检测更新中文案: 'Checking plugin updates...',
     通知_可更新数量: '{count} plugins have updates available',
     通知_检查更新失败_建议Token: 'Network/API limited. Please configure a GitHub Token (Public repositories scope) and retry.',
+    通知_获取版本中文案: 'Fetching remote version info…',
 
     命令_管理面板_描述: 'Open the plugin manager',
     标签_BPM安装_名称: 'bpm install',
