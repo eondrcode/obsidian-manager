@@ -304,7 +304,8 @@ export class ManagerModal extends Modal {
         hideButton.setTooltip(hideTooltip);
         this.bindLongPressTooltip(hideButton.buttonEl, hideTooltip);
         hideButton.onClick(async () => {
-            const plugins: PluginManifest[] = Object.values(this.appPlugins.manifests);
+            const all = Object.values(this.appPlugins.manifests) as PluginManifest[];
+            const plugins: PluginManifest[] = all.filter((pm) => pm.id !== this.manager.manifest.id);
             plugins.sort((item1, item2) => { return item1.name.localeCompare(item2.name); });
             new HideModal(this.app, this.manager, this, plugins).open();
         })
@@ -342,6 +343,7 @@ export class ManagerModal extends Modal {
                         disableButton.onClick(async () => {
                             new DisableModal(this.app, this.manager, async () => {
                                 for (const plugin of this.displayPlugins) {
+                                    if (plugin.id === this.manager.manifest.id) continue;
                                     if (this.settings.DELAY) {
                                         const ManagerPlugin = this.settings.Plugins.find((p) => p.id === plugin.id);
                                         if (ManagerPlugin && ManagerPlugin.enabled) {
@@ -372,6 +374,7 @@ export class ManagerModal extends Modal {
                         enableButton.onClick(async () => {
                             new DisableModal(this.app, this.manager, async () => {
                                 for (const plugin of this.displayPlugins) {
+                                    if (plugin.id === this.manager.manifest.id) continue;
                                     if (this.settings.DELAY) {
                                         const ManagerPlugin = this.manager.settings.Plugins.find((mp) => mp.id === plugin.id);
                                         if (ManagerPlugin && !ManagerPlugin.enabled) {
@@ -572,7 +575,7 @@ export class ManagerModal extends Modal {
         if (this.settings.DEBUG) console.log("[BPM] render showData manifests size:", Object.keys(manifestMap).length);
         const uniqMap = new Map<string, PluginManifest>();
         Object.values(manifestMap).forEach((mf: PluginManifest) => {
-            if (mf.id !== this.manager.manifest.id) uniqMap.set(mf.id, mf);
+            uniqMap.set(mf.id, mf);
         });
         const uniquePlugins = Array.from(uniqMap.values()).sort((a, b) => a.name.localeCompare(b.name));
         if (this.settings.DEBUG) console.log("[BPM] render showData uniquePlugins:", uniquePlugins.map(p => p.id).join(","));
@@ -602,6 +605,7 @@ export class ManagerModal extends Modal {
             }
             if (this.settings.DEBUG) console.log("[BPM] render item", plugin.id, "children before add:", this.contentEl.children.length);
             if (!ManagerPlugin) continue;
+            const isSelf = plugin.id === this.manager.manifest.id;
             // 插件是否开启
             const isEnabled = this.settings.DELAY ? ManagerPlugin.enabled : this.appPlugins.enabledPlugins.has(plugin.id);
             // [过滤] 条件
@@ -649,9 +653,7 @@ export class ManagerModal extends Modal {
             // [过滤] 搜索
             if (this.searchText !== "" && ManagerPlugin.name.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1 && ManagerPlugin.desc.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1 && plugin.author.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1) continue;
             // [过滤] 隐藏
-            if (this.settings.HIDES.includes(plugin.id)) continue;
-            // [过滤] 自身
-            if (plugin.id === this.manager.manifest.id) continue;
+            if (!isSelf && this.settings.HIDES.includes(plugin.id)) continue;
 
             const itemEl = new Setting(this.contentEl);
             itemEl.settingEl.setAttr("data-plugin-id", plugin.id);
@@ -679,9 +681,9 @@ export class ManagerModal extends Modal {
                     if (!this.settings.DELAY) menu.addItem((item) =>
                         item.setTitle(this.manager.translator.t("菜单_单次启动_描述"))
                             .setIcon("repeat-1")
-                            .setDisabled(isEnabled)
+                            .setDisabled(isSelf || isEnabled)
                             .onClick(async () => {
-                                new Notice("开启中，请稍等");
+                                new Notice(this.manager.translator.t("管理器_单次启动中_提示"));
                                 await this.appPlugins.enablePlugin(plugin.id);
                                 await this.reloadShowData();
 
@@ -691,9 +693,9 @@ export class ManagerModal extends Modal {
                     if (!this.settings.DELAY) menu.addItem((item) =>
                         item.setTitle(this.manager.translator.t("菜单_重启插件_描述"))
                             .setIcon("refresh-ccw")
-                            .setDisabled(!isEnabled)
+                            .setDisabled(isSelf || !isEnabled)
                             .onClick(async () => {
-                                new Notice("重启中，请稍等");
+                                new Notice(this.manager.translator.t("管理器_重启中_提示"));
                                 await this.appPlugins.disablePluginAndSave(plugin.id);
                                 await this.appPlugins.enablePluginAndSave(plugin.id);
                                 await this.reloadShowData();
@@ -703,7 +705,9 @@ export class ManagerModal extends Modal {
                     menu.addItem((item) =>
                         item.setTitle(this.manager.translator.t("菜单_隐藏插件_标题"))
                             .setIcon("eye-off")
+                            .setDisabled(isSelf)
                             .onClick(() => {
+                                if (isSelf) return;
                                 const isHidden = this.settings.HIDES.includes(plugin.id);
                                 if (isHidden) {
                                     this.settings.HIDES = this.settings.HIDES.filter(id => id !== plugin.id);
@@ -943,7 +947,7 @@ export class ManagerModal extends Modal {
                 }
 
                 // [默认] 延迟
-                if (this.settings.DELAY && !this.editorMode && ManagerPlugin.delay !== "") {
+                if (this.settings.DELAY && !this.editorMode && !isSelf && ManagerPlugin.delay !== "") {
                     const d = this.settings.DELAYS.find((item) => item.id === ManagerPlugin.delay);
                     if (d) {
                         const delay = createSpan({ text: `${d.time}s`, cls: ["manager-item__name-delay"], });
@@ -993,16 +997,18 @@ export class ManagerModal extends Modal {
                     // [按钮] 打开仓库
                     const openRepoButton = new ExtraButtonComponent(itemEl.controlEl);
                     openRepoButton.setIcon("github");
-                    openRepoButton.setTooltip("正在检测仓库地址...");
+                    openRepoButton.setTooltip(this.manager.translator.t("管理器_仓库检测中_提示"));
                     openRepoButton.setDisabled(true);
                     const repo = await this.manager.repoResolver.resolveRepo(plugin.id);
                     if (repo) {
-                        openRepoButton.setTooltip(`打开仓库：${repo}`);
+                        openRepoButton.setTooltip(this.manager.translator.t("管理器_打开仓库_提示").replace("{repo}", repo));
                         openRepoButton.setDisabled(false);
                         openRepoButton.onClick(() => window.open(`https://github.com/${repo}`));
                     } else {
                         const isBpmInstall = this.manager.settings.BPM_INSTALLED.includes(plugin.id);
-                        openRepoButton.setTooltip(isBpmInstall ? "未记录仓库地址" : "本插件非官方/bpm安装，请手动添加来源");
+                        openRepoButton.setTooltip(isBpmInstall
+                            ? this.manager.translator.t("管理器_仓库未记录_提示")
+                            : this.manager.translator.t("管理器_仓库需手动添加_提示"));
                     }
 
                     // [按钮] 打开设置
@@ -1035,7 +1041,9 @@ export class ManagerModal extends Modal {
                     const deletePluginButton = new ExtraButtonComponent(itemEl.controlEl);
                     deletePluginButton.setIcon("trash");
                     deletePluginButton.setTooltip(this.manager.translator.t("管理器_删除插件_描述"));
+                    if (isSelf) deletePluginButton.setDisabled(true);
                     deletePluginButton.onClick(async () => {
+                        if (isSelf) return;
                         new DeleteModal(this.app, this.manager, async () => {
                             await this.appPlugins.uninstallPlugin(plugin.id);
                             await this.appPlugins.loadManifests();
@@ -1052,7 +1060,11 @@ export class ManagerModal extends Modal {
                     const toggleSwitch = new ToggleComponent(itemEl.controlEl);
                     toggleSwitch.setTooltip(this.manager.translator.t("管理器_切换状态_描述"));
                     toggleSwitch.setValue(isEnabled);
-                    toggleSwitch.onChange(async () => {
+                    if (isSelf) {
+                        toggleSwitch.setValue(true);
+                        toggleSwitch.setDisabled(true);
+                        toggleSwitch.setTooltip(this.manager.translator.t("管理器_自身不可禁用_提示"));
+                    } else toggleSwitch.onChange(async () => {
                         const ManagerPlugin = this.settings.Plugins.find((p) => p.id === plugin.id);
                         const targetEnabled = toggleSwitch.getValue();
                         const removeByFilter = (this.filter === "enabled" && !targetEnabled) || (this.filter === "disabled" && targetEnabled);

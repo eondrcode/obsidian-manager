@@ -67,6 +67,13 @@ export default {
     管理器_选择版本_成功提示: 'Plugin téléchargé et mis à jour',
     管理器_重载插件_开始提示: 'Actualisation des manifests…',
     管理器_重载插件_失败提示: 'Échec du rechargement. Réessayez (voir la console).',
+    管理器_单次启动中_提示: 'Activation… veuillez patienter',
+    管理器_重启中_提示: 'Redémarrage… veuillez patienter',
+    管理器_仓库检测中_提示: 'Détection du dépôt…',
+    管理器_打开仓库_提示: 'Ouvrir le dépôt : {repo}',
+    管理器_仓库未记录_提示: 'Dépôt non enregistré',
+    管理器_仓库需手动添加_提示: 'Ce plugin n’est pas officiel/ni installé via BPM. Ajoutez la source manuellement.',
+    下载更新_缺少仓库提示: 'Source du dépôt manquante, impossible de télécharger la mise à jour.',
 
     筛选_全部_描述: 'Tout',
     筛选_仅启用_描述: 'Activés uniquement',

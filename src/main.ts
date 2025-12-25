@@ -59,6 +59,7 @@ export default class Manager extends Plugin {
         this.translator = new Translator(this);
         ensureBpmTagExists(this);
         this.ensureBpmTagAndRecords();
+        this.ensureSelfPluginRecord();
         this.repoResolver = new RepoResolver(this);
         // 初始化侧边栏图标
         this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), () => { this.managerModal = new ManagerModal(this.app, this); this.managerModal.open(); });
@@ -352,6 +353,34 @@ export default class Manager extends Plugin {
         }
     }
 
+    // 确保 BPM 自身也存在于插件记录中（用于面板显示与导出）
+    public ensureSelfPluginRecord() {
+        const id = this.manifest.id;
+        const existing = this.settings.Plugins.find(p => p.id === id);
+        if (this.settings.HIDES?.includes(id)) {
+            this.settings.HIDES = this.settings.HIDES.filter(x => x !== id);
+        }
+        if (!existing) {
+            this.settings.Plugins.push({
+                id,
+                name: this.manifest.name,
+                desc: this.manifest.description,
+                group: "",
+                tags: [],
+                enabled: true,
+                delay: "",
+                note: "",
+            });
+            this.saveSettings();
+            this.exportAllPluginNotes();
+            return;
+        }
+        existing.name = existing.name || this.manifest.name;
+        existing.desc = existing.desc || this.manifest.description;
+        existing.enabled = true;
+        existing.delay = "";
+    }
+
     private reloadIfCurrentModal() {
         try { this.managerModal?.reloadShowData(); } catch { /* ignore */ }
     }
@@ -484,6 +513,7 @@ export default class Manager extends Plugin {
 
     // 延时启动指定插件
     private startPluginWithDelay(id: string) {
+        if (id === this.manifest.id) return;
         const plugin = this.settings.Plugins.find(p => p.id === id);
         if (plugin && plugin.enabled) {
             const delay = this.settings.DELAYS.find(item => item.id === plugin.delay);
@@ -496,6 +526,7 @@ export default class Manager extends Plugin {
     public synchronizePlugins(p1: PluginManifest[]) {
         const p2 = this.settings.Plugins;
         p2.forEach(p2Item => {
+            if (p2Item.id === this.manifest.id) return;
             if (!p1.some(p1Item => p1Item.id === p2Item.id)) {
                 this.settings.Plugins = this.settings.Plugins.filter(pm => pm.id !== p2Item.id);
             }
@@ -519,6 +550,8 @@ export default class Manager extends Plugin {
                 mp.tags.push(BPM_TAG_ID);
             }
         });
+        // BPM 自身保持启用且不允许延迟
+        this.ensureSelfPluginRecord();
         // 保存设置
         this.saveSettings();
         this.exportAllPluginNotes();
@@ -808,7 +841,7 @@ export default class Manager extends Plugin {
             } catch { repo = null; }
         }
         if (!repo) {
-            new Notice("缺少仓库来源，无法下载更新");
+            new Notice(this.translator.t("下载更新_缺少仓库提示"));
             return false;
         }
         const ok = await installPluginFromGithub(this, repo, version, false);

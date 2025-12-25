@@ -60,6 +60,13 @@ export default {
     管理器_选择版本_成功提示: 'Plugin descargado y actualizado',
     管理器_重载插件_开始提示: 'Actualizando manifiestos de plugins…',
     管理器_重载插件_失败提示: 'Error al recargar. Inténtalo de nuevo (ver consola).',
+    管理器_单次启动中_提示: 'Activando… espera un momento',
+    管理器_重启中_提示: 'Reiniciando… espera un momento',
+    管理器_仓库检测中_提示: 'Detectando repositorio…',
+    管理器_打开仓库_提示: 'Abrir repo: {repo}',
+    管理器_仓库未记录_提示: 'Repositorio no registrado',
+    管理器_仓库需手动添加_提示: 'Este plugin no es oficial/instalado por BPM. Añade el origen manualmente.',
+    下载更新_缺少仓库提示: 'Falta el repositorio; no se puede descargar la actualización.',
 
     卸载_标题: 'Desinstalar Plugin',
     卸载_提示: '¿Está seguro de que desea desinstalar este plugin? Esto eliminará la carpeta del plugin.',
