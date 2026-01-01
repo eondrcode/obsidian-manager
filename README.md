@@ -8,47 +8,153 @@
 ![Issues](https://img.shields.io/github/issues/zenozero-dev/obsidian-manager)
 ![Stars](https://img.shields.io/github/stars/zenozero-dev/obsidian-manager?style=social)
 
-![Screenshot](img/index.png)
+![Screenshot](docs/img/index.png)
 
-## What is BPM?
+---
 
-Better Plugins Manager goes beyond Obsidian’s built-in manager: delay-start plugins, batch enable/disable, organize with groups and tags, rename and annotate, install from GitHub with release picker, export data for Base workflows, and keep a mobile-friendly UI.
+## 🎯 What is BPM?
 
-## Highlights
+**Better Plugins Manager** is a powerful Obsidian plugin manager that provides a richer management experience than the native one.
 
-- **Fast control & batching**: toggle all plugins, enable/disable by group, and per-plugin quick switches.
-- **Organize & document**: custom names/descriptions, groups, tags (auto “bpm-install” tag for BPM installs), searchable filters.
-- **GitHub-aware install**: paste `user/repo` or full URL, pick releases like BRAT, cache repo mapping, and jump to repo from each card.
-- **Delay & performance**: start plugins with per-profile delays.
-- **Base-friendly export**: write plugin metadata to Markdown frontmatter and sync back (safe read-only/write tags).
-- **Mobile ready**: collapsible action/search bars, long-press tooltips, responsive grid; desktop UI remains unchanged.
-- **GitHub token support**: optional PAT to avoid rate limits when fetching releases.
+> Delay Start • Batch Operations • Groups & Tags • GitHub Install • Conflict Troubleshooter • Mobile Friendly
 
-## Installation
+---
 
-This plugin is now available on the Obsidian official marketplace.
+## ✨ Core Features
 
-## Usage
+### 🚀 Performance Optimization
+| Feature | Description |
+|---------|-------------|
+| **Delay Start** | Start plugins with preset delays to reduce startup lag |
+| **Startup Self-Check** | 🆕 Detect plugin management conflicts, prevent Obsidian and BPM from controlling plugins simultaneously |
 
-- Open from the ribbon “Manager” icon or command palette (`Manage plugins`).
-- Cards let you rename, edit descriptions/notes, tag/group, set delay, open repo/folder, delete, and toggle enabled.
-- Filters: by state, group, tag, delay, and keyword search.
-- Actions: batch enable/disable all or by group, reload plugins, install from GitHub with release selection.
+### 📦 Batch Management
+| Feature | Description |
+|---------|-------------|
+| **Toggle All** | Quickly enable/disable all plugins |
+| **Group Operations** | Batch enable/disable by group |
+| **Quick Search** | Filter by status, group, tag, delay, and keywords |
 
-## Export to Obsidian Base
+### 🏷️ Organization & Annotation
+| Feature | Description |
+|---------|-------------|
+| **Custom Names** | Give plugins memorable names |
+| **Notes & Descriptions** | Record plugin usage and configuration notes |
+| **Groups & Tags** | Flexible categorization, BPM installs auto-tagged `bpm-install` |
 
-1) In settings, set **Plugin info export directory** (folder inside your vault).  
-2) BPM exports one Markdown per plugin and watches the folder for edits.  
-3) Read/Write rules: `bpm_rw_*` are editable; `bpm_ro_*` are read-only; `bpm_rwc_repo` is editable only when the plugin is not BPM-installed and has no official repo mapping.
+### 📥 GitHub Installation
+| Feature | Description |
+|---------|-------------|
+| **Repo Install** | Supports `user/repo` or full URL |
+| **Version Selection** | Pick releases like BRAT |
+| **Jump to Repo** | One-click jump to GitHub from plugin card |
 
-Frontmatter schema (auto-generated):
+### 🔍 Conflict Troubleshooter 🆕
+| Feature | Description |
+|---------|-------------|
+| **Binary Search** | Quickly locate problematic plugins or conflict pairs |
+| **Wizard-style UI** | Draggable floating window, test while troubleshooting |
+| **Generate Report** | Export Markdown troubleshooting report |
+
+### 📱 Mobile Adaptation
+| Feature | Description |
+|---------|-------------|
+| **Responsive Layout** | Auto-switch between mobile/desktop layouts |
+| **Collapsible Action Bar** | Save screen space |
+| **Long-press Tooltips** | Touch-friendly interaction |
+
+---
+
+## 📦 Installation
+
+### Method 1: Official Marketplace (Recommended)
+1. Open Obsidian Settings → Community Plugins
+2. Search for "Better Plugins Manager"
+3. Click Install and Enable
+
+### Method 2: Manual Installation
+1. Download the [latest Release](https://github.com/zenozero-dev/obsidian-manager/releases)
+2. Extract to `.obsidian/plugins/better-plugins-manager/`
+3. Restart Obsidian and enable
+
+---
+
+## 🚦 Quick Start
+
+### Open the Manager
+
+- Click the 📁 icon in the sidebar
+- Or use Command Palette: `Ctrl/Cmd + P` → "Open Plugin Manager"
+
+The panel is divided into three areas, from top to bottom:
+
+1. Action Button Area
+2. Filter & Search Area
+3. Plugin List Area
+
+### Usage Tips
+- **Left-click** to interact with elements, hover over buttons to see tooltips
+- **Right-click** to open context menu
+
+---
+
+## 🔍 Plugin Conflict Troubleshooter
+
+When encountering issues caused by plugin conflicts, use the Conflict Troubleshooter wizard:
+
+### How to Use
+1. Click the 🔍 button on the toolbar or use command "Troubleshoot plugin conflicts"
+2. Follow the wizard prompts
+3. Test if the problem exists at each step, click the corresponding button
+4. Automatically locate the problematic plugin or conflict pair
+
+### Supported Scenarios
+- **Single Plugin Issue**: A plugin itself has a bug
+- **Two-Plugin Conflict**: Two plugins work fine separately but conflict when used together
+
+### Tips
+- The floating window is draggable for convenient testing
+- Supports undo last step
+- Troubleshooting state is saved, can continue after restart
+
+---
+
+## ⚙️ Startup Self-Check
+
+BPM checks `community-plugins.json` on startup:
+
+| Situation | Action |
+|-----------|--------|
+| Only BPM | Normal startup |
+| Other plugins present | Prompt to take over |
+
+### Why Takeover?
+- Avoid Obsidian and BPM controlling plugins simultaneously
+- Ensure delay-start and other features work properly
+- Maintain plugin state consistency
+
+---
+
+## 📤 Export to Obsidian Base
+
+### Configuration
+Set **Plugin info export directory** in settings (folder inside your vault)
+
+### Rules
+| Prefix | Permission |
+|--------|------------|
+| `bpm_rw_*` | Read-write |
+| `bpm_ro_*` | Read-only |
+| `bpm_rwc_repo` | Conditionally writable |
+
+### Frontmatter Example
 
 ```yaml
 ---
 bpm_ro_id: some-plugin
-bpm_rw_name: Custom name
-bpm_rw_desc: Custom description
-bpm_rw_note: Personal note
+bpm_rw_name: Custom Name
+bpm_rw_desc: Custom Description
+bpm_rw_note: Note
 bpm_rw_enabled: true
 bpm_rwc_repo: user/repo
 bpm_ro_group: group-id
@@ -57,35 +163,58 @@ bpm_ro_tags:
   - bpm-install
 bpm_ro_delay: delay-id
 bpm_ro_installed_via_bpm: true
-bpm_ro_updated: 2024-12-12T10:00:00Z
 ---
 
-Body section: you can edit or replace this content.
+Body section: You can edit or replace this content.
 ```
 
-## Settings you’ll care about
+---
 
-- **Delay profiles**: create presets and assign per plugin.  
-- **Hide BPM tag**: keep the auto “bpm-install” tag but hide it in UI.  
-- **GitHub API token**: raise rate limits for release fetching.  
-- **Fade inactive plugins**: visually de-emphasize disabled items.  
-- **Export notices**: configurable hint text for exported files.
+## ⚙️ Settings
 
-## Commands
+| Setting | Description |
+|---------|-------------|
+| Delay Profiles | Create delay configurations and assign to plugins |
+| Hide BPM Tag | Keep auto-tag but hide from UI |
+| GitHub API Token | Increase rate limits for release fetching |
+| Fade Disabled Plugins | Visually dim disabled plugin cards |
+| Export Notice Text | Customize the body text of exported files |
+| Self-Check Reminder | Control whether startup self-check popup shows |
 
-- Open manager panel.  
-- (Optional) per-plugin toggle commands.  
-- (Optional) enable/disable all plugins in a group.
+---
 
-## Compatibility
+## ⌨️ Commands
 
-- Works on desktop and mobile (Android/iOS).  
-- Uses platform detection to apply the compact mobile layout while keeping the desktop layout unchanged.
+| Command | Description |
+|---------|-------------|
+| Open Plugin Manager | Open BPM main interface |
+| Troubleshoot plugin conflicts | 🆕 Start conflict troubleshooter wizard |
+| Enable/Disable [Plugin Name] | Per-plugin toggle (enable in settings) |
+| Enable/Disable [Group Name] | Group batch operations (enable in settings) |
 
-## Contributing
+---
 
-Issues and PRs are welcome. For bugs, share console logs and reproduction steps; for features, open a discussion/issue first.
+## 📱 Compatibility
 
-## License
+| Platform | Supported |
+|----------|-----------|
+| Windows / macOS / Linux | ✅ |
+| Android | ✅ |
+| iOS / iPadOS | ✅ |
+
+Automatically switches to mobile layout based on platform, desktop UI remains unchanged.
+
+---
+
+## 🤝 Contributing
+
+Issues and PRs are welcome!
+
+- **Bug Reports**: Please include logs and reproduction steps
+- **Feature Requests**: Consider opening a discussion or issue first
+
+---
+
+## 📄 License
 
 [MIT](LICENSE)
