@@ -89,7 +89,7 @@ export default {
     筛选_标签_全部: 'Tags : Tous',
     筛选_延迟_全部: 'Retard : Tous',
 
-    管理器_GITHUB_描述: 'Visiter la page GitHub de l’auteur pour détails, changelog, discussions et contributions.',
+    管理器_GITHUB_描述: 'Visiter le dépôt',
     管理器_视频教程_描述: 'Accéder aux tutoriels vidéo',
     管理器_编辑模式_描述: 'Activer le mode édition pour personnaliser en profondeur',
     管理器_重载插件_描述: 'Recharger les plugins pour prise d’effet immédiate',

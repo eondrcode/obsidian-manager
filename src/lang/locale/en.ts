@@ -85,7 +85,7 @@ export default {
     筛选_标签_全部: 'Tags: All',
     筛选_延迟_全部: 'Delay: All',
 
-    管理器_GITHUB_描述: 'Visit the author\'s GitHub page to view project details, update logs, participate in discussions, and contribute code.',
+    管理器_GITHUB_描述: 'Visit Repository',
     管理器_视频教程_描述: 'Access video tutorials',
     管理器_编辑模式_描述: 'Enable edit mode for in-depth plugin configuration customization',
     管理器_重载插件_描述: 'Reload plugins to take effect immediately',

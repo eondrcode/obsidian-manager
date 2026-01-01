@@ -16,7 +16,7 @@ export default {
     通用_返回_文本: 'Volver',
 
 
-    管理器_GITHUB_描述: 'Visite la página de GitHub del autor para ver detalles del proyecto, registros de actualizaciones, participar en discusiones y contribuir con código.',
+    管理器_GITHUB_描述: 'Visitar repositorio',
     管理器_视频教程_描述: 'Acceder a tutoriales en video',
     管理器_编辑模式_描述: 'Habilitar modo de edición para una personalización profunda de la configuración del plugin',
     管理器_重载插件_描述: 'Recargar plugins para que surtan efecto inmediatamente',
