@@ -17,6 +17,7 @@ export default {
     通用_开启_文本: 'Enable',
     通用_保存_文本: 'Save settings',
     通用_取消_文本: 'Cancel',
+    通用_返回_文本: 'Back',
 
     导出_正文提示: 'Body section: you can edit or replace this content.',
 
@@ -91,6 +92,7 @@ export default {
     管理器_重载插件_开始提示: 'Refreshing plugin manifests…',
     管理器_重载插件_失败提示: 'Reload failed. Please try again (see console for details).',
     管理器_检查更新_描述: 'Check for plugin updates',
+    管理器_更多操作_描述: 'More actions',
     管理器_一键禁用_描述: 'Disable all plugins at once',
     管理器_一键启用_描述: 'Enable all plugins at once',
     管理器_插件设置_描述: 'Manage plugin settings',
@@ -106,6 +108,7 @@ export default {
     管理器_重启中_提示: 'Restarting… please wait',
     管理器_仓库检测中_提示: 'Detecting repository…',
     管理器_打开仓库_提示: 'Open repo: {repo}',
+    管理器_打开仓库_标题: 'Open repository',
     管理器_仓库未记录_提示: 'Repository not recorded',
     管理器_仓库需手动添加_提示: 'This plugin is not installed via official/BPM. Please set the source manually.',
     下载更新_缺少仓库提示: 'Missing repository source; cannot download update.',

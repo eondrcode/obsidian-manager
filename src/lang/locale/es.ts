@@ -13,6 +13,7 @@ export default {
     通用_总计_文本: 'Total',
     通用_启用_文本: 'Habilitar',
     通用_禁用_文本: 'Deshabilitar',
+    通用_返回_文本: 'Volver',
 
 
     管理器_GITHUB_描述: 'Visite la página de GitHub del autor para ver detalles del proyecto, registros de actualizaciones, participar en discusiones y contribuir con código.',
@@ -20,6 +21,7 @@ export default {
     管理器_编辑模式_描述: 'Habilitar modo de edición para una personalización profunda de la configuración del plugin',
     管理器_重载插件_描述: 'Recargar plugins para que surtan efecto inmediatamente',
     管理器_检查更新_描述: 'Comprobar actualizaciones de plugins',
+    管理器_更多操作_描述: 'Más acciones',
     管理器_一键禁用_描述: 'Deshabilitar todos los plugins a la vez',
     管理器_一键启用_描述: 'Habilitar todos los plugins a la vez',
     管理器_插件设置_描述: 'Administrar configuración de plugins',
@@ -64,6 +66,7 @@ export default {
     管理器_重启中_提示: 'Reiniciando… espera un momento',
     管理器_仓库检测中_提示: 'Detectando repositorio…',
     管理器_打开仓库_提示: 'Abrir repo: {repo}',
+    管理器_打开仓库_标题: 'Abrir repositorio',
     管理器_仓库未记录_提示: 'Repositorio no registrado',
     管理器_仓库需手动添加_提示: 'Este plugin no es oficial/instalado por BPM. Añade el origen manualmente.',
     下载更新_缺少仓库提示: 'Falta el repositorio; no se puede descargar la actualización.',

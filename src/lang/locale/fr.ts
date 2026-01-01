@@ -17,6 +17,7 @@ export default {
     通用_开启_文本: 'Ouvrir',
     通用_保存_文本: 'Enregistrer',
     通用_取消_文本: 'Annuler',
+    通用_返回_文本: 'Retour',
 
     导出_正文提示: 'Section corps : vous pouvez modifier ou remplacer ce contenu.',
 
@@ -196,4 +197,6 @@ export default {
     安装_错误_通用: 'Échec de l’installation. Vérifiez dépôt/version ou réseau.',
     设置_基础设置_调试模式_标题: 'Mode debug',
     设置_基础设置_调试模式_描述: 'Désactivé : erreurs uniquement. Activé : logs de debug.',
+    管理器_更多操作_描述: 'Plus d’actions',
+    管理器_打开仓库_标题: 'Ouvrir le dépôt',
 }
