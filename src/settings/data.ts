@@ -1,4 +1,5 @@
 import { Delay, ManagerPlugin, Tag, Type } from '../data/types';
+import { TroubleshootState } from '../troubleshoot/troubleshoot-state';
 
 export interface ManagerSettings {
     // 持久化
@@ -50,6 +51,9 @@ export interface ManagerSettings {
 
     // GitHub 令牌
     GITHUB_TOKEN: string;
+
+    // 排查状态
+    TROUBLESHOOT_STATE?: TroubleshootState;
 
     GROUPS: Type[];
     TAGS: Tag[];

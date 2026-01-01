@@ -1212,3 +1212,288 @@ body.theme-dark {
 .bpm-stat-chip--disabled .bpm-stat-chip__value {
     color: var(--text-muted);
 }
+
+/* 插件冲突排查向导
+---------------------------------------------------------------- */
+.troubleshoot-modal .modal-content {
+    max-width: 600px;
+    padding: 20px;
+}
+
+.troubleshoot-title {
+    border-bottom: none;
+}
+
+.troubleshoot-title .setting-item-name {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.troubleshoot-desc {
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin-bottom: 16px;
+}
+
+.troubleshoot-info {
+    color: var(--text-accent);
+    font-weight: 500;
+    margin: 8px 0;
+}
+
+.troubleshoot-phase {
+    background: var(--background-secondary);
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-weight: 500;
+}
+
+.troubleshoot-progress {
+    position: relative;
+    height: 6px;
+    background: var(--background-modifier-border);
+    border-radius: 3px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.troubleshoot-progress-bar {
+    height: 100%;
+    background: var(--interactive-accent);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.troubleshoot-progress-text {
+    position: absolute;
+    right: 0;
+    top: -20px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.troubleshoot-lists {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.troubleshoot-list {
+    flex: 1;
+    background: var(--background-secondary);
+    padding: 12px;
+    border-radius: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.troubleshoot-list h4 {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+}
+
+.troubleshoot-list ul {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.troubleshoot-list.enabled {
+    border-left: 3px solid var(--color-green);
+}
+
+.troubleshoot-list.disabled {
+    border-left: 3px solid var(--color-red);
+}
+
+.troubleshoot-hint {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-bottom: 16px;
+    text-align: center;
+}
+
+.troubleshoot-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.troubleshoot-actions button {
+    min-width: 120px;
+}
+
+.troubleshoot-footer {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    padding-top: 16px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.troubleshoot-footer button {
+    font-size: 13px;
+}
+
+/* 排查结果 */
+.troubleshoot-result-container h3 {
+    margin: 0 0 16px 0;
+    text-align: center;
+}
+
+.troubleshoot-conflict-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 20px;
+    background: var(--background-secondary);
+    border-radius: 12px;
+    margin-bottom: 20px;
+}
+
+.troubleshoot-plugin {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.troubleshoot-plugin .plugin-icon {
+    font-size: 24px;
+}
+
+.troubleshoot-plugin .plugin-name {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.troubleshoot-plugin .plugin-version {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.conflict-arrow {
+    font-size: 20px;
+    color: var(--color-red);
+    font-weight: bold;
+}
+
+.troubleshoot-suggestions {
+    margin-bottom: 20px;
+}
+
+.troubleshoot-suggestions h4 {
+    margin: 0 0 10px 0;
+}
+
+.troubleshoot-suggestions ul {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--text-muted);
+}
+
+.troubleshoot-suggestions li {
+    margin-bottom: 6px;
+}
+
+.troubleshoot-stats {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+/* 可拖动悬浮窗
+---------------------------------------------------------------- */
+.troubleshoot-floating-window {
+    position: fixed;
+    width: 380px;
+    max-height: 80vh;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 1000;
+}
+
+.troubleshoot-floating-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--background-secondary);
+    border-bottom: 1px solid var(--background-modifier-border);
+    cursor: grab;
+    user-select: none;
+}
+
+.troubleshoot-floating-header.dragging {
+    cursor: grabbing;
+}
+
+.troubleshoot-floating-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.troubleshoot-floating-close {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.troubleshoot-floating-close:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.troubleshoot-floating-content {
+    padding: 16px;
+    overflow-y: auto;
+    max-height: calc(80vh - 60px);
+}
+
+/* 确认对话框遮罩 */
+.troubleshoot-confirm-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+.troubleshoot-confirm-dialog {
+    background: var(--background-primary);
+    border-radius: 12px;
+    padding: 20px;
+    max-width: 400px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.troubleshoot-confirm-dialog h4 {
+    margin: 0 0 12px 0;
+}
+
+.troubleshoot-confirm-dialog p {
+    margin: 0 0 16px 0;
+    color: var(--text-muted);
+}

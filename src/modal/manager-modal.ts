@@ -28,6 +28,7 @@ import { NoteModal } from "./note-modal";
 import { ShareModal } from "./share-modal";
 import { HideModal } from "./hide-modal";
 import { ShareTModal } from "./share-t-modal";
+import { TroubleshootModal } from "../troubleshoot/troubleshoot-modal";
 import { installPluginFromGithub, installThemeFromGithub, fetchReleaseVersions, ReleaseVersion } from "../github-install";
 import { BPM_TAG_ID } from "src/repo-resolver";
 import { normalizePath } from "obsidian";
@@ -392,6 +393,15 @@ export class ManagerModal extends Modal {
                     Commands(this.app, this.manager);
                 }
             }).open();
+        });
+
+        // [操作行] 排查冲突
+        const troubleshootButton = new ButtonComponent(actionBar.controlEl);
+        troubleshootButton.setIcon("search");
+        troubleshootButton.setTooltip(this.manager.translator.t("排查_按钮_描述"));
+        this.bindLongPressTooltip(troubleshootButton.buttonEl, this.manager.translator.t("排查_按钮_描述"));
+        troubleshootButton.onClick(() => {
+            new TroubleshootModal(this.app, this.manager).open();
         });
 
         // [操作行] 编辑模式
