@@ -10,6 +10,7 @@ import { normalizePath, TFile, stringifyYaml, parseYaml, EventRef, Notice, Platf
 import { ManagerPlugin } from './data/types';
 import { runMigrations } from './migrations';
 import { fetchReleaseVersions, installPluginFromGithub, ReleaseVersion, sanitizeRepo } from './github-install';
+import { performSelfCheck } from './self-check';
 
 type UpdateSource = 'official' | 'github' | 'unknown';
 interface UpdateStatus {
@@ -72,6 +73,9 @@ export default class Manager extends Plugin {
         this.setupExportWatcher();
         if (this.settings.EXPORT_DIR) this.exportAllPluginNotes();
         this.startupCheckForUpdates();
+
+        // 启动自检
+        performSelfCheck(this);
 
         this.registerObsidianProtocolHandler("BPM-plugin-install", async (params: ObsidianProtocolData) => {
             await this.agreement.parsePluginInstall(params);

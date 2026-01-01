@@ -55,6 +55,9 @@ export interface ManagerSettings {
     // 排查状态
     TROUBLESHOOT_STATE?: TroubleshootState;
 
+    // 自检忽略（用户选择不再提示）
+    SELF_CHECK_IGNORED?: boolean;
+
     GROUPS: Type[];
     TAGS: Tag[];
     DELAYS: Delay[];
@@ -88,6 +91,7 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     HIDE_BPM_TAG: false,
     EXPORT_DIR: "",
     GITHUB_TOKEN: "",
+    SELF_CHECK_IGNORED: false,
     GROUPS: [],
     TAGS: [],
     DELAYS: [

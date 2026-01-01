@@ -277,5 +277,19 @@ export default {
     报告_备注提示: '*Add your notes here...*',
     报告_技术详情: 'Technical Details',
     报告_原始启用列表: 'Originally Enabled Plugins',
+
+    // Self-check
+    自检_检测到插件_标题: 'Non-BPM Managed Plugins Detected',
+    自检_检测到插件_说明: 'Obsidian\'s community-plugins.json contains plugins started by Obsidian itself. To avoid conflicts between BPM and Obsidian controlling plugins simultaneously, it is recommended to let BPM take over control of these plugins.',
+    自检_检测到插件_列表: 'Detected plugins:',
+    自检_警告_文本: 'Ignoring this may cause plugin state inconsistency or delay-start feature malfunction.',
+    自检_接管_按钮: 'Let BPM Take Over',
+    自检_忽略_按钮: 'Ignore This Time',
+    自检_不再提示_按钮: 'Don\'t Show Again',
+    自检_接管成功_通知: 'Successfully took over plugin control',
+    自检_接管失败_通知: 'Takeover failed, please manually modify community-plugins.json',
+    自检_需要重启_通知: 'Please restart Obsidian for the changes to take effect',
+    自检_忽略警告_通知: 'Warning ignored. Using both Obsidian and BPM to manage plugins may cause issues',
+    自检_不再提示确认_通知: 'Will not show again. You can re-enable this in settings',
 }
 
