@@ -210,9 +210,7 @@ export class ManagerModal extends Modal {
         }
 
         // [操作行]
-        const actionWrapper = this.titleEl.createDiv("manager-section manager-section--row");
-        const actionHeader = actionWrapper.createDiv("manager-section__header");
-        actionHeader.createSpan({ text: this.manager.translator.t("通用_操作_文本") });
+        const actionWrapper = this.titleEl.createDiv("manager-section manager-section--actions");
         const actionContent = actionWrapper.createDiv("manager-section__content");
         actionContent.addClass("manager-section__content--actions");
         const bindLongPressTooltip = (btn: ButtonComponent, text: string) => {
@@ -462,9 +460,7 @@ export class ManagerModal extends Modal {
         }
 
         // [过滤行]
-        const filterWrapper = this.titleEl.createDiv("manager-section manager-section--row");
-        const filterHeader = filterWrapper.createDiv("manager-section__header");
-        filterHeader.createSpan({ text: this.manager.translator.t("通用_过滤_文本") });
+        const filterWrapper = this.titleEl.createDiv("manager-section manager-section--filters");
         const filterContent = filterWrapper.createDiv("manager-section__content");
         filterContent.addClass("manager-section__content--filters");
 

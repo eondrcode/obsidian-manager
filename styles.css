@@ -113,6 +113,21 @@ body.theme-dark {
 
 .manager-container__header {
     margin-bottom: 0px;
+    padding: 0 16px;
+}
+
+/* 桌面端内容容器 */
+.manager-container:not(.manager-container--mobile) .manager-item-container {
+    padding: 0 16px;
+}
+
+/* 桌面端插件卡片样式 */
+.manager-container:not(.manager-container--mobile) .manager-item-container .setting-item {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    background: var(--background-secondary);
 }
 
 .manager-bar__action {
@@ -299,35 +314,31 @@ body.theme-dark {
     overflow: auto;
 }
 
-/* collapsible sections (mobile & desktop) */
+/* collapsible sections (desktop) */
 .manager-section {
     width: 100%;
     max-width: 100%;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     border: 1px solid var(--background-modifier-border);
     border-radius: 12px;
-    padding: 10px 14px;
-    background: var(--background-primary);
+    padding: 12px 14px;
+    background: var(--background-secondary);
     display: flex;
     flex-direction: row;
-    align-items: stretch;
+    align-items: center;
     gap: 12px;
 }
 
-.manager-section--row {
-    flex-direction: row;
+.manager-section--actions {
+    padding: 10px 14px;
+}
+
+.manager-section--filters {
+    padding: 10px 14px;
 }
 
 .manager-section__header {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 6px;
-    padding: 0;
-    font-weight: 600;
-    cursor: pointer;
-    color: var(--text-normal);
-    flex: 0 0 auto;
+    display: none;
 }
 
 .manager-section__arrow {
@@ -342,23 +353,60 @@ body.theme-dark {
     padding-top: 6px;
 }
 
-.manager-section__content--actions .manager-bar__action,
+/* 操作按钮区域 - 均匀分布 */
+.manager-section__content--actions .manager-bar__action {
+    width: 100%;
+}
+
+.manager-bar__action .setting-item-control {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.manager-bar__action .setting-item-control .clickable-icon {
+    flex: 1 1 auto;
+    display: flex;
+    justify-content: center;
+}
+
+/* 筛选区域 - 筛选框平均分配，搜索框单独一行 */
 .manager-section__content--filters .manager-bar__search {
     width: 100%;
 }
 
 .manager-bar__search .setting-item-control {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(140px, 1fr));
-    gap: 8px;
-    align-items: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
 }
 
-.manager-bar__search .dropdown,
+/* 筛选框容器 - 使用 grid 平均分配 */
+.manager-bar__search .setting-item-control .dropdown {
+    flex: 1 1 0;
+    min-width: 100px;
+}
+
+/* 搜索框占满宽度 */
 .manager-bar__search .search-input-container {
     width: 100%;
-    max-width: 100%;
-    min-width: 0;
+    order: 10;
+}
+
+/* 筛选框一行显示 */
+.manager-bar__search .setting-item-control {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: auto auto;
+    gap: 10px;
+}
+
+.manager-bar__search .setting-item-control .search-input-container {
+    grid-column: 1 / -1;
+    grid-row: 2;
 }
 
 .manager-bar__search .dropdown select,
@@ -370,24 +418,14 @@ body.theme-dark {
     overflow: hidden;
 }
 
-.manager-bar__search .setting-item-control>* {
-    min-width: 0;
-}
-
-.manager-bar__search .setting-item-control>.search-input-container {
-    grid-column: span 1;
-    flex: 1 1 auto;
-}
-
-@media (max-width: 1024px) {
-    .manager-bar__search .setting-item-control {
-        grid-template-columns: repeat(2, minmax(150px, 1fr));
-    }
-}
-
 @media (max-width: 720px) {
     .manager-bar__search .setting-item-control {
-        grid-template-columns: repeat(1, minmax(160px, 1fr));
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .manager-bar__search .setting-item-control .search-input-container {
+        grid-column: 1 / -1;
+        grid-row: 3;
     }
 }
 
