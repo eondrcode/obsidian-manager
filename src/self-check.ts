@@ -7,6 +7,7 @@
 
 import { App, ButtonComponent, Modal, Notice, setIcon } from 'obsidian';
 import Manager from 'main';
+import { BPM_IGNORE_TAG } from './data/types';
 
 const COMMUNITY_PLUGINS_PATH = '.obsidian/community-plugins.json';
 
@@ -39,17 +40,79 @@ async function writeCommunityPlugins(app: App, plugins: string[]): Promise<boole
 }
 
 /**
+ * 执行接管逻辑 (提取为独立函数)
+ */
+async function execTakeover(app: App, manager: Manager, pluginIds: string[]): Promise<boolean> {
+    const bpmId = manager.manifest.id;
+
+    // 将 community-plugins.json 改为只有 BPM
+    const success = await writeCommunityPlugins(app, [bpmId]);
+
+    if (success) {
+        // 确保这些插件在 BPM 的管理列表中
+        for (const id of pluginIds) {
+            const existing = manager.settings.Plugins.find(p => p.id === id);
+            if (existing) {
+                // 保持当前启用状态
+                existing.enabled = true;
+            } else {
+                // 添加到 BPM 管理列表
+                // @ts-ignore
+                const manifest = app.plugins.manifests[id];
+                if (manifest) {
+                    manager.settings.Plugins.push({
+                        id: id,
+                        name: manifest.name,
+                        desc: manifest.description || '',
+                        group: '',
+                        tags: [],
+                        enabled: true,
+                        delay: 'default',
+                        note: ''
+                    });
+                }
+            }
+        }
+
+        await manager.saveSettings();
+        return true;
+    } else {
+        return false;
+    }
+}
+
+/**
  * 执行启动自检
  */
 export async function performSelfCheck(manager: Manager): Promise<void> {
     const bpmId = manager.manifest.id;
     const communityPlugins = await readCommunityPlugins(manager.app);
 
-    // 过滤出非 BPM 插件
-    const nonBpmPlugins = communityPlugins.filter(id => id !== bpmId);
+    // 过滤出非 BPM 插件，且未被标记为忽略的插件
+    const nonBpmPlugins = communityPlugins.filter(id => {
+        if (id === bpmId) return false;
+
+        // 检查是否存在 BPM 忽略标签
+        const pluginInBpm = manager.settings.Plugins.find(p => p.id === id);
+        if (pluginInBpm && pluginInBpm.tags.includes(BPM_IGNORE_TAG)) {
+            return false; // 忽略此插件
+        }
+
+        return true;
+    });
 
     if (nonBpmPlugins.length === 0) {
-        // 没有非 BPM 插件，无需提示
+        return;
+    }
+
+    // 自动接管逻辑
+    if (manager.settings.AUTO_TAKEOVER) {
+        const success = await execTakeover(manager.app, manager, nonBpmPlugins);
+        if (success) {
+            new Notice(manager.translator.t('自检_接管成功_通知'));
+        } else {
+            new Notice(manager.translator.t('自检_接管失败_通知'));
+        }
         return;
     }
 
@@ -145,42 +208,11 @@ class TakeoverModal extends Modal {
      * 执行接管
      */
     private async takeoverPlugins() {
-        const bpmId = this.manager.manifest.id;
-
-        // 将 community-plugins.json 改为只有 BPM
-        const success = await writeCommunityPlugins(this.app, [bpmId]);
+        const success = await execTakeover(this.app, this.manager, this.nonBpmPlugins);
 
         if (success) {
             new Notice(this.t('自检_接管成功_通知'));
-
-            // 确保这些插件在 BPM 的管理列表中
-            for (const id of this.nonBpmPlugins) {
-                const existing = this.manager.settings.Plugins.find(p => p.id === id);
-                if (existing) {
-                    // 保持当前启用状态
-                    existing.enabled = true;
-                } else {
-                    // 添加到 BPM 管理列表
-                    // @ts-ignore
-                    const manifest = this.app.plugins.manifests[id];
-                    if (manifest) {
-                        this.manager.settings.Plugins.push({
-                            id: id,
-                            name: manifest.name,
-                            desc: manifest.description || '',
-                            group: '',
-                            tags: [],
-                            enabled: true,
-                            delay: 'default',
-                            note: ''
-                        });
-                    }
-                }
-            }
-
-            await this.manager.saveSettings();
             this.close();
-
             // 提示用户重启以使更改生效
             new Notice(this.t('自检_需要重启_通知'), 5000);
         } else {

@@ -25,7 +25,12 @@ export default {
     设置_基础设置_隐藏BPM标签_描述: 'Hide the auto-added bpm install tag in the list (only hide display, keep mark).',
     设置_基础设置_导出目录_标题: 'Export directory for plugin info',
     设置_基础设置_导出目录_描述: 'Relative vault path to export BPM plugin info (for Base). Changes apply when clicking “Save settings”.',
+    设置_基础设置_自动接管_标题: 'Auto Takeover Plugins',
+    设置_基础设置_自动接管_描述: 'Automatically takeover new plugins installed from the market (enable and manage via BPM), suppressing the takeover prompt.',
+    提示_BPM忽略_标题: 'BPM Ignore',
+    提示_BPM忽略_描述: 'This plugin is tagged with "bpm-ignore". BPM will not manage its status or delay.',
     设置_基础设置_导出目录_示例: 'e.g., BPM-Export',
+
     设置_基础设置_导出提示_标题: 'Frontmatter conventions',
     设置_基础设置_导出提示_描述: 'Read-only: bpm_ro_id/name/group/tags/delay/installed_via_bpm; writable: bpm_rw_desc/note/enabled; conditional: bpm_rwc_repo (only when official match is missing and not BPM-installed).',
     设置_基础设置_GITHUB_TOKEN_标题: 'GitHub API Token',

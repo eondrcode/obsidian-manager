@@ -65,6 +65,8 @@ export interface ManagerSettings {
     HIDES: string[];
     // Ribbon 管理设置
     RIBBON_SETTINGS: RibbonItem[];
+    // 自动接管
+    AUTO_TAKEOVER: boolean;
 }
 
 export const DEFAULT_SETTINGS: ManagerSettings = {
@@ -106,4 +108,5 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     Plugins: [],
     HIDES: [],
     RIBBON_SETTINGS: [],
+    AUTO_TAKEOVER: false,
 }

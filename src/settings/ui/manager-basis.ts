@@ -64,6 +64,16 @@ export default class ManagerBasis extends BaseSetting {
             this.manager.saveSettings();
         });
 
+        const autoTakeoverBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t('设置_基础设置_自动接管_标题'))
+            .setDesc(this.manager.translator.t('设置_基础设置_自动接管_描述'));
+        const autoTakeoverToggle = new ToggleComponent(autoTakeoverBar.controlEl);
+        autoTakeoverToggle.setValue(this.settings.AUTO_TAKEOVER);
+        autoTakeoverToggle.onChange((value) => {
+            this.settings.AUTO_TAKEOVER = value;
+            this.manager.saveSettings();
+        });
+
         const CommandItemBar = new Setting(this.containerEl)
             .setName(this.manager.translator.t('设置_基础设置_单独命令_标题'))
             .setDesc(this.manager.translator.t('设置_基础设置_单独命令_描述'));
@@ -134,8 +144,5 @@ export default class ManagerBasis extends BaseSetting {
             this.manager.saveSettings();
         });
 
-        new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_提示_一_标题'))
-            .setDesc(this.manager.translator.t('设置_提示_一_描述'));
     }
 }

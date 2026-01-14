@@ -86,12 +86,18 @@ export default class Manager extends Plugin {
 
         this.app.workspace.onLayoutReady(() => {
             this.updateRibbonStyles();
+            if (Platform.isMobile) {
+                this.setupMenuObserver();
+            }
         });
     }
 
     public async onunload() {
         if (this.settings.DELAY) this.disableDelaysForAllPlugins();
         if (this.exportWatcher) this.app.vault.offref(this.exportWatcher);
+        if (this.menuObserver) {
+            this.menuObserver.disconnect();
+        }
     }
 
     public async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
@@ -921,8 +927,10 @@ export default class Manager extends Plugin {
 
         // Determine platform
         let baseSelector = "";
-        if (Platform.isMobile) {
-            baseSelector = `.menu-scroll .menu-item`; // Mobile logic from reference
+        let isMobile = Platform.isMobile;
+
+        if (isMobile) {
+            baseSelector = `.menu-scroll .menu-item`; // Mobile logic
         } else {
             baseSelector = `.side-dock-actions div.clickable-icon.side-dock-ribbon-action`;
         }
@@ -931,15 +939,18 @@ export default class Manager extends Plugin {
             if (!item.name) return "";
             const selector = this.generateMultiLineAriaLabelSelector(baseSelector, item.name);
             if (item.visible) {
-                return `${selector} { order: ${item.order} !important; }`;
+                // 移动端使用 DOM 排序，不需要 CSS order
+                // 桌面端继续使用 CSS order
+                return isMobile ? "" : `${selector} { order: ${item.order} !important; }`;
             } else {
                 return `${selector} { display: none !important; }`;
             }
         }).join("\n");
 
-        const defaultOrderRule = `${baseSelector} { order: 9999 !important; }`;
+        const defaultOrderRule = isMobile ? "" : `${baseSelector} { order: 9999 !important; }`;
+        const containerRule = ""; // No more flex hack for mobile
 
-        styleEl.innerHTML = `${defaultOrderRule}\n${cssRules}`;
+        styleEl.innerHTML = `${containerRule}\n${defaultOrderRule}\n${cssRules}`;
     }
 
     private generateMultiLineAriaLabelSelector(baseSelector: string, ariaLabelText: string): string {
@@ -954,6 +965,126 @@ export default class Manager extends Plugin {
                 return `[aria-label*="${escapedLine}"]`;
             }).join("");
             return `${baseSelector}${selectors}`;
+        }
+    }
+
+    private menuObserver: MutationObserver | null = null;
+
+    setupMenuObserver() {
+        this.menuObserver = new MutationObserver((mutations) => {
+            let shouldProcess = false;
+            let targetNode: HTMLElement | null = null;
+
+            for (const mutation of mutations) {
+                if (mutation.addedNodes.length > 0) {
+                    for (const node of Array.from(mutation.addedNodes)) {
+                        if (node.nodeType === Node.ELEMENT_NODE) {
+                            const element = node as HTMLElement;
+                            if (element.classList?.contains("menu-scroll")) {
+                                targetNode = element;
+                                shouldProcess = true;
+                                break;
+                            } else {
+                                const menuScroll = element.querySelector(".menu-scroll");
+                                if (menuScroll) {
+                                    targetNode = menuScroll as HTMLElement;
+                                    shouldProcess = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (shouldProcess && targetNode) {
+                this.processMenuItems(targetNode);
+            }
+        });
+        this.menuObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+        });
+    }
+
+    processMenuItems(menuScrollElement: HTMLElement) {
+        // [修复] 移动端 Obsidian 菜单项包裹在 .menu-group 中
+        // 必须在 .menu-group 内排序，否则会破坏样式布局
+        let containerElement: HTMLElement = menuScrollElement;
+        const menuGroup = menuScrollElement.querySelector(".menu-group");
+        if (menuGroup) {
+            containerElement = menuGroup as HTMLElement;
+        }
+
+        const menuItems = Array.from(containerElement.querySelectorAll(".menu-item")) as HTMLElement[];
+        if (menuItems.length === 0) return;
+
+        const ribbonSettings = this.settings.RIBBON_SETTINGS || [];
+        const itemMap = new Map<HTMLElement, string>();
+
+        // 1. 预处理：设置 aria-label 并收集信息
+        menuItems.forEach((item) => {
+            // 已处理过的标记，防止重复处理相同逻辑（虽然 DOM 排序需要反复检查）
+            // 这里我们主要为了加 label
+            if (item.getAttribute("data-bpm-processed") !== "true") {
+                const titleEl = item.querySelector(".menu-item-title");
+                if (titleEl && titleEl.textContent) {
+                    const name = titleEl.textContent;
+                    if (!item.hasAttribute("aria-label")) item.setAttribute("aria-label", name);
+                    item.setAttribute("data-bpm-processed", "true");
+                }
+            }
+
+            // 无论是否处理过，都要获取名字用于排序
+            const name = item.getAttribute("aria-label");
+            if (name) itemMap.set(item, name);
+        });
+
+        // 2. 准备排序数据
+        const itemsWithOrder = menuItems.map(item => {
+            const name = itemMap.get(item);
+            let order = 9999;
+            let visible = true;
+
+            if (name) {
+                const setting = ribbonSettings.find(s => s.name === name);
+                if (setting) {
+                    order = setting.order;
+                    visible = setting.visible;
+                }
+            }
+            return { item, order, visible };
+        });
+
+        // 3. 应用显隐 (直接操作 DOM 样式以确保移动端生效)
+        let visualChange = false;
+        itemsWithOrder.forEach(({ item, visible }) => {
+            const currentDisplay = item.style.display;
+            const targetDisplay = visible ? "" : "none";
+            if (currentDisplay !== targetDisplay) {
+                item.style.display = targetDisplay;
+                visualChange = true;
+            }
+        });
+
+        // 4. 检查是否需要排序
+        // 先按 order 排序生成目标列表
+        itemsWithOrder.sort((a, b) => a.order - b.order);
+
+        // 检查当前 DOM 顺序是否与目标一致
+        let needSort = false;
+        for (let i = 0; i < itemsWithOrder.length; i++) {
+            if (menuScrollElement.children[i] !== itemsWithOrder[i].item) {
+                needSort = true;
+                break;
+            }
+        }
+
+        // 5. 如果需要，执行重排
+        if (needSort) {
+            const fragment = document.createDocumentFragment();
+            itemsWithOrder.forEach(({ item }) => fragment.appendChild(item));
+            containerElement.appendChild(fragment);
         }
     }
 }

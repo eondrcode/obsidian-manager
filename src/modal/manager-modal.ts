@@ -15,6 +15,7 @@ import {
     Platform,
 } from "obsidian";
 
+import { BPM_IGNORE_TAG, ManagerPlugin } from "../data/types";
 import { ManagerSettings } from "../settings/data";
 import { managerOpen } from "../utils";
 
@@ -1593,12 +1594,19 @@ export class ManagerModal extends Modal {
                 const toggleSwitch = new ToggleComponent(itemEl.controlEl);
                 toggleSwitch.setTooltip(this.manager.translator.t("管理器_切换状态_描述"));
                 toggleSwitch.setValue(isEnabled);
+
+                // 检查 BPM 忽略标签
+                const ManagerPlugin = this.settings.Plugins.find((p) => p.id === plugin.id);
+                const isBpmIgnored = ManagerPlugin?.tags?.includes(BPM_IGNORE_TAG);
+
                 if (isSelf) {
                     toggleSwitch.setValue(true);
                     toggleSwitch.setDisabled(true);
                     toggleSwitch.setTooltip(this.manager.translator.t("管理器_自身不可禁用_提示"));
+                } else if (isBpmIgnored) {
+                    toggleSwitch.setDisabled(true);
+                    toggleSwitch.setTooltip(this.manager.translator.t("提示_BPM忽略_描述"));
                 } else toggleSwitch.onChange(async () => {
-                    const ManagerPlugin = this.settings.Plugins.find((p) => p.id === plugin.id);
                     const targetEnabled = toggleSwitch.getValue();
                     const removeByFilter = (this.filter === "enabled" && !targetEnabled) || (this.filter === "disabled" && targetEnabled);
                     const updateCardUI = () => {
@@ -1661,12 +1669,21 @@ export class ManagerModal extends Modal {
                     const delays = this.settings.DELAYS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = item.name; return acc; }, { "": this.manager.translator.t("通用_无延迟_文本"), });
                     const delaysEl = new DropdownComponent(itemEl.controlEl);
                     delaysEl.addOptions(delays);
+                    delaysEl.addOptions(delays);
                     delaysEl.setValue(ManagerPlugin.delay);
-                    delaysEl.onChange(async (value) => {
-                        ManagerPlugin.delay = value;
-                        await this.manager.savePluginAndExport(plugin.id);
-                        this.reloadShowData();
-                    });
+
+                    const pSettings = this.settings.Plugins.find(p => p.id === plugin.id);
+                    const isIgnored = pSettings?.tags?.includes(BPM_IGNORE_TAG);
+
+                    if (isIgnored) {
+                        delaysEl.setDisabled(true);
+                    } else {
+                        delaysEl.onChange(async (value) => {
+                            ManagerPlugin.delay = value;
+                            await this.manager.savePluginAndExport(plugin.id);
+                            this.reloadShowData();
+                        });
+                    }
                 }
             }
         }
