@@ -291,5 +291,14 @@ export default {
     自检_需要重启_通知: 'Please restart Obsidian for the changes to take effect',
     自检_忽略警告_通知: 'Warning ignored. Using both Obsidian and BPM to manage plugins may cause issues',
     自检_不再提示确认_通知: 'Will not show again. You can re-enable this in settings',
+
+    // Ribbon Management
+    管理器_Ribbon管理_描述: 'Manage ribbon icon order and visibility',
+    Ribbon_标题: 'Ribbon Manager',
+    Ribbon_说明: 'Drag the ≡ handle to reorder, click the eye icon to toggle visibility.',
+    Ribbon_无项目: 'No configurable ribbon icons found.',
+    Ribbon_隐藏: 'Hide',
+    Ribbon_显示: 'Show',
+    Ribbon_未命名: '(Untitled)',
 }
 

@@ -33,6 +33,7 @@ import { installPluginFromGithub, installThemeFromGithub, fetchReleaseVersions, 
 import { BPM_TAG_ID } from "src/repo-resolver";
 import { normalizePath } from "obsidian";
 import { UpdateModal } from "./update-modal";
+import { RibbonModal } from "./ribbon-modal";
 
 
 
@@ -292,8 +293,17 @@ export class ManagerModal extends Modal {
         //             // new ShareModal(this.app, this.manager, plugins).open();
         //         }
         //     }).open();
-        //     // new Notice('功能未完成，敬请期待！');
+        // new Notice('功能未完成，敬请期待！');
         // })
+
+        // [操作行] Ribbon 管理
+        const ribbonButton = new ButtonComponent(actionBar.controlEl);
+        ribbonButton.setIcon("grip-vertical");
+        ribbonButton.setTooltip(this.manager.translator.t("管理器_Ribbon管理_描述"));
+        this.bindLongPressTooltip(ribbonButton.buttonEl, this.manager.translator.t("管理器_Ribbon管理_描述"));
+        ribbonButton.onClick(() => {
+            new RibbonModal(this.app, this.manager).open();
+        });
 
         // [操作行] 插件隐藏
         const hideButton = new ButtonComponent(actionBar.controlEl);
@@ -684,6 +694,10 @@ export class ManagerModal extends Modal {
                 new HideModal(this.app, this.manager, this, plugins).open();
             }));
             menu.addSeparator();
+            // Ribbon 管理
+            menu.addItem((item) => item.setTitle(t("管理器_Ribbon管理_描述")).setIcon("grip-vertical").onClick(() => {
+                new RibbonModal(this.app, this.manager).open();
+            }));
             // 插件设置
             menu.addItem((item) => item.setTitle(t("管理器_插件设置_描述")).setIcon("settings").onClick(() => {
                 this.appSetting.open();

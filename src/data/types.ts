@@ -26,3 +26,11 @@ export interface Delay {
 	name: string;
 	time: number;
 }
+
+export interface RibbonItem {
+    id: string;
+    name: string;
+    icon: string;
+    visible: boolean;
+    order: number;
+}

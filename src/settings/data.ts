@@ -1,4 +1,4 @@
-import { Delay, ManagerPlugin, Tag, Type } from '../data/types';
+import { Delay, ManagerPlugin, Tag, Type, RibbonItem } from '../data/types';
 import { TroubleshootState } from '../troubleshoot/troubleshoot-state';
 
 export interface ManagerSettings {
@@ -62,7 +62,9 @@ export interface ManagerSettings {
     TAGS: Tag[];
     DELAYS: Delay[];
     Plugins: ManagerPlugin[];
-    HIDES: string[],
+    HIDES: string[];
+    // Ribbon 管理设置
+    RIBBON_SETTINGS: RibbonItem[];
 }
 
 export const DEFAULT_SETTINGS: ManagerSettings = {
@@ -103,4 +105,5 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     ],
     Plugins: [],
     HIDES: [],
+    RIBBON_SETTINGS: [],
 }

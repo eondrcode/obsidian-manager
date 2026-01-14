@@ -83,6 +83,10 @@ export default class Manager extends Plugin {
         this.registerObsidianProtocolHandler("BPM-plugin-github", async (params: ObsidianProtocolData) => {
             await this.agreement.parsePluginGithub(params);
         });
+
+        this.app.workspace.onLayoutReady(() => {
+            this.updateRibbonStyles();
+        });
     }
 
     public async onunload() {
@@ -897,5 +901,59 @@ export default class Manager extends Plugin {
         const g = Math.round(255 * f(8));
         const b = Math.round(255 * f(4));
         return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
+    }
+
+    public updateRibbonStyles() {
+        if (!this.settings) return;
+
+        let styleEl = document.getElementById("bpm-ribbon-manager-style");
+        if (!styleEl) {
+            styleEl = document.createElement("style");
+            styleEl.id = "bpm-ribbon-manager-style";
+            document.head.appendChild(styleEl);
+        }
+
+        const items = this.settings.RIBBON_SETTINGS || [];
+        if (items.length === 0) {
+            styleEl.innerHTML = "";
+            return;
+        }
+
+        // Determine platform
+        let baseSelector = "";
+        if (Platform.isMobile) {
+            baseSelector = `.menu-scroll .menu-item`; // Mobile logic from reference
+        } else {
+            baseSelector = `.side-dock-actions div.clickable-icon.side-dock-ribbon-action`;
+        }
+
+        const cssRules = items.map(item => {
+            if (!item.name) return "";
+            const selector = this.generateMultiLineAriaLabelSelector(baseSelector, item.name);
+            if (item.visible) {
+                return `${selector} { order: ${item.order} !important; }`;
+            } else {
+                return `${selector} { display: none !important; }`;
+            }
+        }).join("\n");
+
+        const defaultOrderRule = `${baseSelector} { order: 9999 !important; }`;
+
+        styleEl.innerHTML = `${defaultOrderRule}\n${cssRules}`;
+    }
+
+    private generateMultiLineAriaLabelSelector(baseSelector: string, ariaLabelText: string): string {
+        const lines = ariaLabelText.split("\n").filter(line => line.trim() !== "");
+        if (lines.length <= 1) {
+            const escapedName = ariaLabelText.replace(/"/g, '\\"');
+            return `${baseSelector}[aria-label="${escapedName}"]`;
+        } else {
+            const selectors = lines.map(line => {
+                const trimmedLine = line.trim();
+                const escapedLine = trimmedLine.replace(/"/g, '\\"');
+                return `[aria-label*="${escapedLine}"]`;
+            }).join("");
+            return `${baseSelector}${selectors}`;
+        }
     }
 }

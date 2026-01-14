@@ -1548,3 +1548,142 @@ body.theme-dark {
     gap: 8px;
     flex-wrap: wrap;
 }
+
+/* Ribbon Manager Styles */
+.ribbon-manager-modal .draggable-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 0;
+}
+
+.ribbon-manager-modal .draggable-item {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    padding: 16px 20px !important;
+    background-color: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 12px;
+    user-select: none;
+    margin-bottom: 6px;
+}
+
+.ribbon-manager-modal .draggable-item.dragging {
+    opacity: 0;
+}
+
+.ribbon-manager-modal .draggable-item-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    overflow: hidden;
+}
+
+.ribbon-manager-modal .setting-item-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+.ribbon-manager-modal .setting-item-name {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ribbon-manager-description {
+    color: var(--text-muted);
+    font-size: 0.9em;
+    margin-bottom: 1em;
+}
+
+/* Control Bar */
+.ribbon-manager-modal .ribbon-manager-control-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.ribbon-manager-modal .ribbon-manager-control-visibility,
+.ribbon-manager-modal .ribbon-manager-control-drag {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+}
+
+.ribbon-manager-modal .ribbon-manager-control-visibility:hover,
+.ribbon-manager-modal .ribbon-manager-control-drag:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.ribbon-manager-modal .ribbon-manager-control-drag {
+    cursor: grab;
+    touch-action: none;
+}
+
+.ribbon-manager-modal .ribbon-manager-control-drag:active {
+    cursor: grabbing;
+}
+
+.ribbon-manager-control-visibility button {
+    appearance: none !important;
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ribbon-manager-control-visibility svg,
+.ribbon-manager-control-drag svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Drag Ghost */
+.drag-ghost {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0.9;
+    background-color: var(--background-secondary-alt);
+    border: 1px solid var(--interactive-accent);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    /* match item padding */
+}
+
+.drag-ghost .draggable-item-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Placeholder */
+.drag-gap-placeholder {
+    background-color: var(--background-modifier-hover);
+    border: 1px dashed var(--text-muted);
+    border-radius: 6px;
+    opacity: 0.5;
+    /* margin set in JS */
+}
