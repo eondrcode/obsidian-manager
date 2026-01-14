@@ -84,6 +84,8 @@ export default {
     筛选_分组_全部: 'Groups: All',
     筛选_标签_全部: 'Tags: All',
     筛选_延迟_全部: 'Delay: All',
+    筛选_可更新_描述: 'Has Update',
+
 
     管理器_GITHUB_描述: 'Visit Repository',
     管理器_视频教程_描述: 'Access video tutorials',

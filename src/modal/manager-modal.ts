@@ -496,6 +496,7 @@ export class ManagerModal extends Modal {
             "tagged": this.manager.translator.t("筛选_有标签_描述"),
             "untagged": this.manager.translator.t("筛选_无标签_描述"),
             "noted": this.manager.translator.t("筛选_有笔记_描述"),
+            "has-update": this.manager.translator.t("筛选_可更新_描述"),
         };
         // 过滤器
         const filterDropdown = new DropdownComponent(searchBar.controlEl);
@@ -1077,6 +1078,9 @@ export class ManagerModal extends Modal {
                     break;
                 case "noted":
                     if (!ManagerPlugin.note || ManagerPlugin.note === "") continue; // 新增笔记判断
+                    break;
+                case "has-update":
+                    if (!this.manager.updateStatus[plugin.id]?.hasUpdate) continue; // 仅显示有更新插件
                     break;
                 default:
                     break; // 其他情况显示所有插件
