@@ -28,6 +28,9 @@
 | **Delay Start** | Start plugins with preset delays to reduce startup lag |
 | **Startup Self-Check** | 🆕 Detect plugin management conflicts, prevent Obsidian and BPM from controlling plugins simultaneously |
 
+This feature needs to be enabled in settings, disabled by default.
+![Delay start needs to be enabled manually](docs/img/PixPin_2026-01-14_23-56-04.png)
+
 ### 📦 Batch Management
 | Feature | Description |
 |---------|-------------|
@@ -43,6 +46,10 @@
 | **Groups & Tags** | Flexible categorization, BPM installs auto-tagged `bpm-install` |
 
 ### 📥 GitHub Installation
+
+1. ![Open download panel from BPM](docs/img/PixPin_2026-01-14_23-52-00.png)
+2. ![Download function panel](docs/img/PixPin_2026-01-14_23-52-35.png)
+
 | Feature | Description |
 |---------|-------------|
 | **Repo Install** | Supports `user/repo` or full URL |
@@ -50,11 +57,28 @@
 | **Jump to Repo** | One-click jump to GitHub from plugin card |
 
 ### 🔍 Conflict Troubleshooter 🆕
+
+![Conflict Troubleshooter](docs/img/PixPin_2026-01-14_23-54-40.png)
+
 | Feature | Description |
 |---------|-------------|
 | **Binary Search** | Quickly locate problematic plugins or conflict pairs |
 | **Wizard-style UI** | Draggable floating window, test while troubleshooting |
 | **Generate Report** | Export Markdown troubleshooting report |
+
+
+
+### ↕ Customize Ribbon Bar 🆕
+
+If you are annoyed by the ribbon icons changing order every time you start Obsidian due to BPM's delayed startup, please use this feature.
+
+1. ![Open Ribbon Sort Function from BPM Panel](docs/img/PixPin_2026-01-14_23-55-10.png)
+2. ![Ribbon Sort Function Panel](docs/img/PixPin_2026-01-14_23-51-05.png)
+
+| Feature | Description |
+|---------|-------------|
+| **Show/Hide Ribbon Icons** | Customize the visibility of each icon on the ribbon bar |
+| **Customize Ribbon Order** | Customize the order of each icon on the ribbon bar by dragging |
 
 ### 📱 Mobile Adaptation
 | Feature | Description |
@@ -202,7 +226,7 @@ Body section: You can edit or replace this content.
 | Android | ✅ |
 | iOS / iPadOS | ✅ |
 
-Automatically switches to mobile layout based on platform, desktop UI remains unchanged.
+The plugin automatically switches between desktop/mobile layouts based on the platform.
 
 ---
 
@@ -212,6 +236,10 @@ Issues and PRs are welcome!
 
 - **Bug Reports**: Please include logs and reproduction steps
 - **Feature Requests**: Consider opening a discussion or issue first
+
+## 🙏 Acknowledgments
+
+- The ribbon sorting feature is inspired by [Obsidian-ribbon-sort](https://github.com/zenozero-dev/obsidian-ribbon-sort)
 
 ---
 
