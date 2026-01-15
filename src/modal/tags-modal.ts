@@ -2,7 +2,7 @@ import { App, ExtraButtonComponent, Modal, Notice, Setting } from 'obsidian';
 import { ManagerSettings } from '../settings/data';
 import Manager from 'main';
 import { ManagerModal } from './manager-modal';
-import { ManagerPlugin } from 'src/data/types';
+import { ManagerPlugin, BPM_IGNORE_TAG } from 'src/data/types';
 import Commands from 'src/command';
 import { BPM_TAG_ID } from 'src/repo-resolver';
 
@@ -51,7 +51,6 @@ export class TagsModal extends Modal {
             if (this.selected == '' || this.selected != tag.id) {
                 itemEl.addExtraButton(cb => cb
                     .setIcon('settings')
-                    .setDisabled(tag.id === BPM_TAG_ID)
                     .onClick(() => {
                         this.selected = tag.id;
                         this.reloadShowData();
@@ -59,7 +58,9 @@ export class TagsModal extends Modal {
                 )
                 itemEl.addToggle(cb => cb
                     .setValue(this.managerPlugin.tags.includes(tag.id))
-                    .setDisabled(tag.id === BPM_TAG_ID)
+                    .setDisabled(tag.id === BPM_TAG_ID) // BPM 标签不可手动移除，但 Ignore 标签可以手动移除? 不，Ignore 标签应该可以自由加减
+                    // 这里的 setDisabled 是指能不能给这个插件加上这个标签。BPM_TAG_ID 是系统自动加的，用户不能动。
+                    // BPM_IGNORE_TAG 是用户手动加的，所以这里不能 Disable。
                     .onChange(async (isChecked) => {
                         if (isChecked) {
                             // 添加开启的标签
@@ -80,10 +81,6 @@ export class TagsModal extends Modal {
                 tempEl.appendChild(tagEl);
             }
             if (this.selected != '' && this.selected == tag.id) {
-                if (tag.id === BPM_TAG_ID) {
-                    this.selected = '';
-                    continue;
-                }
                 itemEl.addColorPicker(cb => cb
                     .setValue(tag.color)
                     .onChange((value) => {
@@ -102,8 +99,11 @@ export class TagsModal extends Modal {
                 )
                 itemEl.addExtraButton(cb => cb
                     .setIcon('trash-2')
-                    .setDisabled(tag.id === BPM_TAG_ID)
                     .onClick(() => {
+                        if (tag.id === BPM_TAG_ID || tag.id === BPM_IGNORE_TAG) {
+                            new Notice(this.manager.translator.t('设置_标签设置_通知_预设不可删除'));
+                            return;
+                        }
                         const hasTestTag = this.settings.Plugins.some(plugin => plugin.tags && plugin.tags.includes(tag.id));
                         if (!hasTestTag) {
                             this.manager.settings.TAGS = this.manager.settings.TAGS.filter(t => t.id !== tag.id);
@@ -155,7 +155,7 @@ export class TagsModal extends Modal {
                 .setIcon('plus')
                 .onClick(() => {
                     const containsId = this.manager.settings.TAGS.some(tag => tag.id === id);
-                    if (!containsId && id !== '' && id !== BPM_TAG_ID) {
+                    if (!containsId && id !== '' && id !== BPM_TAG_ID && id !== BPM_IGNORE_TAG) {
                         if (color === '') color = this.pickDistinctColor(this.settings.TAGS.map(t => t.color));
                         this.manager.settings.TAGS.push({ id, name, color });
                         this.manager.saveSettings();

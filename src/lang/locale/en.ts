@@ -21,14 +21,14 @@ export default {
 
     导出_正文提示: 'Body section: you can edit or replace this content.',
 
-    设置_基础设置_隐藏BPM标签_标题: 'Hide “bpm install” tag',
-    设置_基础设置_隐藏BPM标签_描述: 'Hide the auto-added bpm install tag in the list (only hide display, keep mark).',
+
     设置_基础设置_导出目录_标题: 'Export directory for plugin info',
     设置_基础设置_导出目录_描述: 'Relative vault path to export BPM plugin info (for Base). Changes apply when clicking “Save settings”.',
     设置_基础设置_自动接管_标题: 'Auto Takeover Plugins',
     设置_基础设置_自动接管_描述: 'Automatically takeover new plugins installed from the market (enable and manage via BPM), suppressing the takeover prompt.',
     提示_BPM忽略_标题: 'BPM Ignore',
     提示_BPM忽略_描述: 'This plugin is tagged with "bpm-ignore". BPM will not manage its status or delay.',
+    提示_BPM忽略_操作拦截: 'This plugin is tagged with "bpm-ignore", operations are disabled in BPM.',
     设置_基础设置_导出目录_示例: 'e.g., BPM-Export',
 
     设置_基础设置_导出提示_标题: 'Frontmatter conventions',
@@ -168,6 +168,8 @@ export default {
     设置_基础设置_延时启动_描述: 'Enabling the delayed startup feature can optimize the loading order, but please note that this may cause compatibility issues with some plugins.',
     设置_基础设置_淡化插件_标题: 'Fade Plugins',
     设置_基础设置_淡化插件_描述: 'Provide a visual fade effect for disabled plugins to clearly distinguish between enabled and disabled plugins.',
+    设置_基础设置_隐藏BPM标签_标题: 'Hide Preset Tags (Install/Ignore)',
+    设置_基础设置_隐藏BPM标签_描述: 'Hides automatically added bpm-install and bpm-ignore tags from the list.',
     设置_基础设置_启动检查更新_标题: 'Check updates on startup',
     设置_基础设置_启动检查更新_描述: 'When BPM opens, automatically check for plugin updates and briefly show the count.',
 
@@ -193,6 +195,7 @@ export default {
     设置_标签设置_通知_二: '[Tag] ID already exists or is empty',
     设置_标签设置_通知_三: '[Tag] Deleted successfully',
     设置_标签设置_通知_四: '[Tag] Deletion failed, plugins exist under this tag',
+    设置_标签设置_通知_预设不可删除: 'System preset tags cannot be deleted',
 
     设置_提示_一_标题: 'If You Encounter Conflicts with Other Plugins',
     设置_提示_一_描述: 'Due to limited capabilities, I cannot fix this issue. Please disable delayed startup to resolve all conflict issues.',
@@ -307,5 +310,6 @@ export default {
     Ribbon_隐藏: 'Hide',
     Ribbon_显示: 'Show',
     Ribbon_未命名: '(Untitled)',
+    标签_BPM忽略_名称: 'BPM Ignored',
 }
 

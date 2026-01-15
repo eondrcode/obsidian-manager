@@ -1428,7 +1428,7 @@ export class ManagerModal extends Modal {
             ManagerPlugin.tags.map((id: string) => {
                 const item = this.settings.TAGS.find((item) => item.id === id);
                 if (item) {
-                    if (item.id === BPM_TAG_ID && this.settings.HIDE_BPM_TAG) {
+                    if ((item.id === BPM_TAG_ID || item.id === BPM_IGNORE_TAG) && this.settings.HIDE_BPM_TAG) {
                         // skip render
                     } else {
                         const tag = this.manager.createTag(item.name, item.color, this.settings.TAG_STYLE);
@@ -1603,96 +1603,114 @@ export class ManagerModal extends Modal {
                     toggleSwitch.setValue(true);
                     toggleSwitch.setDisabled(true);
                     toggleSwitch.setTooltip(this.manager.translator.t("管理器_自身不可禁用_提示"));
-                } else if (isBpmIgnored) {
-                    toggleSwitch.setDisabled(true);
-                    toggleSwitch.setTooltip(this.manager.translator.t("提示_BPM忽略_描述"));
-                } else toggleSwitch.onChange(async () => {
-                    const targetEnabled = toggleSwitch.getValue();
-                    const removeByFilter = (this.filter === "enabled" && !targetEnabled) || (this.filter === "disabled" && targetEnabled);
-                    const updateCardUI = () => {
-                        if (this.settings.FADE_OUT_DISABLED_PLUGINS) {
-                            itemEl.settingEl.toggleClass("inactive", !targetEnabled);
+                } else {
+                    let isRestoring = false;
+                    if (isBpmIgnored) toggleSwitch.setTooltip(this.manager.translator.t("提示_BPM忽略_描述"));
+                    toggleSwitch.onChange(async () => {
+                        if (isRestoring) return;
+                        const targetEnabled = toggleSwitch.getValue();
+                        if (isBpmIgnored) {
+                            new Notice(this.manager.translator.t("提示_BPM忽略_操作拦截"));
+                            isRestoring = true;
+                            toggleSwitch.setValue(!targetEnabled);
+                            isRestoring = false;
+                            return;
                         }
-                        // 同步“打开设置”按钮（启用后出现，禁用后隐藏）
-                        if (openPluginSetting) {
-                            openPluginSetting.setDisabled(!targetEnabled);
-                            if (openPluginSettingEl) openPluginSettingEl.style.display = targetEnabled ? "" : "none";
-                        }
-                        // 按需从当前视图移除，避免全量重绘
-                        if (removeByFilter) {
-                            itemEl.settingEl.detach();
-                        }
-                        // 更新底部统计
-                        this.footEl.innerHTML = this.count();
-                    };
-                    if (this.settings.DELAY) {
-                        if (targetEnabled) {
-                            if (ManagerPlugin) ManagerPlugin.enabled = true;
-                            await this.manager.savePluginAndExport(plugin.id);
-                            await this.appPlugins.enablePlugin(plugin.id);
+                        const removeByFilter = (this.filter === "enabled" && !targetEnabled) || (this.filter === "disabled" && targetEnabled);
+                        const updateCardUI = () => {
+                            if (this.settings.FADE_OUT_DISABLED_PLUGINS) {
+                                itemEl.settingEl.toggleClass("inactive", !targetEnabled);
+                            }
+                            // 同步“打开设置”按钮（启用后出现，禁用后隐藏）
+                            if (openPluginSetting) {
+                                openPluginSetting.setDisabled(!targetEnabled);
+                                if (openPluginSettingEl) openPluginSettingEl.style.display = targetEnabled ? "" : "none";
+                            }
+                            // 按需从当前视图移除，避免全量重绘
+                            if (removeByFilter) {
+                                itemEl.settingEl.detach();
+                            }
+                            // 更新底部统计
+                            this.footEl.innerHTML = this.count();
+                        };
+                        if (this.settings.DELAY) {
+                            if (targetEnabled) {
+                                if (ManagerPlugin) ManagerPlugin.enabled = true;
+                                await this.manager.savePluginAndExport(plugin.id);
+                                await this.appPlugins.enablePlugin(plugin.id);
+                            } else {
+                                if (ManagerPlugin) ManagerPlugin.enabled = false;
+                                await this.manager.savePluginAndExport(plugin.id);
+                                await this.appPlugins.disablePlugin(plugin.id);
+                            }
                         } else {
-                            if (ManagerPlugin) ManagerPlugin.enabled = false;
+                            if (targetEnabled) {
+                                if (ManagerPlugin) ManagerPlugin.enabled = true;
+                                await this.appPlugins.enablePluginAndSave(plugin.id);
+                            } else {
+                                if (ManagerPlugin) ManagerPlugin.enabled = false;
+                                await this.appPlugins.disablePluginAndSave(plugin.id);
+                            }
                             await this.manager.savePluginAndExport(plugin.id);
-                            await this.appPlugins.disablePlugin(plugin.id);
                         }
-                    } else {
-                        if (targetEnabled) {
-                            if (ManagerPlugin) ManagerPlugin.enabled = true;
-                            await this.appPlugins.enablePluginAndSave(plugin.id);
-                        } else {
-                            if (ManagerPlugin) ManagerPlugin.enabled = false;
-                            await this.appPlugins.disablePluginAndSave(plugin.id);
-                        }
+                        Commands(this.app, this.manager);
+                        updateCardUI();
+                    });
+                }
+                //
+                if (this.editorMode) {
+                    // [按钮] 还原内容
+                    const reloadButton = new ExtraButtonComponent(itemEl.controlEl);
+                    reloadButton.setIcon("refresh-ccw");
+                    reloadButton.setTooltip(this.manager.translator.t("管理器_还原内容_描述"));
+                    reloadButton.onClick(async () => {
+                        if (!ManagerPlugin) return; // Fix TS2532
+                        ManagerPlugin.name = plugin.name;
+                        ManagerPlugin.desc = plugin.description;
+                        ManagerPlugin.group = "";
+                        ManagerPlugin.delay = "";
+                        ManagerPlugin.tags = [];
                         await this.manager.savePluginAndExport(plugin.id);
-                    }
-                    Commands(this.app, this.manager);
-                    updateCardUI();
-                });
-            }
-            //
-            if (this.editorMode) {
-                // [按钮] 还原内容
-                const reloadButton = new ExtraButtonComponent(itemEl.controlEl);
-                reloadButton.setIcon("refresh-ccw");
-                reloadButton.setTooltip(this.manager.translator.t("管理器_还原内容_描述"));
-                reloadButton.onClick(async () => {
-                    ManagerPlugin.name = plugin.name;
-                    ManagerPlugin.desc = plugin.description;
-                    ManagerPlugin.group = "";
-                    ManagerPlugin.delay = "";
-                    ManagerPlugin.tags = [];
-                    await this.manager.savePluginAndExport(plugin.id);
-                    this.reloadShowData();
-                });
-                // [编辑] 延迟
-                if (this.settings.DELAY) {
-                    const delays = this.settings.DELAYS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = item.name; return acc; }, { "": this.manager.translator.t("通用_无延迟_文本"), });
-                    const delaysEl = new DropdownComponent(itemEl.controlEl);
-                    delaysEl.addOptions(delays);
-                    delaysEl.addOptions(delays);
-                    delaysEl.setValue(ManagerPlugin.delay);
+                        this.reloadShowData();
+                    });
+                    // [编辑] 延迟
+                    if (this.settings.DELAY) {
+                        const delays = this.settings.DELAYS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = item.name; return acc; }, { "": this.manager.translator.t("通用_无延迟_文本"), });
+                        const delaysEl = new DropdownComponent(itemEl.controlEl);
+                        delaysEl.addOptions(delays);
+                        delaysEl.addOptions(delays);
+                        delaysEl.setValue(ManagerPlugin?.delay || "");
 
-                    const pSettings = this.settings.Plugins.find(p => p.id === plugin.id);
-                    const isIgnored = pSettings?.tags?.includes(BPM_IGNORE_TAG);
+                        const pSettings = this.settings.Plugins.find(p => p.id === plugin.id);
+                        const isIgnored = pSettings?.tags?.includes(BPM_IGNORE_TAG);
 
-                    if (isIgnored) {
-                        delaysEl.setDisabled(true);
-                    } else {
-                        delaysEl.onChange(async (value) => {
-                            ManagerPlugin.delay = value;
+                        let isRestoring = false;
+                        delaysEl.onChange(async (val) => {
+                            if (!ManagerPlugin) return; // Fix lint
+                            if (isRestoring) return;
+
+                            if (isIgnored) {
+                                new Notice(this.manager.translator.t("提示_BPM忽略_操作拦截"));
+                                isRestoring = true;
+                                delaysEl.setValue(ManagerPlugin.delay || "");
+                                isRestoring = false;
+                                return;
+                            }
+                            ManagerPlugin.delay = val;
                             await this.manager.savePluginAndExport(plugin.id);
                             this.reloadShowData();
                         });
+
                     }
                 }
             }
+            if (this.settings.DEBUG) {
+                const cards = Array.from(this.contentEl.querySelectorAll(".manager-item"));
+                console.log("[BPM] render showData after loop, cards:", cards.length, "ids:", cards.map(el => el.getAttribute("data-plugin-id")).filter(Boolean).join(","));
+            }
+            // 计算页尾
+            this.footEl.innerHTML = this.count();
         }
-        if (this.settings.DEBUG) {
-            const cards = Array.from(this.contentEl.querySelectorAll(".manager-item"));
-            console.log("[BPM] render showData after loop, cards:", cards.length, "ids:", cards.map(el => el.getAttribute("data-plugin-id")).filter(Boolean).join(","));
-        }
-        // 计算页尾
-        this.footEl.innerHTML = this.count();
     }
 
     public count(): string {

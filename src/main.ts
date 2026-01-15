@@ -7,7 +7,7 @@ import Commands from './command';
 import Agreement from 'src/agreement';
 import { RepoResolver, ensureBpmTagExists, BPM_TAG_ID } from './repo-resolver';
 import { normalizePath, TFile, stringifyYaml, parseYaml, EventRef, Notice, Platform, requestUrl } from 'obsidian';
-import { ManagerPlugin } from './data/types';
+import { ManagerPlugin, BPM_IGNORE_TAG } from './data/types';
 import { runMigrations } from './migrations';
 import { fetchReleaseVersions, installPluginFromGithub, ReleaseVersion, sanitizeRepo } from './github-install';
 import { performSelfCheck } from './self-check';
@@ -61,6 +61,17 @@ export default class Manager extends Plugin {
         ensureBpmTagExists(this);
         this.ensureBpmTagAndRecords();
         this.ensureSelfPluginRecord();
+
+        // 确保 BPM Ignore 标签存在
+        if (!this.settings.TAGS.some(t => t.id === BPM_IGNORE_TAG)) {
+            this.settings.TAGS.push({
+                id: BPM_IGNORE_TAG,
+                name: this.translator.t("标签_BPM忽略_名称") || "BPM Ignored",
+                color: "#6c757d" // 灰色
+            });
+            await this.saveSettings();
+        }
+
         this.repoResolver = new RepoResolver(this);
         // 初始化侧边栏图标
         this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), () => { this.managerModal = new ManagerModal(this.app, this); this.managerModal.open(); });
@@ -74,9 +85,6 @@ export default class Manager extends Plugin {
         if (this.settings.EXPORT_DIR) this.exportAllPluginNotes();
         this.startupCheckForUpdates();
 
-        // 启动自检
-        performSelfCheck(this);
-
         this.registerObsidianProtocolHandler("BPM-plugin-install", async (params: ObsidianProtocolData) => {
             await this.agreement.parsePluginInstall(params);
         });
@@ -89,6 +97,10 @@ export default class Manager extends Plugin {
             if (Platform.isMobile) {
                 this.setupMenuObserver();
             }
+            // 延迟启动自检，确保 Obsidian 初始化完成，避免自动接管被覆盖
+            setTimeout(() => {
+                performSelfCheck(this);
+            }, 2000);
         });
     }
 

@@ -1,6 +1,7 @@
 import BaseSetting from "../base-setting";
 import { Notice, Setting } from "obsidian";
 import { BPM_TAG_ID } from "src/repo-resolver";
+import { BPM_IGNORE_TAG } from "src/data/types";
 
 export default class ManagerTag extends BaseSetting {
     main(): void {
@@ -33,7 +34,7 @@ export default class ManagerTag extends BaseSetting {
                 .setIcon('plus')
                 .onClick(() => {
                     const containsId = this.manager.settings.TAGS.some(tag => tag.id === id);
-                    if (!containsId && id !== '') {
+                    if (!containsId && id !== '' && id !== BPM_TAG_ID && id !== BPM_IGNORE_TAG) {
                         if (color === '') color = this.manager.generateAutoColor(this.manager.settings.TAGS.map(t => t.color));
                         this.manager.settings.TAGS.push({ id, name, color });
                         this.manager.saveSettings();
@@ -48,9 +49,7 @@ export default class ManagerTag extends BaseSetting {
             const item = new Setting(this.containerEl)
             item.setClass('manager-setting-tag__item')
             // item.setName(`${index + 1}. `)
-            const isBpmTag = tag.id === BPM_TAG_ID;
             item.addColorPicker(cb => cb
-                .setDisabled(isBpmTag)
                 .setValue(tag.color)
                 .onChange((value) => {
                     tag.color = value;
@@ -59,7 +58,6 @@ export default class ManagerTag extends BaseSetting {
                 })
             );
             item.addText(cb => cb
-                .setDisabled(isBpmTag)
                 .setValue(tag.name)
                 .onChange((value) => {
                     tag.name = value;
@@ -70,8 +68,11 @@ export default class ManagerTag extends BaseSetting {
             );
             item.addExtraButton(cb => cb
                 .setIcon('trash-2')
-                .setDisabled(isBpmTag)
                 .onClick(() => {
+                    if (tag.id === BPM_TAG_ID || tag.id === BPM_IGNORE_TAG) {
+                        new Notice(this.manager.translator.t('设置_标签设置_通知_预设不可删除'));
+                        return;
+                    }
                     const hasTestTag = this.settings.Plugins.some(plugin => plugin.tags && plugin.tags.includes(tag.id));
                     if (!hasTestTag) {
                         this.manager.settings.TAGS = this.manager.settings.TAGS.filter(t => t.id !== tag.id);
