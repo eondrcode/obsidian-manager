@@ -11,6 +11,8 @@ import { ManagerPlugin, BPM_IGNORE_TAG } from './data/types';
 import { runMigrations } from './migrations';
 import { fetchReleaseVersions, installPluginFromGithub, ReleaseVersion, sanitizeRepo } from './github-install';
 import { performSelfCheck } from './self-check';
+import { SystemRibbonManager } from './manager/system-ribbon-manager';
+import { RibbonItem } from './data/types';
 
 type UpdateSource = 'official' | 'github' | 'unknown';
 interface UpdateStatus {
@@ -35,12 +37,19 @@ export default class Manager extends Plugin {
 
     public agreement: Agreement;
     public repoResolver: RepoResolver;
+    public systemRibbonManager: SystemRibbonManager;
     private exportWatcher: EventRef | null = null;
     private exportWatcherPaused = false;
     private exportWriting = false;
     private toggleNotice: Notice | null = null;
     public updateStatus: Record<string, UpdateStatus> = {};
     private updateProgressNotice: Notice | null = null;
+
+
+    // 拖拽隐藏功能相关状态
+    private isRibbonDragging = false;
+    private draggedRibbonItem: HTMLElement | null = null;
+    private dragObserverCleanup: (() => void) | null = null;
 
     public async onload() {
         // @ts-ignore
@@ -73,6 +82,14 @@ export default class Manager extends Plugin {
         }
 
         this.repoResolver = new RepoResolver(this);
+
+        // 初始化原生 Ribbon 管理器 (始终启用)
+        this.systemRibbonManager = new SystemRibbonManager(this.app, this);
+        this.systemRibbonManager.startWatch(async () => {
+            const { orderedIds, hiddenStatus } = await this.systemRibbonManager.load();
+            this.syncRibbonConfig(orderedIds, hiddenStatus);
+        });
+
         // 初始化侧边栏图标
         this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), () => { this.managerModal = new ManagerModal(this.app, this); this.managerModal.open(); });
         // 初始化设置界面
@@ -96,6 +113,9 @@ export default class Manager extends Plugin {
             this.updateRibbonStyles();
             if (Platform.isMobile) {
                 this.setupMenuObserver();
+            } else {
+                // 仅桌面端启用“拖出即隐藏”功能
+                this.setupDragToHideObserver();
             }
             // 延迟启动自检，确保 Obsidian 初始化完成，避免自动接管被覆盖
             setTimeout(() => {
@@ -105,10 +125,128 @@ export default class Manager extends Plugin {
     }
 
     public async onunload() {
+        if (this.dragObserverCleanup) {
+            this.dragObserverCleanup();
+            this.dragObserverCleanup = null;
+        }
+
         if (this.settings.DELAY) this.disableDelaysForAllPlugins();
         if (this.exportWatcher) this.app.vault.offref(this.exportWatcher);
         if (this.menuObserver) {
             this.menuObserver.disconnect();
+        }
+
+        // 尝试在退出时保存配置到原生文件
+        const items = this.settings.RIBBON_SETTINGS;
+        const orderedIds = items.map(i => i.id);
+        const hiddenStatus: Record<string, boolean> = {};
+        items.forEach(i => hiddenStatus[i.id] = !i.visible);
+        this.systemRibbonManager.save(orderedIds, hiddenStatus).catch(err => console.error("Failed to save on unload", err));
+
+        this.systemRibbonManager?.stopWatch();
+    }
+
+    private setupDragToHideObserver() {
+        const handlePointerDown = (e: PointerEvent) => {
+            const target = e.target as HTMLElement;
+            // 检查是否是 Ribbon Icon
+            if (target && target.closest && target.closest('.side-dock-ribbon-action')) {
+                this.isRibbonDragging = true;
+                this.draggedRibbonItem = target.closest('.side-dock-ribbon-action') as HTMLElement;
+            }
+        };
+
+        const handlePointerUp = async (e: PointerEvent) => {
+            if (!this.isRibbonDragging || !this.draggedRibbonItem) {
+                this.isRibbonDragging = false;
+                this.draggedRibbonItem = null;
+                return;
+            }
+
+            // 获取 Ribbon 容器位置
+            const container = document.querySelector('.side-dock-actions');
+            if (container) {
+                const rect = container.getBoundingClientRect();
+                // 允许一定的误差范围（缓冲区的宽度/高度），可以设大一点，比如 50px
+                const buffer = 50;
+
+                // 判断是否明显拖到了外部
+                // 只要鼠标松开的位置超出了 Ribbon 容器的范围，就视为删除
+                const isOutside = (
+                    e.clientX > rect.right + buffer ||
+                    e.clientX < rect.left - buffer || // 左侧通常不可能，除非浮动
+                    e.clientY < rect.top - buffer ||  // 向上拖出
+                    e.clientY > rect.bottom + buffer  // 向下拖出 (Settings 区域通常接着 Actions，所以向下拖可能还在侧边栏内，这里需要 careful)
+                );
+
+                // 如果向下拖到了 Settings 按钮上，可能会误判。
+                // 最好是检测是否拖到了 编辑器区域 (main-content).
+                // 简单点: x > rect.right + buffer 实际上是最常见的“拖出”行为。
+
+                if (isOutside) {
+                    const label = this.draggedRibbonItem.getAttribute('aria-label');
+                    if (label) {
+                        await this.hideRibbonItemByLabel(label);
+                    }
+                }
+            }
+
+            this.isRibbonDragging = false;
+            this.draggedRibbonItem = null;
+        };
+
+        // 使用 capture 捕获事件，确保不被 Obsidian 内部拦截
+        document.addEventListener('pointerdown', handlePointerDown, true);
+        document.addEventListener('pointerup', handlePointerUp, true);
+
+        this.dragObserverCleanup = () => {
+            document.removeEventListener('pointerdown', handlePointerDown, true);
+            document.removeEventListener('pointerup', handlePointerUp, true);
+        };
+    }
+
+    private async hideRibbonItemByLabel(label: string) {
+        // 查找对应的 Item ID
+        const items = this.settings.RIBBON_SETTINGS;
+        const targetItem = items.find(i => i.name === label); // name 通常就是 label
+
+        let targetId = targetItem?.id;
+
+        // 如果 settings 里还没同步名字，尝试反查 app.workspace.leftRibbon
+        if (!targetId) {
+            // @ts-ignore
+            const ribbonItems = this.app.workspace.leftRibbon?.items || [];
+            // @ts-ignore
+            const nativeItem = ribbonItems.find((i: any) => i.title === label || i.name === label);
+            if (nativeItem) targetId = nativeItem.id;
+        }
+
+        if (targetId) {
+            console.log(`[BPM] Drag-to-hide triggered for: ${label} (${targetId})`);
+
+            // 执行隐藏逻辑
+            const targetConfig = this.settings.RIBBON_SETTINGS.find(i => i.id === targetId);
+            if (targetConfig) {
+                if (!targetConfig.visible) return; // 已经是隐藏的
+                targetConfig.visible = false;
+            } else {
+                // 如果是没管理的，自动加入并隐藏
+                // ... 这比较复杂，通常 ribbon manager 应该已经同步了
+                return;
+            }
+
+            // 保存更改
+            await this.saveSettings();
+
+            const orderedIds = this.settings.RIBBON_SETTINGS.map(i => i.id);
+            const hiddenStatus: Record<string, boolean> = {};
+            this.settings.RIBBON_SETTINGS.forEach(i => hiddenStatus[i.id] = !i.visible);
+
+            await this.systemRibbonManager.save(orderedIds, hiddenStatus);
+            this.applyRibbonConfigToMemory(orderedIds, hiddenStatus);
+            this.updateRibbonStyles();
+
+            new Notice(this.translator.t("Ribbon_已隐藏") + `: ${label}`);
         }
     }
 
@@ -947,22 +1085,18 @@ export default class Manager extends Plugin {
             baseSelector = `.side-dock-actions div.clickable-icon.side-dock-ribbon-action`;
         }
 
+        // 只生成显隐控制 CSS，不再生成 order
+        // 排序改由 DOM 操作完成，以兼容原生拖动
         const cssRules = items.map(item => {
             if (!item.name) return "";
-            const selector = this.generateMultiLineAriaLabelSelector(baseSelector, item.name);
-            if (item.visible) {
-                // 移动端使用 DOM 排序，不需要 CSS order
-                // 桌面端继续使用 CSS order
-                return isMobile ? "" : `${selector} { order: ${item.order} !important; }`;
-            } else {
+            if (!item.visible) {
+                const selector = this.generateMultiLineAriaLabelSelector(baseSelector, item.name);
                 return `${selector} { display: none !important; }`;
             }
-        }).join("\n");
+            return "";
+        }).filter(rule => rule !== "").join("\n");
 
-        const defaultOrderRule = isMobile ? "" : `${baseSelector} { order: 9999 !important; }`;
-        const containerRule = ""; // No more flex hack for mobile
-
-        styleEl.innerHTML = `${containerRule}\n${defaultOrderRule}\n${cssRules}`;
+        styleEl.innerHTML = cssRules;
     }
 
     private generateMultiLineAriaLabelSelector(baseSelector: string, ariaLabelText: string): string {
@@ -1098,5 +1232,117 @@ export default class Manager extends Plugin {
             itemsWithOrder.forEach(({ item }) => fragment.appendChild(item));
             containerElement.appendChild(fragment);
         }
+    }
+
+
+
+    // 将配置应用到 Obsidian 的内存对象中 (Hack)
+    // 这能确保 Obsidian 在退出保存时，写入的是我们期望的状态，防止覆盖我们的修改
+    applyRibbonConfigToMemory(orderedIds: string[], hiddenStatus: Record<string, boolean>) {
+        // @ts-ignore
+        const ribbon = this.app.workspace.leftRibbon as any;
+        if (!ribbon || !ribbon.items || !Array.isArray(ribbon.items)) return;
+
+        const items = ribbon.items;
+
+        // 1. 更新 hidden 状态
+        items.forEach((item: any) => {
+            if (item.id && hiddenStatus.hasOwnProperty(item.id)) {
+                // 直接修改内存对象的 hidden 属性
+                item.hidden = hiddenStatus[item.id];
+            }
+        });
+
+        // 2. 同步顺序
+        // 创建一个 id -> index 的映射
+        const orderMap = new Map<string, number>();
+        orderedIds.forEach((id, index) => orderMap.set(id, index));
+
+        // 原地排序 items 数组
+        items.sort((a: any, b: any) => {
+            const indexA = orderMap.has(a.id) ? orderMap.get(a.id)! : 9999;
+            const indexB = orderMap.has(b.id) ? orderMap.get(b.id)! : 9999;
+            return indexA - indexB;
+        });
+
+        // 3. 同步 DOM 顺序 (仅桌面端，且仅当容器存在时)
+        // 这样可以恢复原生的拖动排序功能，不再依赖 CSS order
+        if (!Platform.isMobile) {
+            const container = document.querySelector('.side-dock-actions');
+            if (container) {
+                items.forEach((item: any) => {
+                    // 确保元素存在且当前就在容器中
+                    if (item.buttonEl && container.contains(item.buttonEl)) {
+                        container.appendChild(item.buttonEl);
+                    }
+                });
+            }
+        }
+
+        console.log("[BPM] Applied ribbon config to memory and DOM.", items);
+    }
+
+    public async syncRibbonConfig(orderedIds: string[], hiddenStatus: Record<string, boolean>) {
+        // 更新本地设置以匹配原生配置
+        const currentItems = this.settings.RIBBON_SETTINGS || [];
+        const itemMap = new Map(currentItems.map(i => [i.id, i]));
+
+        const newItems: RibbonItem[] = [];
+
+        orderedIds.forEach((id, index) => {
+            let item = itemMap.get(id);
+            if (!item) {
+                // 尝试从 workspace 查找名称，或者使用 ID
+                // @ts-ignore
+                const nativeItem = this.app.workspace.leftRibbon?.items?.find((i: any) => i.id === id);
+                const name = nativeItem?.title || nativeItem?.ariaLabel || id;
+                const icon = nativeItem?.icon || "help-circle";
+                item = {
+                    id,
+                    name,
+                    icon,
+                    visible: !hiddenStatus[id],
+                    order: index
+                };
+            } else {
+                item.order = index;
+                item.visible = !hiddenStatus[id];
+            }
+            newItems.push(item);
+        });
+
+
+
+        // 那些在 orderedIds 里没有的项？可能是被完全删除了，或者尚未加载。
+        // 保留它们，放在最后？
+        // 暂时只同步文件里存在的。
+        // NEW: 检查 app.workspace.leftRibbon.items 是否有遗漏的（即原生文件里还没记录的新插件）
+        // @ts-ignore
+        const memoryItems = this.app.workspace.leftRibbon?.items || [];
+        const seenIds = new Set(orderedIds);
+
+        memoryItems.forEach((mItem: any) => {
+            if (!seenIds.has(mItem.id)) {
+                // 这是一个新出现的项，追加到末尾
+                const item: RibbonItem = {
+                    id: mItem.id,
+                    name: mItem.title || mItem.ariaLabel || mItem.id,
+                    icon: mItem.icon || "help-circle",
+                    visible: true, // 默认为显示
+                    order: newItems.length
+                };
+                newItems.push(item);
+            }
+        });
+
+        this.settings.RIBBON_SETTINGS = newItems;
+        // 不需要 saveSettings，因为这只是内存状态同步？
+        // 最好 save 一下，以免下次启动加载旧的 data.json
+        await this.saveSettings();
+
+        // 如果 RibbonModal 打开着，可能需要通知它刷新？
+        // 目前 RibbonModal 没有注册全局事件。
+        // 可以在 RibbonModal 内部实现轮询或事件监听。
+        // 或者在这里不做任何 UI 刷新，仅仅更新数据。
     }
 }

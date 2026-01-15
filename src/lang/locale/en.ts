@@ -306,10 +306,13 @@ export default {
     管理器_Ribbon管理_描述: 'Manage ribbon icon order and visibility',
     Ribbon_标题: 'Ribbon Manager',
     Ribbon_说明: 'Drag the ≡ handle to reorder, click the eye icon to toggle visibility.',
+    Ribbon_需重载_提示: 'Some enabled icons need an app reload to appear because they were hidden at startup.',
+    Ribbon_重载_按钮: 'Reload App',
+    Ribbon_原生模式_标签: "Native Sync Mode",
+    Ribbon_已隐藏: "Hidden Ribbon Icon",
+    标签_BPM忽略_名称: 'BPM Ignored',
     Ribbon_无项目: 'No configurable ribbon icons found.',
     Ribbon_隐藏: 'Hide',
     Ribbon_显示: 'Show',
     Ribbon_未命名: '(Untitled)',
-    标签_BPM忽略_名称: 'BPM Ignored',
 }
-

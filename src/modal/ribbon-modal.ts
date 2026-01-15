@@ -21,83 +21,18 @@ export class RibbonModal extends Modal {
         this.handleDragEnd = this.handleDragEnd.bind(this);
     }
 
-    onOpen() {
+    async onOpen() {
         this.modalEl.addClass("ribbon-manager-modal");
         this.titleEl.setText(this.manager.translator.t("Ribbon_标题"));
-        this.syncRibbonItems();
+        await this.syncRibbonItems();
         this.display();
     }
 
-    onClose() {
-        this.contentEl.empty();
-    }
-
     // 同步 Ribbon 项：读取当前工作区的 Ribbon，合并到设置中
-    syncRibbonItems() {
-        // @ts-ignore - leftRibbon internal API
-        const ribbonItems = this.app.workspace.leftRibbon?.items;
-        if (!ribbonItems) return;
-
-        const currentSettings = this.manager.settings.RIBBON_SETTINGS || [];
-        const settingsMap = new Map(currentSettings.map(c => [c.id, c]));
-        const newSettings: RibbonItem[] = [];
-        let changed = false;
-
-        for (const item of ribbonItems) {
-            const id = item.id;
-            const name = item.title; // aria-label as name
-            const icon = item.icon;
-            if (!id) continue;
-
-            const existing = settingsMap.get(id);
-            if (existing) {
-                // 更新名称和图标，以防变更
-                if (existing.name !== name || existing.icon !== icon) {
-                    existing.name = name;
-                    existing.icon = icon;
-                    changed = true;
-                }
-                newSettings.push(existing);
-            } else {
-                newSettings.push({
-                    id,
-                    name: name || this.manager.translator.t("Ribbon_未命名"),
-                    icon,
-                    visible: true,
-                    order: newSettings.length
-                });
-                changed = true;
-            }
-        }
-
-        // 检查是否有由于插件禁用等原因不再存在的 Ribbon，暂时保留在配置中还是移除？
-        // 参考 mobile-ribbon-order，它是重建列表。如果想保留以前的配置（比如插件暂时禁用），
-        // 可以考虑合并。但这里简单起见，且为了清理无用项，先按当前存在的重建。
-        // 不过为了保留被禁用插件的顺序，我们可以把没被扫描到的项加在后面或者保留。
-        // 为了防止列表无限膨胀，这里仅保留当前可见的 Ribbon 对应的配置，
-        // 但这样会导致如果插件被禁用，下次启用顺序可能丢失。
-        // 改进：保留所有已有配置，但标记是否 active。
-        // 这里暂时跟随 reference implementation 的逻辑：仅处理存在的。
-
-        // 保持顺序
-        newSettings.sort((a, b) => a.order - b.order);
-
-        // 重新分配 order 确保连续
-        newSettings.forEach((item, index) => {
-            if (item.order !== index) {
-                item.order = index;
-                changed = true;
-            }
-        });
-
-        if (currentSettings.length !== newSettings.length) changed = true;
-
-        if (changed) {
-            this.manager.settings.RIBBON_SETTINGS = newSettings;
-            this.manager.saveSettings();
-            // @ts-ignore
-            this.manager.updateRibbonStyles?.();
-        }
+    async syncRibbonItems() {
+        // 始终从原生配置加载
+        const { orderedIds, hiddenStatus } = await this.manager.systemRibbonManager.load();
+        await this.manager.syncRibbonConfig(orderedIds, hiddenStatus);
     }
 
     display() {
@@ -148,8 +83,71 @@ export class RibbonModal extends Modal {
                 .setIcon(item.visible ? "eye" : "eye-off")
                 .setTooltip(item.visible ? this.manager.translator.t("Ribbon_隐藏") : this.manager.translator.t("Ribbon_显示"))
                 .onClick(async () => {
-                    item.visible = !item.visible;
+                    const newValue = !item.visible;
+                    item.visible = newValue;
+
+                    // 如果是启用，检查是否需要复活 (Restore)
+                    if (newValue) {
+                        // @ts-ignore
+                        const ribbon = this.app.workspace.leftRibbon;
+                        if (ribbon) {
+                            // @ts-ignore
+                            const ribbonItems = ribbon.items || [];
+                            // @ts-ignore
+                            const nativeItemIndex = ribbonItems.findIndex((ri: any) => ri.id === item.id);
+
+                            // @ts-ignore
+                            const nativeItem = nativeItemIndex !== -1 ? ribbonItems[nativeItemIndex] : null;
+
+                            let needsRestore = false;
+                            if (nativeItem) {
+                                // 只有当 hidden 为 true (启动时隐藏) 或 buttonEl 丢失时才复活
+                                // 运行时隐藏的 (hidden=false, buttonEl exists) 不需要复活
+                                if (nativeItem.hidden === true || !nativeItem.buttonEl) {
+                                    needsRestore = true;
+                                }
+                            }
+
+                            if (needsRestore && nativeItem && nativeItem.callback) {
+                                console.log(`[BPM] Restoring ribbon item: ${item.id}`);
+                                try {
+                                    const { title, icon, callback } = nativeItem;
+
+                                    // 1. 创建新按钮
+                                    // @ts-ignore
+                                    ribbon.addRibbonItemButton(title, icon, callback);
+
+                                    // 2. 修正 ID
+                                    const newItem = ribbonItems[ribbonItems.length - 1];
+                                    if (newItem && newItem.id !== item.id) {
+                                        newItem.id = item.id;
+                                        newItem.hidden = false;
+                                    }
+
+                                    // 3. 移除旧 item
+                                    ribbonItems.splice(nativeItemIndex, 1);
+
+                                    console.log(`[BPM] Item restored: ${item.id}`);
+                                } catch (e) {
+                                    console.error("[BPM] Restore failed:", e);
+                                    new Notice("尝试恢复图标失败，请重载界面。");
+                                }
+                            }
+                        }
+                    }
+
                     await this.manager.saveSettings();
+
+                    const items = this.manager.settings.RIBBON_SETTINGS;
+                    const orderedIds = items.map(i => i.id);
+                    const hiddenStatus: Record<string, boolean> = {};
+                    items.forEach(i => hiddenStatus[i.id] = !i.visible);
+
+                    // 1. 保存到文件
+                    await this.manager.systemRibbonManager.save(orderedIds, hiddenStatus);
+                    // 2. 同步到内存 (Hack)
+                    this.manager.applyRibbonConfigToMemory(orderedIds, hiddenStatus);
+
                     // @ts-ignore
                     this.manager.updateRibbonStyles?.();
                     this.display();
@@ -291,6 +289,18 @@ export class RibbonModal extends Modal {
         items.forEach((item, idx) => item.order = idx);
 
         await this.manager.saveSettings();
+
+        // 原生同步
+        const currentItems = this.manager.settings.RIBBON_SETTINGS;
+        const orderedIds = currentItems.map(i => i.id);
+        const hiddenStatus: Record<string, boolean> = {};
+        currentItems.forEach(i => hiddenStatus[i.id] = !i.visible);
+
+        // 1. 保存到文件
+        await this.manager.systemRibbonManager.save(orderedIds, hiddenStatus);
+        // 2. 同步到内存 (Hack)
+        this.manager.applyRibbonConfigToMemory(orderedIds, hiddenStatus);
+
         // @ts-ignore
         this.manager.updateRibbonStyles?.();
         this.display();

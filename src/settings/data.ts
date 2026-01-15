@@ -67,6 +67,8 @@ export interface ManagerSettings {
     RIBBON_SETTINGS: RibbonItem[];
     // 自动接管
     AUTO_TAKEOVER: boolean;
+    // 使用 Obsidian 原生 Ribbon 配置 (workspace.json)
+    USE_NATIVE_RIBBON_CONFIG: boolean;
 }
 
 export const DEFAULT_SETTINGS: ManagerSettings = {
@@ -109,4 +111,5 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     HIDES: [],
     RIBBON_SETTINGS: [],
     AUTO_TAKEOVER: false,
+    USE_NATIVE_RIBBON_CONFIG: true,
 }
