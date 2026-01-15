@@ -111,11 +111,17 @@ export class RibbonModal extends Modal {
                             if (needsRestore && nativeItem && nativeItem.callback) {
                                 console.log(`[BPM] Restoring ribbon item: ${item.id}`);
                                 try {
-                                    const { title, icon, callback } = nativeItem;
+                                    const { icon, callback } = nativeItem;
+                                    // 修复: 某些核心插件可能没有 title，使用 name 或 item.name 作为回退
+                                    // 防止 callback 被错误地转换为字符串显示为 "function () { [native code] }"
+                                    const titleToUse = (typeof nativeItem.title === 'string' ? nativeItem.title : "") ||
+                                        (typeof nativeItem.name === 'string' ? nativeItem.name : "") ||
+                                        item.name ||
+                                        "Ribbon Item";
 
                                     // 1. 创建新按钮
                                     // @ts-ignore
-                                    ribbon.addRibbonItemButton(title, icon, callback);
+                                    ribbon.addRibbonItemButton(titleToUse, icon, callback);
 
                                     // 2. 修正 ID
                                     const newItem = ribbonItems[ribbonItems.length - 1];
