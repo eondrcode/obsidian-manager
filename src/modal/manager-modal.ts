@@ -251,11 +251,13 @@ export class ManagerModal extends Modal {
             try {
                 await this.manager.checkUpdatesWithNotice();
                 const count = Object.values(this.manager.updateStatus || {}).filter(s => s.hasUpdate).length;
-                new Notice(`检查完成，发现 ${count} 个插件有可用更新`);
+                new Notice(this.manager.translator.t("通知_检查更新完成").replace("{count}", `${count}`));
                 this.reloadShowData();
             } catch (error) {
+                // 恢复图标
+                updateButton.setIcon("refresh-cw");
                 console.error("检查更新时出错:", error);
-                new Notice("检查更新失败，请稍后重试");
+                new Notice(this.manager.translator.t("通知_检查更新失败"));
             } finally {
                 updateButton.setDisabled(false);
             }

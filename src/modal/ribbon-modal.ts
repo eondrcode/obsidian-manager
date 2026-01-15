@@ -130,7 +130,7 @@ export class RibbonModal extends Modal {
                                     console.log(`[BPM] Item restored: ${item.id}`);
                                 } catch (e) {
                                     console.error("[BPM] Restore failed:", e);
-                                    new Notice("尝试恢复图标失败，请重载界面。");
+                                    new Notice(this.manager.translator.t("Ribbon_复活失败"));
                                 }
                             }
                         }

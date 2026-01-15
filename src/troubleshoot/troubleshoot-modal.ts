@@ -250,7 +250,7 @@ export class TroubleshootModal {
                     break;
                 case 'verify-single':
                 case 'verify-pair':
-                    phaseText = '验证阶段';
+                    phaseText = this.t('排查_阶段_验证');
                     break;
             }
         }
@@ -259,7 +259,7 @@ export class TroubleshootModal {
         // 当前操作描述
         if (this.lastDescription) {
             this.contentEl.createEl('p', {
-                text: `当前测试: ${this.lastDescription}`,
+                text: `${this.t('排查_当前测试')}: ${this.lastDescription}`,
                 cls: 'troubleshoot-desc'
             });
         }
@@ -288,7 +288,7 @@ export class TroubleshootModal {
             enabledList.createEl('li', { text: this.algorithm.getPluginName(id) });
         }
         if (currentEnabled.length === 0) {
-            enabledList.createEl('li', { text: '(无)', cls: 'muted' });
+            enabledList.createEl('li', { text: this.t('排查_列表_无'), cls: 'muted' });
         }
 
         // 提示文字
@@ -340,7 +340,7 @@ export class TroubleshootModal {
      */
     private async startTroubleshoot() {
         this.state = this.algorithm.initState();
-        this.lastDescription = '已禁用全部插件';
+        this.lastDescription = this.t('排查_描述_禁用全部');
 
         await this.algorithm.startTroubleshoot(this.state);
         await this.saveState();

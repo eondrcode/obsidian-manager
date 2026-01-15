@@ -60,7 +60,7 @@ export class TroubleshootResultModal extends Modal {
             if (isSinglePlugin) {
                 // 单插件问题
                 const resultContainer = contentEl.createDiv('troubleshoot-result-container');
-                resultContainer.createEl('h3', { text: `🎯 发现问题插件` });
+                resultContainer.createEl('h3', { text: `🎯 ${this.t('报告_发现问题插件')}` });
 
                 const conflictBox = resultContainer.createDiv('troubleshoot-conflict-box');
 
@@ -76,10 +76,10 @@ export class TroubleshootResultModal extends Modal {
                 const suggestionsDiv = contentEl.createDiv('troubleshoot-suggestions');
                 suggestionsDiv.createEl('h4', { text: `📋 ${this.t('排查_建议_标题')}` });
                 const suggestionList = suggestionsDiv.createEl('ul');
-                suggestionList.createEl('li', { text: '尝试更新此插件到最新版本' });
-                suggestionList.createEl('li', { text: '检查插件的 GitHub Issues 是否有相关问题' });
-                suggestionList.createEl('li', { text: '联系插件作者报告问题' });
-                suggestionList.createEl('li', { text: '暂时禁用此插件' });
+                suggestionList.createEl('li', { text: this.t('报告_单插件建议1') });
+                suggestionList.createEl('li', { text: this.t('报告_单插件建议2') });
+                suggestionList.createEl('li', { text: this.t('报告_单插件建议3') });
+                suggestionList.createEl('li', { text: this.t('报告_单插件建议4') });
             } else {
                 // 冲突对
                 const resultContainer = contentEl.createDiv('troubleshoot-result-container');

@@ -232,7 +232,7 @@ export class TroubleshootAlgorithm {
                 return this.handleVerifyPair(state, problemExists);
 
             default:
-                return { type: 'error', message: '未知的算法阶段' };
+                return { type: 'error', message: this.manager.translator.t('排查_错误_未知阶段') };
         }
     }
 
@@ -268,7 +268,7 @@ export class TroubleshootAlgorithm {
             nextAction: {
                 action: 'test',
                 plugins: c1,
-                description: `测试前半 (${c1.length} 个插件)`
+                description: this.manager.translator.t('排查_描述_测试前半').replace('{count}', c1.length.toString())
             }
         };
     }
@@ -300,7 +300,7 @@ export class TroubleshootAlgorithm {
                     nextAction: {
                         action: 'test',
                         plugins: algo.c2!,
-                        description: `测试后半 (${algo.c2!.length} 个插件)`
+                        description: this.manager.translator.t('排查_描述_测试后半').replace('{count}', algo.c2!.length.toString())
                     }
                 };
             }
@@ -336,7 +336,7 @@ export class TroubleshootAlgorithm {
                 nextAction: {
                     action: 'test',
                     plugins: [algo.foundFirst],
-                    description: `验证单插件: ${this.getPluginName(algo.foundFirst)}`
+                    description: this.manager.translator.t('排查_描述_验证单插件').replace('{name}', this.getPluginName(algo.foundFirst))
                 }
             };
         }
@@ -356,7 +356,7 @@ export class TroubleshootAlgorithm {
                 nextAction: {
                     action: 'test',
                     plugins: [algo.currentSet[0]],
-                    description: `验证: ${this.getPluginName(algo.currentSet[0])}`
+                    description: this.manager.translator.t('排查_描述_验证').replace('{name}', this.getPluginName(algo.currentSet[0]))
                 }
             };
         }
@@ -375,7 +375,7 @@ export class TroubleshootAlgorithm {
             nextAction: {
                 action: 'test',
                 plugins: c1,
-                description: `测试前半 (${c1.length} 个插件)`
+                description: this.manager.translator.t('排查_描述_测试前半').replace('{count}', c1.length.toString())
             }
         };
     }
@@ -410,7 +410,7 @@ export class TroubleshootAlgorithm {
             nextAction: {
                 action: 'test',
                 plugins: testSet,
-                description: `固定 A 组 (${algo.fixedSet.length}个) + B 组前半 (${b1.length}个)`
+                description: this.manager.translator.t('排查_描述_固定A测试B前').replace('{countA}', algo.fixedSet.length.toString()).replace('{countB}', b1.length.toString())
             }
         };
     }
@@ -455,7 +455,7 @@ export class TroubleshootAlgorithm {
                 nextAction: {
                     action: 'test',
                     plugins: testSet,
-                    description: `固定 ${this.getPluginName(algo.foundSecond)} + A 组前半 (${a1.length}个)`
+                    description: this.manager.translator.t('排查_描述_固定B测试A前').replace('{countB}', algo.fixedSet.length.toString()).replace('{countA}', a1.length.toString())
                 }
             };
         }
@@ -474,7 +474,7 @@ export class TroubleshootAlgorithm {
             nextAction: {
                 action: 'test',
                 plugins: testSet,
-                description: `固定 A 组 + B 组子集 (${b1.length}个)`
+                description: this.manager.translator.t('排查_描述_固定A测试B前').replace('{countA}', algo.fixedSet.length.toString()).replace('{countB}', b1.length.toString())
             }
         };
     }
@@ -528,7 +528,7 @@ export class TroubleshootAlgorithm {
             nextAction: {
                 action: 'test',
                 plugins: testSet,
-                description: `固定 ${this.getPluginName(algo.foundSecond!)} + A 组子集 (${a1.length}个)`
+                description: this.manager.translator.t('排查_描述_固定B测试A前').replace('{countB}', algo.fixedSet.length.toString()).replace('{countA}', a1.length.toString())
             }
         };
     }
@@ -559,7 +559,7 @@ export class TroubleshootAlgorithm {
             // 单个插件没问题，可能是更复杂的情况
             return {
                 type: 'error',
-                message: '单个插件启用时问题消失，可能是多插件组合冲突'
+                message: this.manager.translator.t('排查_无法定位_通知')
             };
         }
     }
@@ -615,7 +615,7 @@ export class TroubleshootAlgorithm {
             return { type: 'pair', culpritA: pair[0], culpritB: pair[1] };
         }
 
-        return { type: 'error', message: '验证阶段状态异常' };
+        return { type: 'error', message: this.manager.translator.t('排查_错误_状态异常') };
     }
 
     /**
