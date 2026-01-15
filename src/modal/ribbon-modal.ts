@@ -22,6 +22,7 @@ export class RibbonModal extends Modal {
     }
 
     async onOpen() {
+        this.manager.ribbonModal = this;
         this.modalEl.addClass("ribbon-manager-modal");
         this.titleEl.setText(this.manager.translator.t("Ribbon_标题"));
         await this.syncRibbonItems();
@@ -89,12 +90,17 @@ export class RibbonModal extends Modal {
                     // 如果是启用，检查是否需要复活 (Restore)
                     if (newValue) {
                         // @ts-ignore
-                        const ribbon = this.app.workspace.leftRibbon;
+                        const ribbon = this.app.workspace.leftRibbon as any;
                         if (ribbon) {
-                            // @ts-ignore
-                            const ribbonItems = ribbon.items || [];
-                            // @ts-ignore
-                            const nativeItemIndex = ribbonItems.findIndex((ri: any) => ri.id === item.id);
+                            // 先清理一遍，防止之前的操作留下了 undefined
+                            this.manager.cleanRibbonItems();
+
+                            const ribbonItems = ribbon.items;
+                            if (!ribbonItems) return;
+
+                            // 查找原生 item
+                            // 必须加 i && ... 判断，防止 crash
+                            const nativeItemIndex = ribbonItems.findIndex((i: any) => i && i.id === item.id);
 
                             // @ts-ignore
                             const nativeItem = nativeItemIndex !== -1 ? ribbonItems[nativeItemIndex] : null;
@@ -112,26 +118,40 @@ export class RibbonModal extends Modal {
                                 console.log(`[BPM] Restoring ribbon item: ${item.id}`);
                                 try {
                                     const { icon, callback } = nativeItem;
+
                                     // 修复: 某些核心插件可能没有 title，使用 name 或 item.name 作为回退
                                     // 防止 callback 被错误地转换为字符串显示为 "function () { [native code] }"
-                                    const titleToUse = (typeof nativeItem.title === 'string' ? nativeItem.title : "") ||
+                                    const titleToUse = item.name ||
+                                        (typeof nativeItem.title === 'string' ? nativeItem.title : "") ||
                                         (typeof nativeItem.name === 'string' ? nativeItem.name : "") ||
-                                        item.name ||
                                         "Ribbon Item";
 
                                     // 1. 创建新按钮
-                                    // @ts-ignore
-                                    ribbon.addRibbonItemButton(titleToUse, icon, callback);
+                                    // 使用 Public API addRibbonIcon 避免内部 API 签名变动问题
+                                    // 这将使图标暂时受 BPM 管理，但能确保只渲染正确
+                                    this.manager.addRibbonIcon(icon, titleToUse, callback);
 
                                     // 2. 修正 ID
+                                    // addRibbonIcon 会在最后添加一个新项
                                     const newItem = ribbonItems[ribbonItems.length - 1];
                                     if (newItem && newItem.id !== item.id) {
+                                        // 替换 ID 为原始 ID (用于保持顺序和关联)
+                                        // 注意: 这可能会导致 BPM 在 unload 时找不到要移除的 icon (因为它记录的是旧 ID?)
+                                        // addRibbonIcon 并不返回 ID，而是 HTMLElement。Plugin 类内部维护了 ribbonIcons 数组(HTMLElement[])。
+                                        // 修改 items 里的 ID 不会影响 Plugin 的卸载清理 (它是按 DOM 元素引用的)。
                                         newItem.id = item.id;
                                         newItem.hidden = false;
                                     }
 
-                                    // 3. 移除旧 item
+                                    // 3. 移除旧 item (清理僵尸条目)
                                     ribbonItems.splice(nativeItemIndex, 1);
+
+                                    // 4. 安全清理: 再次确保没有 undefined 混入 (defensive programming)
+                                    for (let i = ribbonItems.length - 1; i >= 0; i--) {
+                                        if (!ribbonItems[i]) {
+                                            ribbonItems.splice(i, 1);
+                                        }
+                                    }
 
                                     console.log(`[BPM] Item restored: ${item.id}`);
                                 } catch (e) {
@@ -310,5 +330,9 @@ export class RibbonModal extends Modal {
         // @ts-ignore
         this.manager.updateRibbonStyles?.();
         this.display();
+    }
+
+    onClose() {
+        this.manager.ribbonModal = null;
     }
 }

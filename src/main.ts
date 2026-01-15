@@ -30,6 +30,7 @@ interface UpdateStatus {
 export default class Manager extends Plugin {
     public settings: ManagerSettings;
     public managerModal: ManagerModal;
+    public ribbonModal: any; // RibbonModal 引用 (any to avoid cyclic import or just use class logic)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     public appPlugins: any;
     public appWorkspace: Workspace;
@@ -87,8 +88,14 @@ export default class Manager extends Plugin {
         this.systemRibbonManager = new SystemRibbonManager(this.app, this);
         this.systemRibbonManager.startWatch(async () => {
             const { orderedIds, hiddenStatus } = await this.systemRibbonManager.load();
-            this.syncRibbonConfig(orderedIds, hiddenStatus);
+            await this.syncRibbonConfig(orderedIds, hiddenStatus);
         });
+
+        // 启动时立即同步一次，确保与原生配置一致
+        const { orderedIds, hiddenStatus } = await this.systemRibbonManager.load();
+        if (orderedIds.length > 0) {
+            await this.syncRibbonConfig(orderedIds, hiddenStatus);
+        }
 
         // 初始化侧边栏图标
         this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), () => { this.managerModal = new ManagerModal(this.app, this); this.managerModal.open(); });
@@ -119,6 +126,7 @@ export default class Manager extends Plugin {
             }
             // 延迟启动自检，确保 Obsidian 初始化完成，避免自动接管被覆盖
             setTimeout(() => {
+                this.cleanRibbonItems(); // 启动后清理一次
                 performSelfCheck(this);
             }, 2000);
         });
@@ -141,6 +149,10 @@ export default class Manager extends Plugin {
         const orderedIds = items.map(i => i.id);
         const hiddenStatus: Record<string, boolean> = {};
         items.forEach(i => hiddenStatus[i.id] = !i.visible);
+
+        // 临走前再清理一次
+        this.cleanRibbonItems();
+
         this.systemRibbonManager.save(orderedIds, hiddenStatus).catch(err => console.error("Failed to save on unload", err));
 
         this.systemRibbonManager?.stopWatch();
@@ -225,22 +237,31 @@ export default class Manager extends Plugin {
             console.log(`[BPM] Drag-to-hide triggered for: ${label} (${targetId})`);
 
             // 执行隐藏逻辑
+            // 执行隐藏逻辑
             const targetConfig = this.settings.RIBBON_SETTINGS.find(i => i.id === targetId);
             if (targetConfig) {
-                if (!targetConfig.visible) return; // 已经是隐藏的
                 targetConfig.visible = false;
             } else {
-                // 如果是没管理的，自动加入并隐藏
-                // ... 这比较复杂，通常 ribbon manager 应该已经同步了
+                // 如果是没管理的（理论上 init 时会同步），这里无法处理，返回
                 return;
             }
 
-            // 保存更改
+            // 保存设置 (这将更新 RIBBON_SETTINGS 到 data.json)
             await this.saveSettings();
 
             const orderedIds = this.settings.RIBBON_SETTINGS.map(i => i.id);
             const hiddenStatus: Record<string, boolean> = {};
             this.settings.RIBBON_SETTINGS.forEach(i => hiddenStatus[i.id] = !i.visible);
+
+            // 同步到原生配置
+            await this.systemRibbonManager.save(orderedIds, hiddenStatus);
+            // 应用到内存
+            this.applyRibbonConfigToMemory(orderedIds, hiddenStatus);
+            // 更新 CSS 样式 (重要：这控制了实际的显隐)
+            this.updateRibbonStyles();
+
+            // 如果 BPM 设置面板打开着，尝试刷新它
+            this.reloadIfCurrentModal();
 
             await this.systemRibbonManager.save(orderedIds, hiddenStatus);
             this.applyRibbonConfigToMemory(orderedIds, hiddenStatus);
@@ -547,6 +568,30 @@ export default class Manager extends Plugin {
 
     private reloadIfCurrentModal() {
         try { this.managerModal?.reloadShowData(); } catch { /* ignore */ }
+        try {
+            // 直接刷新 UI，不需要重新从文件加载，因为内存状态这一刻是最新的
+            this.ribbonModal?.display();
+        } catch { /* ignore */ }
+    }
+
+    /**
+     * 清理 Obsidian Ribbon 内部 items 数组中的 undefined/null 项
+     * 防止原生方法遍历时 crash
+     */
+    public cleanRibbonItems() {
+        // @ts-ignore
+        const ribbon = this.app.workspace.leftRibbon as any;
+        if (!ribbon || !ribbon.items || !Array.isArray(ribbon.items)) return;
+
+        let cleaned = false;
+        // 倒序遍历删除
+        for (let i = ribbon.items.length - 1; i >= 0; i--) {
+            if (!ribbon.items[i]) {
+                ribbon.items.splice(i, 1);
+                cleaned = true;
+            }
+        }
+        if (cleaned) console.log("[BPM] Cleaned undefined items from leftRibbon.");
     }
 
     private showToggleNotice() {
@@ -1243,10 +1288,19 @@ export default class Manager extends Plugin {
         const ribbon = this.app.workspace.leftRibbon as any;
         if (!ribbon || !ribbon.items || !Array.isArray(ribbon.items)) return;
 
+        // 修复: 彻底清理 items 数组中的空值，防止 Obsidian 内部 crash
+        // 直接在原数组上操作，移除 undefined/null
+        for (let i = ribbon.items.length - 1; i >= 0; i--) {
+            if (!ribbon.items[i]) {
+                ribbon.items.splice(i, 1);
+            }
+        }
+
         const items = ribbon.items;
 
         // 1. 更新 hidden 状态
         items.forEach((item: any) => {
+            if (!item) return; // 必须添加空检查，防止数组中存在 undefined
             if (item.id && hiddenStatus.hasOwnProperty(item.id)) {
                 // 直接修改内存对象的 hidden 属性
                 item.hidden = hiddenStatus[item.id];
@@ -1271,6 +1325,7 @@ export default class Manager extends Plugin {
             const container = document.querySelector('.side-dock-actions');
             if (container) {
                 items.forEach((item: any) => {
+                    if (!item) return;
                     // 确保元素存在且当前就在容器中
                     if (item.buttonEl && container.contains(item.buttonEl)) {
                         container.appendChild(item.buttonEl);
@@ -1322,6 +1377,7 @@ export default class Manager extends Plugin {
         const seenIds = new Set(orderedIds);
 
         memoryItems.forEach((mItem: any) => {
+            if (!mItem) return;
             if (!seenIds.has(mItem.id)) {
                 // 这是一个新出现的项，追加到末尾
                 const item: RibbonItem = {
@@ -1344,5 +1400,8 @@ export default class Manager extends Plugin {
         // 目前 RibbonModal 没有注册全局事件。
         // 可以在 RibbonModal 内部实现轮询或事件监听。
         // 或者在这里不做任何 UI 刷新，仅仅更新数据。
+
+        // 必须更新样式，否则显隐状态不会立即生效
+        this.updateRibbonStyles();
     }
 }
