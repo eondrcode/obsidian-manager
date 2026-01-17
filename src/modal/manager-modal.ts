@@ -335,6 +335,12 @@ export class ManagerModal extends Modal {
             await new Promise((r) => window.setTimeout(r, 50));
             try {
                 await this.appPlugins.loadManifests();
+                // 同步新发现的插件到 BPM 管理列表
+                this.manager.synchronizePlugins(
+                    Object.values(this.appPlugins.manifests).filter(
+                        (pm: PluginManifest) => pm.id !== this.manager.manifest.id
+                    ) as PluginManifest[]
+                );
                 await this.reloadShowData();
             } catch (e) {
                 console.error("[BPM] reload manifests failed", e);
@@ -688,6 +694,12 @@ export class ManagerModal extends Modal {
             // 重载插件
             menu.addItem((item) => item.setTitle(t("管理器_重载插件_描述")).setIcon("refresh-ccw").onClick(async () => {
                 await this.appPlugins.loadManifests();
+                // 同步新发现的插件到 BPM 管理列表
+                this.manager.synchronizePlugins(
+                    Object.values(this.appPlugins.manifests).filter(
+                        (pm: PluginManifest) => pm.id !== this.manager.manifest.id
+                    ) as PluginManifest[]
+                );
                 await this.reloadShowData();
             }));
             // 隐藏插件

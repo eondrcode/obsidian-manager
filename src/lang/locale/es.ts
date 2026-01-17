@@ -19,7 +19,7 @@ export default {
     管理器_GITHUB_描述: 'Visitar repositorio',
     管理器_视频教程_描述: 'Acceder a tutoriales en video',
     管理器_编辑模式_描述: 'Habilitar modo de edición para una personalización profunda de la configuración del plugin',
-    管理器_重载插件_描述: 'Recargar plugins para que surtan efecto inmediatamente',
+    管理器_重载插件_描述: 'Recargar lista de plugins',
     管理器_检查更新_描述: 'Comprobar actualizaciones de plugins',
     管理器_更多操作_描述: 'Más acciones',
     管理器_一键禁用_描述: 'Deshabilitar todos los plugins a la vez',

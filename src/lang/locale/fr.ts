@@ -92,7 +92,7 @@ export default {
     管理器_GITHUB_描述: 'Visiter le dépôt',
     管理器_视频教程_描述: 'Accéder aux tutoriels vidéo',
     管理器_编辑模式_描述: 'Activer le mode édition pour personnaliser en profondeur',
-    管理器_重载插件_描述: 'Recharger les plugins pour prise d’effet immédiate',
+    管理器_重载插件_描述: 'Recharger la liste des plugins',
     管理器_检查更新_描述: 'Vérifier les mises à jour de plugins',
     管理器_一键禁用_描述: 'Tout désactiver en un clic',
     管理器_一键启用_描述: 'Tout activer en un clic',
