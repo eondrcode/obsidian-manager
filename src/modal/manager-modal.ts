@@ -1671,51 +1671,50 @@ export class ManagerModal extends Modal {
                         updateCardUI();
                     });
                 }
-                //
-                if (this.editorMode) {
-                    // [按钮] 还原内容
-                    const reloadButton = new ExtraButtonComponent(itemEl.controlEl);
-                    reloadButton.setIcon("refresh-ccw");
-                    reloadButton.setTooltip(this.manager.translator.t("管理器_还原内容_描述"));
-                    reloadButton.onClick(async () => {
-                        if (!ManagerPlugin) return; // Fix TS2532
-                        ManagerPlugin.name = plugin.name;
-                        ManagerPlugin.desc = plugin.description;
-                        ManagerPlugin.group = "";
-                        ManagerPlugin.delay = "";
-                        ManagerPlugin.tags = [];
+            }
+            // 编辑模式下的操作按钮和延迟下拉选单 - 移到 if (!this.editorMode) 块外面
+            if (this.editorMode) {
+                // [按钮] 还原内容
+                const reloadButton = new ExtraButtonComponent(itemEl.controlEl);
+                reloadButton.setIcon("refresh-ccw");
+                reloadButton.setTooltip(this.manager.translator.t("管理器_还原内容_描述"));
+                reloadButton.onClick(async () => {
+                    if (!ManagerPlugin) return; // Fix TS2532
+                    ManagerPlugin.name = plugin.name;
+                    ManagerPlugin.desc = plugin.description;
+                    ManagerPlugin.group = "";
+                    ManagerPlugin.delay = "";
+                    ManagerPlugin.tags = [];
+                    await this.manager.savePluginAndExport(plugin.id);
+                    this.reloadShowData();
+                });
+                // [编辑] 延迟
+                if (this.settings.DELAY) {
+                    const delays = this.settings.DELAYS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = item.name; return acc; }, { "": this.manager.translator.t("通用_无延迟_文本"), });
+                    const delaysEl = new DropdownComponent(itemEl.controlEl);
+                    delaysEl.addOptions(delays);
+                    delaysEl.setValue(ManagerPlugin?.delay || "");
+
+                    const pSettings = this.settings.Plugins.find(p => p.id === plugin.id);
+                    const isIgnored = pSettings?.tags?.includes(BPM_IGNORE_TAG);
+
+                    let isRestoring = false;
+                    delaysEl.onChange(async (val) => {
+                        if (!ManagerPlugin) return; // Fix lint
+                        if (isRestoring) return;
+
+                        if (isIgnored) {
+                            new Notice(this.manager.translator.t("提示_BPM忽略_操作拦截"));
+                            isRestoring = true;
+                            delaysEl.setValue(ManagerPlugin.delay || "");
+                            isRestoring = false;
+                            return;
+                        }
+                        ManagerPlugin.delay = val;
                         await this.manager.savePluginAndExport(plugin.id);
                         this.reloadShowData();
                     });
-                    // [编辑] 延迟
-                    if (this.settings.DELAY) {
-                        const delays = this.settings.DELAYS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = item.name; return acc; }, { "": this.manager.translator.t("通用_无延迟_文本"), });
-                        const delaysEl = new DropdownComponent(itemEl.controlEl);
-                        delaysEl.addOptions(delays);
-                        delaysEl.addOptions(delays);
-                        delaysEl.setValue(ManagerPlugin?.delay || "");
 
-                        const pSettings = this.settings.Plugins.find(p => p.id === plugin.id);
-                        const isIgnored = pSettings?.tags?.includes(BPM_IGNORE_TAG);
-
-                        let isRestoring = false;
-                        delaysEl.onChange(async (val) => {
-                            if (!ManagerPlugin) return; // Fix lint
-                            if (isRestoring) return;
-
-                            if (isIgnored) {
-                                new Notice(this.manager.translator.t("提示_BPM忽略_操作拦截"));
-                                isRestoring = true;
-                                delaysEl.setValue(ManagerPlugin.delay || "");
-                                isRestoring = false;
-                                return;
-                            }
-                            ManagerPlugin.delay = val;
-                            await this.manager.savePluginAndExport(plugin.id);
-                            this.reloadShowData();
-                        });
-
-                    }
                 }
             }
             if (this.settings.DEBUG) {
