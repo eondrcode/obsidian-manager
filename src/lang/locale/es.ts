@@ -18,7 +18,7 @@ export default {
 
     管理器_GITHUB_描述: 'Visitar repositorio',
     管理器_视频教程_描述: 'Acceder a tutoriales en video',
-    管理器_编辑模式_描述: 'Habilitar modo de edición para una personalización profunda de la configuración del plugin',
+    管理器_编辑模式_描述: 'Habilitar modo de edición',
     管理器_重载插件_描述: 'Recargar lista de plugins',
     管理器_检查更新_描述: 'Comprobar actualizaciones de plugins',
     管理器_更多操作_描述: 'Más acciones',
@@ -192,7 +192,7 @@ export default {
     自检_不再提示确认_通知: 'No se mostrará de nuevo. Puede reactivarlo en la configuración',
 
     // Ribbon
-    管理器_Ribbon管理_描述: 'Gestionar orden y visibilidad de iconos Ribbon',
+    管理器_Ribbon管理_描述: 'Gestionar iconos Ribbon',
     Ribbon_标题: 'Gestor de Ribbon',
     Ribbon_说明: 'Arrastre el icono ≡ para reordenar, haga clic en el ojo para alternar visibilidad.',
     Ribbon_需重载_提示: 'Algunos iconos habilitados necesitan reinicio para aparecer.',

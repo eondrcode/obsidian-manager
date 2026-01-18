@@ -91,7 +91,7 @@ export default {
 
     管理器_GITHUB_描述: 'Visiter le dépôt',
     管理器_视频教程_描述: 'Accéder aux tutoriels vidéo',
-    管理器_编辑模式_描述: 'Activer le mode édition pour personnaliser en profondeur',
+    管理器_编辑模式_描述: 'Activer le mode édition',
     管理器_重载插件_描述: 'Recharger la liste des plugins',
     管理器_检查更新_描述: 'Vérifier les mises à jour de plugins',
     管理器_一键禁用_描述: 'Tout désactiver en un clic',
@@ -220,7 +220,7 @@ export default {
     自检_不再提示确认_通知: 'Ne s\'affichera plus. Vous pouvez le réactiver dans les paramètres',
 
     // Ribbon
-    管理器_Ribbon管理_描述: 'Gérer l\'ordre et la visibilité des icônes du ruban',
+    管理器_Ribbon管理_描述: 'Gérer les icônes du ruban',
     Ribbon_标题: 'Gestionnaire de ruban',
     Ribbon_说明: 'Faites glisser l\'icône ≡ pour réorganiser, cliquez sur l\'œil pour masquer/afficher.',
     Ribbon_需重载_提示: 'Certaines icônes activées nécessitent un redémarrage pour apparaître.',

@@ -94,7 +94,7 @@ export default {
 
     管理器_GITHUB_描述: 'Visit Repository',
     管理器_视频教程_描述: 'Access video tutorials',
-    管理器_编辑模式_描述: 'Enable edit mode for in-depth plugin configuration customization',
+    管理器_编辑模式_描述: 'Enable edit mode',
     管理器_重载插件_描述: 'Reload plugin list',
     管理器_重载插件_开始提示: 'Refreshing plugin manifests…',
     管理器_重载插件_失败提示: 'Reload failed. Please try again (see console for details).',
@@ -303,7 +303,7 @@ export default {
     自检_不再提示确认_通知: 'Will not show again. You can re-enable this in settings',
 
     // Ribbon Management
-    管理器_Ribbon管理_描述: 'Manage ribbon icon order and visibility',
+    管理器_Ribbon管理_描述: 'Manage ribbon icons',
     Ribbon_标题: 'Ribbon Manager',
     Ribbon_说明: 'Drag the ≡ handle to reorder, click the eye icon to toggle visibility.',
     Ribbon_需重载_提示: 'Some enabled icons need an app reload to appear because they were hidden at startup.',
