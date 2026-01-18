@@ -439,17 +439,6 @@ export class ManagerModal extends Modal {
             }
         });
 
-        // [操作行] 插件设置
-        const settingsButton = new ButtonComponent(actionBar.controlEl);
-        settingsButton.setIcon("settings");
-        settingsButton.setTooltip(this.manager.translator.t("管理器_插件设置_描述"));
-        this.bindLongPressTooltip(settingsButton.buttonEl, this.manager.translator.t("管理器_插件设置_描述"));
-        settingsButton.onClick(() => {
-            this.appSetting.open();
-            this.appSetting.openTabById(this.manager.manifest.id);
-            // this.close();
-        });
-
         // [操作行] 插件/主题安装模式
         const installToggle = new ButtonComponent(actionBar.controlEl);
         installToggle.setIcon("download");
@@ -463,6 +452,17 @@ export class ManagerModal extends Modal {
                 this.installMode ? this.searchBarEl.addClass("manager-display-none") : this.searchBarEl.removeClass("manager-display-none");
             }
             this.renderContent();
+        });
+
+        // [操作行] 插件设置
+        const settingsButton = new ButtonComponent(actionBar.controlEl);
+        settingsButton.setIcon("settings");
+        settingsButton.setTooltip(this.manager.translator.t("管理器_插件设置_描述"));
+        this.bindLongPressTooltip(settingsButton.buttonEl, this.manager.translator.t("管理器_插件设置_描述"));
+        settingsButton.onClick(() => {
+            this.appSetting.open();
+            this.appSetting.openTabById(this.manager.manifest.id);
+            // this.close();
         });
 
 
