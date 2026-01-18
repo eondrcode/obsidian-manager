@@ -1,7 +1,7 @@
 import { ObsidianProtocolData, Plugin, PluginManifest, Workspace } from 'obsidian';
 import { DEFAULT_SETTINGS, ManagerSettings } from './settings/data';
 import { ManagerSettingTab } from './settings';
-import { Translator } from './lang/inxdex';
+import { Translator } from './lang/index';
 import { ManagerModal } from './modal/manager-modal';
 import Commands from './command';
 import Agreement from 'src/agreement';
