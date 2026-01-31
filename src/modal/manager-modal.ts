@@ -80,6 +80,8 @@ export class ManagerModal extends Modal {
     filterCollapsed = false;
     private reloadingManifests = false;
     private mobileFiltersCollapsed = true;
+    // 渲染版本号，用于防止异步竞态条件导致的重复渲染
+    private renderVersion = 0;
 
     private showInlineProgress(text: string, subText?: string) {
         const notice = new Notice("", 0);
@@ -1033,15 +1035,24 @@ export class ManagerModal extends Modal {
     }
 
     public async showData() {
+        // 递增渲染版本号，用于检测是否有更新的渲染请求
+        const currentRenderVersion = ++this.renderVersion;
+
         // 使用 manifests 按 id 去重，防止重复渲染
         const manifestMap = this.appPlugins.manifests;
-        if (this.settings.DEBUG) console.log("[BPM] render showData manifests size:", Object.keys(manifestMap).length);
+        if (this.settings.DEBUG) console.log("[BPM] render showData manifests size:", Object.keys(manifestMap).length, "version:", currentRenderVersion);
         const uniqMap = new Map<string, PluginManifest>();
         Object.values(manifestMap).forEach((mf: PluginManifest) => {
             uniqMap.set(mf.id, mf);
         });
         const uniquePlugins = Array.from(uniqMap.values()).sort((a, b) => a.name.localeCompare(b.name));
         if (this.settings.DEBUG) console.log("[BPM] render showData uniquePlugins:", uniquePlugins.map(p => p.id).join(","));
+
+        // 检查是否有更新的渲染请求，如果有则提前退出
+        if (currentRenderVersion !== this.renderVersion) {
+            if (this.settings.DEBUG) console.log("[BPM] render showData aborted, version mismatch:", currentRenderVersion, "vs", this.renderVersion);
+            return;
+        }
 
         if (this.settings.DEBUG) console.log("[BPM] render showData before loop, children:", this.contentEl.children.length);
         this.displayPlugins = [];
@@ -1120,6 +1131,12 @@ export class ManagerModal extends Modal {
             if (this.searchText !== "" && ManagerPlugin.name.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1 && ManagerPlugin.desc.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1 && plugin.author.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1) continue;
             // [过滤] 隐藏
             if (!isSelf && this.settings.HIDES.includes(plugin.id)) continue;
+
+            // 在添加 DOM 元素前再次检查版本，防止异步竞态
+            if (currentRenderVersion !== this.renderVersion) {
+                if (this.settings.DEBUG) console.log("[BPM] render loop aborted, version mismatch:", currentRenderVersion, "vs", this.renderVersion);
+                return;
+            }
 
             const itemEl = new Setting(this.contentEl);
             itemEl.settingEl.setAttr("data-plugin-id", plugin.id);
