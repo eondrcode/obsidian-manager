@@ -239,7 +239,7 @@ Issues and PRs are welcome!
 
 ## 🙏 Acknowledgments
 
-- The ribbon sorting feature is inspired by [Obsidian-ribbon-sort](https://github.com/zenozero-dev/obsidian-ribbon-sort)
+- The ribbon sorting feature is inspired by [Obsidian-ribbon-sort](https://github.com/yunrr/Obsidian-app-ribbon-sorting)
 
 ---
 
