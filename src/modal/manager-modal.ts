@@ -1818,7 +1818,9 @@ export class ManagerModal extends Modal {
                 if (ok) {
                     this.installMode = false;
                     if (this.searchBarEl) this.searchBarEl.removeClass("manager-display-none");
+                    await this.refreshFilterOptions(true);
                     this.renderContent();
+
                 }
             });
         });
