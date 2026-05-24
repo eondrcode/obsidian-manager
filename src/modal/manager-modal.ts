@@ -356,7 +356,7 @@ export class ManagerModal extends Modal {
         await this.appSetting.openTabById("community-plugins");
         window.setTimeout(() => {
             const tab = this.appSetting.activeTab;
-            const marketButton = tab?.containerEl?.querySelector<HTMLButtonElement>("button.mod-cta");
+            const marketButton = tab?.containerEl?.querySelector("button.mod-cta") as HTMLButtonElement | null | undefined;
             marketButton?.click();
         }, 50);
     }
