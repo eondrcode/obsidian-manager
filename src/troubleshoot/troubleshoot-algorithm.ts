@@ -36,7 +36,7 @@ export class TroubleshootAlgorithm {
     constructor(app: App, manager: Manager) {
         this.app = app;
         this.manager = manager;
-        this.bpmId = manager.manifest.id;
+        this.bpmId = manager.manifest.id; 
     }
 
     /**
@@ -594,7 +594,7 @@ export class TroubleshootAlgorithm {
                 nextAction: {
                     action: 'test',
                     plugins: [pair[1]],
-                    description: `验证: ${this.getPluginName(pair[1])}`
+                    description: this.manager.translator.t('排查_描述_验证', { name: this.getPluginName(pair[1]) })
                 }
             };
         }

@@ -60,7 +60,7 @@ export default class Agreement {
         const pluginInfo = this.communityPlugins[id];
 
         if (!pluginInfo) {
-            new Notice(`[插件管理器] 未知插件ID: ${id}`);
+            new Notice(this.plugin.translator.t("协议_未知插件ID_提示", { id }));
             return null;
         }
         window.open(`https://github.com/${pluginInfo.repo}`);
@@ -90,14 +90,14 @@ export default class Agreement {
         console.log(repo)
         // 如果找不到插件的仓库地址，显示提示信息并返回
         if (!repo) {
-            new Notice(`[插件管理器] 未知插件ID: ${id}`);
+            new Notice(this.plugin.translator.t("协议_未知插件ID_提示", { id }));
             return;
         }
 
         // 检查插件是否已经安装
         if (pluginRegistry.manifests[id]) {
             // 插件已安装，显示提示信息
-            new Notice(`[插件管理器] 插件 ${pluginRegistry.manifests[id].name} 已安装`);
+            new Notice(this.plugin.translator.t("协议_插件已安装_提示", { name: pluginRegistry.manifests[id].name }));
             // 如果指定了版本且与已安装的版本不同，则标记为需要安装
             if (version !== "" && version !== pluginRegistry.manifests[id]?.version) installFlag = true;
         } else {

@@ -34,13 +34,19 @@ export class Translator {
 	}
 
 	// 方法用于获取翻译后的字符串
-	public t(str: keyof typeof zh_cn): string {
+	public t(str: keyof typeof zh_cn | string, vars?: Record<string, string | number | boolean | null | undefined>): string {
 		// 基准语言使用英文：缺失翻译时优先回退到英文，再回退到中文兜底
 		const language = this.normalizeLang(this.manager.settings.LANGUAGE || 'en');
 		const locale = this.localeMap[language] || en;
 		const base: any = en;
 		const fallback: any = zh_cn;
-		return (locale as any)[str] || base[str] || fallback[str];
+		const key = str as keyof typeof zh_cn;
+		let text = (locale as any)[key] || base[key] || fallback[key] || String(str);
+		if (!vars) return text;
+		Object.entries(vars).forEach(([name, value]) => {
+			text = text.replace(new RegExp(`\\{${name}\\}`, 'g'), String(value ?? ''));
+		});
+		return text;
 	}
 
 	private normalizeLang(lang: string): string {

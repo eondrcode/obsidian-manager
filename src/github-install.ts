@@ -1,148 +1,383 @@
 import { Notice, normalizePath, requestUrl } from "obsidian";
+import type { PluginManifest, RequestUrlResponse } from "obsidian";
 import Manager from "main";
 import { BPM_TAG_ID } from "./repo-resolver";
 
+/**
+ * GitHub release 资源描述。
+ *
+ * BPM 安装插件时只关心 release asset 的文件名和下载地址：
+ * - manifest.json 是 Obsidian 插件元信息。
+ * - main.js 是编译后的插件入口。
+ * - styles.css 是可选样式文件。
+ */
 interface ReleaseAsset {
 	name: string;
 	browser_download_url: string;
 }
 
+/**
+ * GitHub releases API 的最小响应结构。
+ *
+ * 这里没有完整建模 GitHub API，只保留安装和版本选择需要的字段。
+ */
 interface ReleaseResponse {
 	tag_name?: string;
+	name?: string;
+	body?: string;
+	prerelease?: boolean;
+	published_at?: string;
+	html_url?: string;
 	assets?: ReleaseAsset[];
 }
 
-const API_BASE = "https://api.github.com";
+/** manifest.json 中 BPM 安装流程需要读取的字段。 */
+interface PluginManifestJson {
+	id: string;
+	name?: string;
+	description?: string;
+	version?: string;
+}
 
-const buildHeaders = (token?: string) => {
+/** 带 GitHub 状态信息的错误，方便 catch 阶段给出更准确提示。 */
+interface GithubRequestError extends Error {
+	status?: number;
+	rateRemaining?: string;
+	rateReset?: string;
+}
+
+interface PluginFiles {
+	manifestText: string | null;
+	mainJs: string | null;
+	styles: string | null;
+}
+
+export interface ReleaseVersion {
+	version: string;
+	prerelease: boolean;
+	name?: string;
+	body?: string;
+	publishedAt?: string;
+	url?: string;
+}
+
+const API_BASE = "https://api.github.com";
+const RELEASES_PER_PAGE = 50;
+const RELEASE_VERSION_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * release 列表缓存。
+ *
+ * 更新检查和版本选择弹窗都可能在短时间内反复查询同一个仓库。
+ * 用一个很短的内存 TTL 可以明显减少 GitHub API 请求量，同时又不会让版本信息长期陈旧。
+ */
+const releaseVersionCache = new Map<string, { expiresAt: number; versions: ReleaseVersion[] }>();
+
+const getToken = (manager: Manager): string | undefined => manager.settings.GITHUB_TOKEN?.trim() || undefined;
+
+const buildHeaders = (token?: string, accept = "application/vnd.github+json"): Record<string, string> => {
 	const headers: Record<string, string> = {
-		Accept: "application/vnd.github+json",
+		Accept: accept,
+		"User-Agent": "better-plugins-manager",
 	};
 	if (token) headers.Authorization = `Bearer ${token}`;
 	return headers;
 };
 
+const getHeader = (headers: Record<string, string> | undefined, name: string): string | undefined => {
+	if (!headers) return undefined;
+	const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === name.toLowerCase());
+	return entry?.[1];
+};
+
+/**
+ * 将用户输入归一化为 GitHub 的 owner/repo 形式。
+ *
+ * 支持：
+ * - owner/repo
+ * - https://github.com/owner/repo
+ * - git@github.com:owner/repo.git
+ * - 带 releases/tree 等后续路径的 GitHub URL
+ */
 export const sanitizeRepo = (input: string): string => {
 	let repo = (input || "").trim();
+	repo = repo.split(/[?#]/)[0];
 	repo = repo.replace(/^https?:\/\/github.com\//i, "");
 	repo = repo.replace(/^git@github.com:/i, "");
 	repo = repo.replace(/\.git$/i, "");
-	repo = repo.replace(/\/$/, "");
-	// 只保留 owner/repo 前两段
-	const parts = repo.split("/");
-	if (parts.length >= 2) repo = `${parts[0]}/${parts[1]}`;
-	return repo;
+	repo = repo.replace(/\/+$/g, "");
+
+	const parts = repo.split("/").filter(Boolean);
+	return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : repo;
 };
 
-const enrichError = (res: any, msg?: string) => {
-	const err: any = new Error(msg || `GitHub request failed: ${res?.status}`);
-	err.status = res?.status;
-	err.rateRemaining = res?.headers?.["x-ratelimit-remaining"];
-	err.rateReset = res?.headers?.["x-ratelimit-reset"];
+const enrichError = (res: RequestUrlResponse, msg?: string): GithubRequestError => {
+	const err = new Error(msg || `GitHub request failed: ${res.status}`) as GithubRequestError;
+	err.status = res.status;
+	err.rateRemaining = getHeader(res.headers, "x-ratelimit-remaining");
+	err.rateReset = getHeader(res.headers, "x-ratelimit-reset");
 	return err;
 };
 
-const fetchJson = async (url: string, token?: string) => {
-	const res = await requestUrl({ url, headers: buildHeaders(token) });
+/**
+ * 读取 JSON 响应。
+ *
+ * requestUrl 默认会在 400+ 时直接 throw；这里显式设置 throw: false，
+ * 让我们能保留 GitHub rate limit 等响应头，后续错误提示会更准确。
+ */
+const fetchJson = async <T>(url: string, token?: string): Promise<T> => {
+	const res = await requestUrl({ url, headers: buildHeaders(token), throw: false });
 	if (res.status >= 400) throw enrichError(res);
-	return res.json as Record<string, unknown>;
+	return res.json as T;
 };
 
-const fetchText = async (url: string, token?: string) => {
-	const res = await requestUrl({ url, headers: buildHeaders(token) });
+/** 读取文本响应，主要用于下载 release asset 和 raw.githubusercontent.com 文件。 */
+const fetchText = async (url: string, token?: string): Promise<string> => {
+	const res = await requestUrl({ url, headers: buildHeaders(token, "*/*"), throw: false });
 	if (res.status >= 400) throw enrichError(res);
 	return res.text;
 };
 
+/**
+ * 获取指定 release。
+ *
+ * version 为空时使用 latest release；不为空时按 tag 精确查找。
+ * tag 中可能出现斜杠等特殊字符，所以放入 URL 前要 encodeURIComponent。
+ */
 const getRelease = async (repo: string, version?: string, token?: string): Promise<ReleaseResponse> => {
-	const url = version && version.trim() !== ""
-		? `${API_BASE}/repos/${repo}/releases/tags/${version}`
+	const requestedVersion = version?.trim();
+	const url = requestedVersion
+		? `${API_BASE}/repos/${repo}/releases/tags/${encodeURIComponent(requestedVersion)}`
 		: `${API_BASE}/repos/${repo}/releases/latest`;
-	return (await fetchJson(url, token)) as ReleaseResponse;
+	return fetchJson<ReleaseResponse>(url, token);
 };
 
-const pickAsset = (release: ReleaseResponse, name: string) => release.assets?.find((a) => a.name === name)?.browser_download_url ?? null;
+const pickAsset = (release: ReleaseResponse, name: string): string | null =>
+	release.assets?.find((asset) => asset.name === name)?.browser_download_url ?? null;
 
-export interface ReleaseVersion {
-	version: string;
-	prerelease: boolean;
-}
+const cloneReleaseVersions = (versions: ReleaseVersion[]): ReleaseVersion[] =>
+	versions.map((version) => ({ ...version }));
 
-const fetchRawFromTag = async (repo: string, tag: string, file: string, token?: string) => {
-	const candidates = [
-		`https://raw.githubusercontent.com/${repo}/${tag}/${file}`,
-		`https://raw.githubusercontent.com/${repo}/v${tag}/${file}`,
-	];
-	for (const url of candidates) {
+const buildReleaseCacheKey = (repo: string, token?: string): string => `${repo}\n${token ?? "anonymous"}`;
+
+/**
+ * 生成 raw 文件候选地址。
+ *
+ * 许多插件 release tag 使用 v1.2.3，也有一些直接使用 1.2.3。
+ * 当 release asset 不完整时，BPM 会在 tag 和 v 前缀变体之间做兜底尝试。
+ */
+const buildRawTagCandidates = (tag: string): string[] => {
+	const candidates = [tag];
+	if (tag.startsWith("v") && tag.length > 1) {
+		candidates.push(tag.slice(1));
+	} else {
+		candidates.push(`v${tag}`);
+	}
+	return Array.from(new Set(candidates));
+};
+
+const fetchRawFromTag = async (repo: string, tag: string, file: string, token?: string): Promise<string> => {
+	for (const candidateTag of buildRawTagCandidates(tag)) {
 		try {
-			return await fetchText(url, token);
+			return await fetchText(`https://raw.githubusercontent.com/${repo}/${candidateTag}/${file}`, token);
 		} catch {
-			// try next
+			// Try the next common tag spelling.
 		}
 	}
-	throw new Error(`raw file missing: ${file}`);
+	throw new Error(`Raw file missing: ${file}`);
 };
 
+const settledValue = <T>(result: PromiseSettledResult<T | null>): T | null =>
+	result.status === "fulfilled" ? result.value : null;
+
+/**
+ * 并行读取 release asset 中的插件文件。
+ *
+ * 原实现按 manifest -> main.js -> styles.css 顺序请求。
+ * 这里改为并行请求，安装时可以少等多个网络往返；任一资源失败时返回 null，
+ * 调用方再决定是否回退到 raw tag。
+ */
+const fetchPluginFilesFromReleaseAssets = async (release: ReleaseResponse, token?: string): Promise<PluginFiles> => {
+	const manifestUrl = pickAsset(release, "manifest.json");
+	const mainJsUrl = pickAsset(release, "main.js");
+	const stylesUrl = pickAsset(release, "styles.css");
+
+	const [manifestText, mainJs, styles] = await Promise.allSettled([
+		manifestUrl ? fetchText(manifestUrl, token) : Promise.resolve(null),
+		mainJsUrl ? fetchText(mainJsUrl, token) : Promise.resolve(null),
+		stylesUrl ? fetchText(stylesUrl, token) : Promise.resolve(null),
+	]);
+
+	return {
+		manifestText: settledValue(manifestText),
+		mainJs: settledValue(mainJs),
+		styles: settledValue(styles),
+	};
+};
+
+/**
+ * 从仓库 tag 的 raw 文件中补齐缺失文件。
+ *
+ * release asset 不完整时仍有不少仓库会在 tag 对应源码里保留 manifest.json/main.js。
+ * 已经从 release asset 成功拿到的文件会直接复用，不重复下载。
+ */
+const fetchPluginFilesFromRawTag = async (
+	repo: string,
+	tag: string,
+	token: string | undefined,
+	current: PluginFiles
+): Promise<PluginFiles> => {
+	const [manifestText, mainJs, styles] = await Promise.all([
+		current.manifestText ?? fetchRawFromTag(repo, tag, "manifest.json", token),
+		current.mainJs ?? fetchRawFromTag(repo, tag, "main.js", token),
+		current.styles ?? fetchRawFromTag(repo, tag, "styles.css", token).catch(() => null),
+	]);
+
+	return { manifestText, mainJs, styles };
+};
+
+/**
+ * 更新 BPM 的单个插件记录。
+ *
+ * 过去安装完成后会调用 synchronizePlugins()，它会扫描全部插件并导出所有插件笔记。
+ * 安装/更新 GitHub 单个插件时，只需要 upsert 当前插件记录即可，这能避免插件很多时的
+ * 大量无关文件写入。
+ */
+const upsertInstalledPluginRecord = (
+	manager: Manager,
+	manifest: PluginManifestJson,
+	loadedManifest: PluginManifest | undefined,
+	markAsBpm: boolean
+) => {
+	const pluginId = manifest.id;
+	const plugin = manager.settings.Plugins.find((item) => item.id === pluginId);
+	const shouldHaveBpmTag = markAsBpm || manager.settings.BPM_INSTALLED.includes(pluginId);
+	const nextName = loadedManifest?.name || manifest.name || pluginId;
+	const nextDesc = loadedManifest?.description || manifest.description || "";
+
+	if (plugin) {
+		plugin.name = nextName;
+		plugin.desc = nextDesc || plugin.desc;
+		plugin.enabled = true;
+		if (shouldHaveBpmTag && !plugin.tags.includes(BPM_TAG_ID)) plugin.tags.push(BPM_TAG_ID);
+		return;
+	}
+
+	manager.settings.Plugins.push({
+		id: pluginId,
+		name: nextName,
+		desc: nextDesc,
+		group: "",
+		tags: shouldHaveBpmTag ? [BPM_TAG_ID] : [],
+		enabled: true,
+		delay: "",
+		note: "",
+	});
+};
+
+/**
+ * 拉取指定仓库的 release 版本列表。
+ *
+ * 返回值用于下拉选择和更新检查。短 TTL 缓存可以避免用户打开弹窗、点击刷新、
+ * 批量检查更新时反复打同一个 GitHub API。
+ */
 export const fetchReleaseVersions = async (manager: Manager, repoInput: string): Promise<ReleaseVersion[]> => {
 	const repo = sanitizeRepo(repoInput);
-	const token = manager.settings.GITHUB_TOKEN?.trim() || undefined;
-	const url = `${API_BASE}/repos/${repo}/releases?per_page=50`;
-	const releases = (await fetchJson(url, token)) as unknown as ReleaseResponse[];
+	const token = getToken(manager);
+	const cacheKey = buildReleaseCacheKey(repo, token);
+	const cached = releaseVersionCache.get(cacheKey);
+	const now = Date.now();
+
+	if (cached && cached.expiresAt > now) {
+		return cloneReleaseVersions(cached.versions);
+	}
+
+	const url = `${API_BASE}/repos/${repo}/releases?per_page=${RELEASES_PER_PAGE}`;
+	const releases = await fetchJson<ReleaseResponse[]>(url, token);
 	if (!Array.isArray(releases)) return [];
-	return releases.map((r) => ({
-		version: r.tag_name || "",
-		prerelease: Boolean((r as any).prerelease),
-	})).filter((r) => r.version);
+
+	const versions = releases
+		.map((release) => ({
+			version: release.tag_name || "",
+			prerelease: Boolean(release.prerelease),
+			name: release.name || undefined,
+			body: release.body || undefined,
+			publishedAt: release.published_at || undefined,
+			url: release.html_url || undefined,
+		}))
+		.filter((release) => release.version);
+
+	releaseVersionCache.set(cacheKey, {
+		expiresAt: now + RELEASE_VERSION_CACHE_TTL_MS,
+		versions: cloneReleaseVersions(versions),
+	});
+
+	return versions;
 };
 
-export const installPluginFromGithub = async (manager: Manager, repoInput: string, version?: string, markAsBpm: boolean = true): Promise<boolean> => {
+/**
+ * 从 GitHub release 安装或更新 Obsidian 插件。
+ *
+ * 设计要点：
+ * - 优先使用 release asset，因为这是 Obsidian 社区插件推荐的发布方式。
+ * - 如果 asset 不完整，再回退到 tag 对应源码里的 raw manifest/main/styles。
+ * - manifest/main 是必需文件，styles.css 是可选文件。
+ * - 网络下载和文件写入都尽量并行，减少安装等待时间。
+ * - 安装后只更新当前插件的 BPM 记录，避免触发全量插件笔记导出。
+ */
+export const installPluginFromGithub = async (
+	manager: Manager,
+	repoInput: string,
+	version?: string,
+	markAsBpm = true
+): Promise<boolean> => {
 	try {
 		const repo = sanitizeRepo(repoInput);
-		const token = manager.settings.GITHUB_TOKEN?.trim() || undefined;
+		const token = getToken(manager);
 		const release = await getRelease(repo, version, token);
 		const tag = release.tag_name || version || "";
+
 		if (manager.settings.DEBUG) console.log("[BPM] install from GitHub", { repo, version, tag });
 
-		const manifestUrl = pickAsset(release, "manifest.json");
-		const mainJsUrl = pickAsset(release, "main.js");
-		let manifestText: string | null = null;
-		let mainJs: string | null = null;
-		let styles: string | null = null;
+		let files = await fetchPluginFilesFromReleaseAssets(release, token);
 
-		// 优先 release 资产
-		try {
-			if (manifestUrl) manifestText = await fetchText(manifestUrl, token);
-			if (mainJsUrl) mainJs = await fetchText(mainJsUrl, token);
-			const stylesUrl = pickAsset(release, "styles.css");
-			if (stylesUrl) styles = await fetchText(stylesUrl, token);
-			if (manager.settings.DEBUG) console.log("[BPM] release assets picked", { manifestUrl: !!manifestUrl, mainJsUrl: !!mainJsUrl, styles: !!styles });
-		} catch (e) {
-			if (manager.settings.DEBUG) console.log("[BPM] release asset fetch failed, will fallback", e);
+		if (manager.settings.DEBUG) {
+			console.log("[BPM] release assets picked", {
+				manifest: Boolean(files.manifestText),
+				main: Boolean(files.mainJs),
+				styles: Boolean(files.styles),
+			});
 		}
 
-		// 资产缺失则回退到 tag raw 文件
-		if (!manifestText || !mainJs) {
-			if (!tag) throw new Error("未找到发布 tag，无法下载原始文件");
+		if (!files.manifestText || !files.mainJs) {
+			if (!tag) throw new Error("未找到发布 tag，无法下载原始文件。");
 			try {
-				manifestText = await fetchRawFromTag(repo, tag, "manifest.json", token);
-				mainJs = await fetchRawFromTag(repo, tag, "main.js", token);
-				try { styles = await fetchRawFromTag(repo, tag, "styles.css", token); } catch { /* optional */ }
-				if (manager.settings.DEBUG) console.log("[BPM] fallback to raw tag", { repo, tag, manifest: !!manifestText, main: !!mainJs, styles: !!styles });
-			} catch (e) {
-				console.error("fallback to raw tag failed", e);
+				files = await fetchPluginFilesFromRawTag(repo, tag, token, files);
+				if (manager.settings.DEBUG) {
+					console.log("[BPM] fallback to raw tag", {
+						repo,
+						tag,
+						manifest: Boolean(files.manifestText),
+						main: Boolean(files.mainJs),
+						styles: Boolean(files.styles),
+					});
+				}
+			} catch (error) {
+				console.error("[BPM] fallback to raw tag failed", error);
 			}
 		}
 
-		if (!manifestText || !mainJs) {
-			new Notice("未找到 manifest.json 或 main.js，请检查发布资产或仓库 tag。");
+		if (!files.manifestText || !files.mainJs) {
+			new Notice(manager.translator.t("安装_错误_缺少插件资源"));
 			return false;
 		}
 
-		const manifest = JSON.parse(manifestText) as { id: string; name: string; version?: string };
+		const manifest = JSON.parse(files.manifestText) as PluginManifestJson;
 		if (!manifest?.id) {
-			new Notice("manifest.json 缺少 id 字段，无法安装。");
+			new Notice(manager.translator.t("安装_错误_manifest缺少ID"));
 			return false;
 		}
+
 		if (manager.settings.DEBUG) console.log("[BPM] manifest parsed", { id: manifest.id, version: manifest.version });
 
 		const adapter = manager.app.vault.adapter;
@@ -150,41 +385,55 @@ export const installPluginFromGithub = async (manager: Manager, repoInput: strin
 		const pluginPath = `${pluginDir}/`;
 		if (!(await adapter.exists(pluginDir))) await adapter.mkdir(pluginDir);
 
-		if (manager.settings.DEBUG) console.log("[BPM] writing files", { pluginDir, manifestSize: manifestText.length, mainSize: mainJs.length, stylesSize: styles?.length });
-		await adapter.write(`${pluginPath}manifest.json`, manifestText);
-		await adapter.write(`${pluginPath}main.js`, mainJs);
-		if (styles) await adapter.write(`${pluginPath}styles.css`, styles);
+		if (manager.settings.DEBUG) {
+			console.log("[BPM] writing files", {
+				pluginDir,
+				manifestSize: files.manifestText.length,
+				mainSize: files.mainJs.length,
+				stylesSize: files.styles?.length,
+			});
+		}
 
-		// 如果已安装则重载，否则加载并启用
+		const writes = [
+			adapter.write(`${pluginPath}manifest.json`, files.manifestText),
+			adapter.write(`${pluginPath}main.js`, files.mainJs),
+		];
+		if (files.styles) writes.push(adapter.write(`${pluginPath}styles.css`, files.styles));
+		await Promise.all(writes);
+
 		try {
 			await manager.appPlugins.disablePlugin(manifest.id);
-		} catch { /* noop */ }
+		} catch {
+			// The plugin may not be enabled yet; enabling below is still the desired final state.
+		}
 		await manager.appPlugins.enablePluginAndSave(manifest.id);
 
-		// 记录来源：仅在明确从 BPM 下载页面安装时标记 bpm 安装
-		if (markAsBpm) {
-			if (!manager.settings.BPM_INSTALLED.includes(manifest.id)) {
-				manager.settings.BPM_INSTALLED.push(manifest.id);
-			}
-			const mp = manager.settings.Plugins.find((p) => p.id === manifest.id);
-			if (mp && !mp.tags.includes(BPM_TAG_ID)) mp.tags.push(BPM_TAG_ID);
+		if (markAsBpm && !manager.settings.BPM_INSTALLED.includes(manifest.id)) {
+			manager.settings.BPM_INSTALLED.push(manifest.id);
 		}
+
 		await manager.repoResolver.setRepo(manifest.id, repo);
-		// 刷新设置并标签
 		await manager.appPlugins.loadManifests();
+
+		const loadedManifest = (manager.appPlugins.manifests as Record<string, PluginManifest | undefined>)[manifest.id];
+		upsertInstalledPluginRecord(manager, manifest, loadedManifest, markAsBpm);
+
 		if (manager.settings.DEBUG) {
-			const loaded = (manager.appPlugins.manifests as any)?.[manifest.id];
-			console.log("[BPM] manifest after reload", { id: manifest.id, loadedVersion: loaded?.version, expected: manifest.version });
+			console.log("[BPM] manifest after reload", {
+				id: manifest.id,
+				loadedVersion: loadedManifest?.version,
+				expected: manifest.version,
+			});
 		}
-		manager.synchronizePlugins(Object.values(manager.appPlugins.manifests).filter((pm: any) => pm.id !== manager.manifest.id) as any);
-		manager.saveSettings();
-		manager.exportPluginNote(manifest.id);
+
+		await manager.saveSettings();
+
 		if (manager.settings.DEBUG) console.log("[BPM] install complete", { id: manifest.id, markAsBpm });
 
-		new Notice(`${manager.translator.t("安装_成功_提示")}${manifest.name || manifest.id}`);
+		new Notice(manager.translator.t("安装_成功_提示", { name: manifest.name || manifest.id }));
 		return true;
 	} catch (error) {
-		const err: any = error;
+		const err = error as GithubRequestError;
 		console.error(error);
 		if (err?.status === 403 && !manager.settings.GITHUB_TOKEN) {
 			new Notice(manager.translator.t("安装_错误_限速"));
@@ -197,44 +446,55 @@ export const installPluginFromGithub = async (manager: Manager, repoInput: strin
 	}
 };
 
+/**
+ * 从 GitHub release 安装 Obsidian 主题。
+ *
+ * 主题安装比插件简单：manifest.json 和 theme.css 都是必需 asset。
+ * 下载和写入同样使用并行流程，安装完成后调用 Obsidian 的 customCss 设置当前主题。
+ */
 export const installThemeFromGithub = async (manager: Manager, repoInput: string, version?: string): Promise<boolean> => {
 	try {
 		const repo = sanitizeRepo(repoInput);
-		const token = manager.settings.GITHUB_TOKEN?.trim() || undefined;
+		const token = getToken(manager);
 		const release = await getRelease(repo, version, token);
 
 		const manifestUrl = pickAsset(release, "manifest.json");
 		const themeUrl = pickAsset(release, "theme.css") ?? pickAsset(release, "themes.css") ?? pickAsset(release, "theme-beta.css");
 		if (!manifestUrl || !themeUrl) {
-			new Notice("未找到 manifest.json 或 theme.css 资源。");
+			new Notice(manager.translator.t("安装_错误_缺少主题资源"));
 			return false;
 		}
 
-		const manifestText = await fetchText(manifestUrl, token);
+		const [manifestText, themeCss] = await Promise.all([
+			fetchText(manifestUrl, token),
+			fetchText(themeUrl, token),
+		]);
+
 		const manifest = JSON.parse(manifestText) as { name: string };
 		if (!manifest?.name) {
-			new Notice("主题 manifest 缺少 name 字段。");
+			new Notice(manager.translator.t("安装_错误_主题manifest缺少名称"));
 			return false;
 		}
 
-		const themeCss = await fetchText(themeUrl, token);
 		const adapter = manager.app.vault.adapter;
 		const themeDir = normalizePath(`${manager.app.vault.configDir}/themes/${manifest.name}`);
 		const themePath = `${themeDir}/`;
 		if (!(await adapter.exists(themeDir))) await adapter.mkdir(themeDir);
 
-		await adapter.write(`${themePath}theme.css`, themeCss);
-		await adapter.write(`${themePath}manifest.json`, manifestText);
+		await Promise.all([
+			adapter.write(`${themePath}theme.css`, themeCss),
+			adapter.write(`${themePath}manifest.json`, manifestText),
+		]);
 
-		// 应用主题
+		// customCss is an internal Obsidian API, so optional chaining keeps older builds safe.
 		// @ts-ignore
 		manager.app.customCss?.setTheme?.(manifest.name);
 
-		new Notice(`已安装/更新主题：${manifest.name}`);
+		new Notice(manager.translator.t("安装_主题成功_提示", { name: manifest.name }));
 		return true;
 	} catch (error) {
 		console.error(error);
-		new Notice("主题安装失败，请检查仓库地址/版本或网络状态。");
+		new Notice(manager.translator.t("安装_主题错误_通用"));
 		return false;
 	}
 };

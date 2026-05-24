@@ -22,7 +22,7 @@ export interface Tag {
 }
 
 // 已知的特殊 Tag
-export const BPM_TAG_ID = "bpm-managed"; // BPM 管理标识
+export const BPM_TAG_ID = "bpm-install"; // BPM 安装标识
 export const BPM_IGNORE_TAG = "bpm-ignore"; // BPM 忽略标识
 
 export interface Delay {
@@ -38,4 +38,32 @@ export interface RibbonItem {
 	icon: string;
 	visible: boolean;
 	order: number;
+}
+
+export interface PluginLayoutItem {
+	id: string;
+	type: "plugin" | "separator";
+	title?: string;
+}
+
+export interface BetaSource {
+	id: string;
+	repo: string;
+	type: "plugin" | "theme";
+	mode: "latest" | "frozen";
+	frozenVersion?: string;
+	autoUpdate: boolean;
+	enabled: boolean;
+	localVersion?: string;
+	latestVersion?: string;
+	lastChecked?: number;
+	error?: string;
+}
+
+export interface InstallHistoryItem {
+	repo: string;
+	type: "plugin" | "theme";
+	version?: string;
+	trackSource?: boolean;
+	usedAt?: number;
 }

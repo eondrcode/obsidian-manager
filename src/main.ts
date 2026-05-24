@@ -6,10 +6,10 @@ import { ManagerModal } from './modal/manager-modal';
 import Commands from './command';
 import Agreement from 'src/agreement';
 import { RepoResolver, ensureBpmTagExists, BPM_TAG_ID } from './repo-resolver';
-import { normalizePath, TFile, stringifyYaml, parseYaml, EventRef, Notice, Platform, requestUrl } from 'obsidian';
-import { ManagerPlugin, BPM_IGNORE_TAG } from './data/types';
+import { Notice, Platform, requestUrl } from 'obsidian';
+import { BetaSource, ManagerPlugin, BPM_IGNORE_TAG } from './data/types';
 import { runMigrations } from './migrations';
-import { fetchReleaseVersions, installPluginFromGithub, ReleaseVersion, sanitizeRepo } from './github-install';
+import { fetchReleaseVersions, installPluginFromGithub, installThemeFromGithub, ReleaseVersion, sanitizeRepo } from './github-install';
 import { performSelfCheck } from './self-check';
 import { SystemRibbonManager } from './manager/system-ribbon-manager';
 import { RibbonItem } from './data/types';
@@ -39,10 +39,6 @@ export default class Manager extends Plugin {
     public agreement: Agreement;
     public repoResolver: RepoResolver;
     public systemRibbonManager: SystemRibbonManager;
-    private exportWatcher: EventRef | null = null;
-    private exportWatcherPaused = false;
-    private exportWriting = false;
-    private toggleNotice: Notice | null = null;
     public updateStatus: Record<string, UpdateStatus> = {};
     private updateProgressNotice: Notice | null = null;
 
@@ -68,7 +64,10 @@ export default class Manager extends Plugin {
         }
         // 初始化语言系统
         this.translator = new Translator(this);
+        let builtinTagsChanged = false;
+        const tagCountBeforeBpmEnsure = this.settings.TAGS.length;
         ensureBpmTagExists(this);
+        builtinTagsChanged = this.settings.TAGS.length !== tagCountBeforeBpmEnsure;
         this.ensureBpmTagAndRecords();
         this.ensureSelfPluginRecord();
 
@@ -79,23 +78,20 @@ export default class Manager extends Plugin {
                 name: this.translator.t("标签_BPM忽略_名称") || "BPM Ignored",
                 color: "#6c757d" // 灰色
             });
-            await this.saveSettings();
+            builtinTagsChanged = true;
         }
+        if (this.normalizeBuiltinTagNames() || builtinTagsChanged) await this.saveSettings();
 
         this.repoResolver = new RepoResolver(this);
 
-        // 初始化原生 Ribbon 管理器 (始终启用)
+        // 初始化 Ribbon 管理器。功能编排不写入 Obsidian workspace 配置，只用 BPM 数据驱动运行时样式。
         this.systemRibbonManager = new SystemRibbonManager(this.app, this);
-        this.systemRibbonManager.startWatch(async () => {
-            const { orderedIds, hiddenStatus } = await this.systemRibbonManager.load();
-            await this.syncRibbonConfig(orderedIds, hiddenStatus);
-        });
-
-        // 启动时立即同步一次，确保与原生配置一致
-        const { orderedIds, hiddenStatus } = await this.systemRibbonManager.load();
-        if (orderedIds.length > 0) {
-            await this.syncRibbonConfig(orderedIds, hiddenStatus);
-        }
+        const savedRibbonItems = [...(this.settings.RIBBON_SETTINGS || [])]
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const orderedRibbonIds = savedRibbonItems.map((item) => item.id);
+        const hiddenRibbonStatus: Record<string, boolean> = {};
+        savedRibbonItems.forEach((item) => hiddenRibbonStatus[item.id] = !item.visible);
+        await this.syncRibbonConfig(orderedRibbonIds, hiddenRibbonStatus);
 
         // 初始化侧边栏图标
         this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), () => { this.managerModal = new ManagerModal(this.app, this); this.managerModal.open(); });
@@ -105,9 +101,8 @@ export default class Manager extends Plugin {
         Commands(this.app, this);
 
         this.agreement = new Agreement(this);
-        this.setupExportWatcher();
-        if (this.settings.EXPORT_DIR) this.exportAllPluginNotes();
         this.startupCheckForUpdates();
+        this.startupMaintainBetaSources();
 
         this.registerObsidianProtocolHandler("BPM-plugin-install", async (params: ObsidianProtocolData) => {
             await this.agreement.parsePluginInstall(params);
@@ -127,7 +122,7 @@ export default class Manager extends Plugin {
             // 延迟启动自检，确保 Obsidian 初始化完成，避免自动接管被覆盖
             setTimeout(() => {
                 this.cleanRibbonItems(); // 启动后清理一次
-                performSelfCheck(this);
+                if (this.settings.DELAY) performSelfCheck(this);
             }, 2000);
         });
     }
@@ -139,21 +134,12 @@ export default class Manager extends Plugin {
         }
 
         if (this.settings.DELAY) this.disableDelaysForAllPlugins();
-        if (this.exportWatcher) this.app.vault.offref(this.exportWatcher);
         if (this.menuObserver) {
             this.menuObserver.disconnect();
         }
 
-        // 尝试在退出时保存配置到原生文件
-        const items = this.settings.RIBBON_SETTINGS;
-        const orderedIds = items.map(i => i.id);
-        const hiddenStatus: Record<string, boolean> = {};
-        items.forEach(i => hiddenStatus[i.id] = !i.visible);
-
         // 临走前再清理一次
         this.cleanRibbonItems();
-
-        this.systemRibbonManager.save(orderedIds, hiddenStatus).catch(err => console.error("Failed to save on unload", err));
 
         this.systemRibbonManager?.stopWatch();
     }
@@ -253,9 +239,6 @@ export default class Manager extends Plugin {
             const hiddenStatus: Record<string, boolean> = {};
             this.settings.RIBBON_SETTINGS.forEach(i => hiddenStatus[i.id] = !i.visible);
 
-            // 同步到原生配置
-            await this.systemRibbonManager.save(orderedIds, hiddenStatus);
-            // 应用到内存
             this.applyRibbonConfigToMemory(orderedIds, hiddenStatus);
             // 更新 CSS 样式 (重要：这控制了实际的显隐)
             this.updateRibbonStyles();
@@ -263,64 +246,38 @@ export default class Manager extends Plugin {
             // 如果 BPM 设置面板打开着，尝试刷新它
             this.reloadIfCurrentModal();
 
-            await this.systemRibbonManager.save(orderedIds, hiddenStatus);
             this.applyRibbonConfigToMemory(orderedIds, hiddenStatus);
             this.updateRibbonStyles();
 
-            new Notice(this.translator.t("Ribbon_已隐藏") + `: ${label}`);
+            new Notice(this.translator.t("Ribbon_已隐藏_通知", { name: label }));
         }
     }
 
     public async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
     public async saveSettings() { await this.saveData(this.settings); }
 
-    // 保存并同步单个插件到导出笔记
+    // 保存单个插件配置。保留方法名以兼容旧调用点。
     public async savePluginAndExport(pluginId: string) {
         await this.saveSettings();
-        await this.exportPluginNote(pluginId);
     }
 
     public showUpdateProgress(total: number): { dispose: () => void; update: (processed: number, currentId?: string) => void; cancel: () => void; isCancelled: () => boolean } {
         if (this.updateProgressNotice) this.updateProgressNotice.hide();
-        const notice = new Notice("", 0);
-        notice.noticeEl.empty();
-        const wrap = document.createElement("div");
-        wrap.addClass("bpm-update-progress");
-        const text = document.createElement("div");
-        text.setText(this.translator.t("通知_检测更新中文案"));
-        const sub = document.createElement("div");
-        sub.addClass("bpm-update-progress__sub");
-        const bar = document.createElement("div");
-        bar.addClass("bpm-progress");
-        const fill = document.createElement("div");
-        fill.addClass("bpm-progress__bar");
-        bar.appendChild(fill);
-        const cancelBtn = document.createElement("button");
-        cancelBtn.textContent = this.translator.t("通用_取消_文本") || "Cancel";
-        cancelBtn.addClass("bpm-progress__cancel");
-        let processed = 0;
-        let cancelled = false;
-        cancelBtn.onclick = () => { cancelled = true; };
+        const baseText = this.translator.t("通知_检测更新中文案");
+        const notice = new Notice(baseText, 0);
         const update = (p: number, currentId?: string) => {
-            processed = p;
-            const ratio = total > 0 ? Math.min(1, processed / total) : 0;
-            fill.style.width = `${ratio * 100}%`;
-            sub.setText(`${processed}/${total}${currentId ? ` · ${currentId}` : ""}`);
+            notice.setMessage(`${baseText} ${Math.min(p, total)}/${total}${currentId ? ` · ${currentId}` : ""}`);
         };
-        wrap.appendChild(text);
-        wrap.appendChild(sub);
-        wrap.appendChild(bar);
-        wrap.appendChild(cancelBtn);
-        notice.noticeEl.appendChild(wrap);
         this.updateProgressNotice = notice;
+        update(0);
         return {
             dispose: () => {
                 notice.hide();
                 if (this.updateProgressNotice === notice) this.updateProgressNotice = null;
             },
             update,
-            cancel: () => { cancelled = true; },
-            isCancelled: () => cancelled
+            cancel: () => undefined,
+            isCancelled: () => false
         };
     }
 
@@ -366,6 +323,117 @@ export default class Manager extends Plugin {
         }
     }
 
+    private sourceHasUpdate(source: BetaSource): boolean {
+        const localVersion = source.localVersion || "";
+        if (!source.latestVersion || !localVersion) return false;
+        return this.compareVersions(source.latestVersion, localVersion) > 0;
+    }
+
+    private pickBetaSourceVersion(source: BetaSource, versions: ReleaseVersion[]): string {
+        if (source.mode === "frozen") return source.frozenVersion || source.latestVersion || versions[0]?.version || "";
+        return versions.find(v => !v.prerelease)?.version || versions[0]?.version || "";
+    }
+
+    private async checkBetaSource(source: BetaSource): Promise<void> {
+        try {
+            const versions = await fetchReleaseVersions(this, source.repo);
+            const latestVersion = this.pickBetaSourceVersion(source, versions);
+            source.latestVersion = latestVersion || "";
+            source.lastChecked = Date.now();
+            source.error = "";
+
+            if (source.type === "plugin") {
+                const mappedId = Object.entries(this.settings.REPO_MAP || {})
+                    .find(([, repo]) => sanitizeRepo(repo) === sanitizeRepo(source.repo))?.[0];
+                if (mappedId) source.id = mappedId;
+                const pluginId = mappedId || source.id;
+                source.localVersion = (this.appPlugins.manifests[pluginId] as PluginManifest | undefined)?.version || source.localVersion || "";
+            }
+        } catch (e) {
+            source.error = (e as Error)?.message || String(e);
+            source.lastChecked = Date.now();
+            if (this.settings.DEBUG) console.error("[BPM] beta source check failed", source.repo, e);
+        }
+    }
+
+    private async startupCheckBetaSources() {
+        if (!this.settings.SOURCE_STARTUP_CHECK_UPDATES) return;
+
+        const sources = (this.settings.BETA_SOURCES || []).filter(s => s.enabled);
+        if (sources.length === 0) return;
+
+        for (const source of sources) {
+            await this.checkBetaSource(source);
+        }
+
+        await this.saveSettings();
+        const count = sources.filter((source) => this.sourceHasUpdate(source)).length;
+        if (count > 0) {
+            new Notice(this.translator.t("通知_来源可更新数量", { count }), 5000);
+        }
+    }
+
+    private async startupMaintainBetaSources() {
+        await this.startupCheckBetaSources();
+        await this.startupUpdateBetaSources();
+    }
+
+    private async startupUpdateBetaSources() {
+        if (!this.settings.SOURCE_AUTO_UPDATE) return;
+
+        const sources = (this.settings.BETA_SOURCES || []).filter(s => s.enabled && s.autoUpdate);
+        if (sources.length === 0) return;
+        for (const source of sources) {
+            try {
+                const checkedRecently = source.lastChecked && Date.now() - source.lastChecked < 60_000;
+                let targetVersion = checkedRecently ? source.latestVersion || "" : "";
+                if (!targetVersion) {
+                    const versions = await fetchReleaseVersions(this, source.repo);
+                    targetVersion = this.pickBetaSourceVersion(source, versions);
+                    source.latestVersion = targetVersion || "";
+                    source.lastChecked = Date.now();
+                    source.error = "";
+                }
+
+                if (!targetVersion) continue;
+                if (source.type === "plugin") {
+                    const mappedId = Object.entries(this.settings.REPO_MAP || {})
+                        .find(([, repo]) => sanitizeRepo(repo) === sanitizeRepo(source.repo))?.[0];
+                    if (mappedId) source.id = mappedId;
+                    const pluginId = mappedId || source.id;
+                    const localVersion = (this.appPlugins.manifests[pluginId] as PluginManifest | undefined)?.version || source.localVersion || "";
+                    source.localVersion = localVersion;
+                    const needsUpdate = source.mode === "frozen"
+                        ? localVersion !== targetVersion
+                        : this.compareVersions(targetVersion, localVersion || "0.0.0") > 0;
+                    if (needsUpdate) {
+                        const ok = await installPluginFromGithub(this, source.repo, targetVersion, true);
+                        if (ok) {
+                            const nextMappedId = Object.entries(this.settings.REPO_MAP || {})
+                                .find(([, repo]) => sanitizeRepo(repo) === sanitizeRepo(source.repo))?.[0];
+                            if (nextMappedId) source.id = nextMappedId;
+                            const manifest = this.appPlugins.manifests[source.id] as PluginManifest | undefined;
+                            source.localVersion = manifest?.version || targetVersion;
+                        }
+                    }
+                } else {
+                    const needsUpdate = source.mode === "frozen"
+                        ? source.localVersion !== targetVersion
+                        : !source.localVersion || this.compareVersions(targetVersion, source.localVersion) > 0;
+                    if (needsUpdate) {
+                        const ok = await installThemeFromGithub(this, source.repo, targetVersion);
+                        if (ok) source.localVersion = targetVersion;
+                    }
+                }
+            } catch (e) {
+                source.error = (e as Error)?.message || String(e);
+                source.lastChecked = Date.now();
+                if (this.settings.DEBUG) console.error("[BPM] beta source auto update failed", source.repo, e);
+            }
+        }
+        await this.saveSettings();
+    }
+
     public ensureBpmTagAndRecords() {
         ensureBpmTagExists(this);
         // 确保 BPM 安装的插件拥有标签
@@ -375,170 +443,35 @@ export default class Manager extends Plugin {
         });
     }
 
-    public getExportDir(): string | null {
-        if (!this.settings.EXPORT_DIR) return null;
-        return normalizePath(this.settings.EXPORT_DIR);
-    }
-
-    public pauseExportWatcher() {
-        if (this.exportWatcher) {
-            this.app.vault.offref(this.exportWatcher);
-            this.exportWatcher = null;
-        }
-        this.exportWatcherPaused = true;
-    }
-
-    public resumeExportWatcher() {
-        if (!this.settings.EXPORT_DIR) {
-            this.exportWatcherPaused = false;
-            return;
-        }
-        // 仅在曾暂停时重新挂载，避免重复注册
-        if (this.exportWatcherPaused) {
-            this.setupExportWatcher();
-        }
-        this.exportWatcherPaused = false;
-    }
-
-    public setupExportWatcher() {
-        if (this.exportWatcher) this.app.vault.offref(this.exportWatcher);
-        const dir = this.settings.EXPORT_DIR;
-        if (!dir) return;
-        this.exportWatcher = this.app.vault.on("modify", async (file) => { await this.handleExportedFileChange(file as TFile); });
-        this.registerEvent(this.exportWatcher);
-    }
-
-    private async handleExportedFileChange(file: TFile) {
-        if (this.exportWriting) return;
-        const exportDir = this.settings.EXPORT_DIR;
-        if (!exportDir) return;
-        if (!file.path.endsWith(".md")) return;
-        const normalized = normalizePath(file.path);
-        if (!normalized.startsWith(normalizePath(exportDir) + "/") && normalizePath(exportDir) !== normalized) return;
-        try {
-            const content = await this.app.vault.read(file);
-            const { frontmatter } = this.parseFrontmatter(content);
-            if (!frontmatter || !frontmatter["bpm_ro_id"]) return;
-            const id = String(frontmatter["bpm_ro_id"]);
-            const mp = this.settings.Plugins.find(p => p.id === id);
-            if (!mp) return;
-            const safe = (key: string) => frontmatter[key];
-            mp.desc = safe("bpm_rw_desc") ?? mp.desc;
-            mp.note = safe("bpm_rw_note") ?? mp.note;
-            if (typeof safe("bpm_rw_enabled") === "boolean") {
-                const targetEnabled = safe("bpm_rw_enabled") as boolean;
-                mp.enabled = targetEnabled;
-                if (id !== this.manifest.id) {
-                    const isEnabled = this.appPlugins.enabledPlugins.has(id);
-                    if (targetEnabled !== isEnabled) {
-                        this.showToggleNotice();
-                        try {
-                            if (targetEnabled) {
-                                await this.appPlugins.enablePluginAndSave(id);
-                            } else {
-                                await this.appPlugins.disablePluginAndSave(id);
-                            }
-                        } catch (e) {
-                            console.error("同步启用/禁用插件失败", e);
-                        } finally {
-                            this.hideToggleNotice();
-                        }
-                    }
-                }
+    private normalizeBuiltinTagNames(): boolean {
+        let changed = false;
+        const normalize = (id: string, name: string, legacyNames: string[], color: string) => {
+            const tag = this.settings.TAGS.find((item) => item.id === id);
+            if (!tag) return;
+            if (!tag.name || legacyNames.includes(tag.name)) {
+                tag.name = name;
+                changed = true;
             }
-            // 条件可写 repo：仅非 BPM 安装且当前无官方映射
-            const repo = safe("bpm_rwc_repo");
-            const allowRepo = !this.settings.BPM_INSTALLED.includes(id) && !this.settings.REPO_MAP[id];
-            if (repo && allowRepo) {
-                this.settings.REPO_MAP[id] = repo;
+            if (!tag.color) {
+                tag.color = color;
+                changed = true;
             }
-            await this.saveSettings();
-            this.reloadIfCurrentModal();
-        } catch (e) {
-            console.error("同步导入 BPM 笔记失败", e);
-        }
+        };
+
+        normalize(BPM_TAG_ID, this.translator.t("标签_BPM安装_名称") || "BPM 安装", [
+            "bpm install",
+            "bpm安装",
+            "BPM Install",
+            "BPM Installed",
+        ], "#409EFF");
+        normalize(BPM_IGNORE_TAG, this.translator.t("标签_BPM忽略_名称") || "BPM 忽略", [
+            "BPM Ignore",
+            "BPM Ignored",
+        ], "#6c757d");
+        return changed;
     }
 
-    private parseFrontmatter(content: string): { frontmatter: any, body: string } {
-        if (!content.startsWith("---")) return { frontmatter: null, body: content };
-        const end = content.indexOf("\n---", 3);
-        if (end === -1) return { frontmatter: null, body: content };
-        const raw = content.slice(3, end).trim();
-        let fm: any = null;
-        try { fm = parseYaml(raw); } catch { fm = null; }
-        const body = content.slice(end + 4);
-        return { frontmatter: fm, body };
-    }
-
-    public async exportAllPluginNotes() {
-        if (!this.settings.EXPORT_DIR) return;
-        for (const plugin of this.settings.Plugins) {
-            await this.exportPluginNote(plugin.id);
-        }
-    }
-
-    public async exportPluginNote(pluginId: string) {
-        if (!this.settings.EXPORT_DIR) return;
-        const mp = this.settings.Plugins.find(p => p.id === pluginId);
-        if (!mp) return;
-        const dir = this.getExportDir();
-        if (!dir) return;
-        try {
-            const adapter = this.app.vault.adapter;
-            const vaultRelativeDir = normalizePath(this.settings.EXPORT_DIR);
-            if (!(await adapter.exists(vaultRelativeDir))) {
-                await adapter.mkdir(vaultRelativeDir);
-            }
-            const targetPath = await this.resolveExportPath(mp, vaultRelativeDir);
-            let body = `\n\n${this.translator.t('导出_正文提示')}`;
-            let existingFrontmatter: Record<string, any> | null = null;
-            let existingContent: string | null = null;
-            if (await adapter.exists(targetPath)) {
-                const old = await adapter.read(targetPath);
-                existingContent = old;
-                const parsed = this.parseFrontmatter(old);
-                existingFrontmatter = parsed.frontmatter ?? null;
-                body = parsed.body || body;
-            }
-            // 解析 repo 映射（官方清单 / BPM 安装 / 手动设置）
-            let repo = this.settings.REPO_MAP[mp.id] || "";
-            try {
-                const resolved = await this.repoResolver.resolveRepo(mp.id);
-                if (resolved) repo = resolved;
-            } catch (e) {
-                console.error("解析仓库映射失败", e);
-            }
-            const bpmFrontmatter: Record<string, any> = {
-                "bpm_ro_id": mp.id,
-                "bpm_ro_name": mp.name,
-                "bpm_rw_desc": mp.desc,
-                "bpm_rw_note": mp.note,
-                "bpm_rw_enabled": mp.enabled,
-                "bpm_rwc_repo": repo,
-                "bpm_ro_group": mp.group,
-                "bpm_ro_tags": mp.tags,
-                "bpm_ro_delay": mp.delay,
-                "bpm_ro_installed_via_bpm": this.settings.BPM_INSTALLED.includes(mp.id),
-            };
-            // 保留用户自定义 frontmatter（非 bpm_*），仅更新 bpm_* 字段
-            const kept = Object.fromEntries(Object.entries(existingFrontmatter ?? {}).filter(([k]) => !k.startsWith("bpm_")));
-            const frontmatter: Record<string, any> = { ...bpmFrontmatter, ...kept };
-
-            const yaml = stringifyYaml(frontmatter).trimEnd();
-            const content = `---\n${yaml}\n---${body.startsWith("\n") ? "" : "\n"}${body}`;
-
-            // 只有当内容确实发生变化时才写入，避免频繁触发文件更新/同步
-            if (existingContent !== null && existingContent === content) return;
-            this.exportWriting = true;
-            await adapter.write(targetPath, content);
-        } catch (e) {
-            console.error("导出 BPM 笔记失败", e);
-        } finally {
-            this.exportWriting = false;
-        }
-    }
-
-    // 确保 BPM 自身也存在于插件记录中（用于面板显示与导出）
+    // 确保 BPM 自身也存在于插件记录中（用于面板显示）
     public ensureSelfPluginRecord() {
         const id = this.manifest.id;
         const existing = this.settings.Plugins.find(p => p.id === id);
@@ -557,7 +490,6 @@ export default class Manager extends Plugin {
                 note: "",
             });
             this.saveSettings();
-            this.exportAllPluginNotes();
             return;
         }
         existing.name = existing.name || this.manifest.name;
@@ -594,73 +526,6 @@ export default class Manager extends Plugin {
         if (cleaned) console.log("[BPM] Cleaned undefined items from leftRibbon.");
     }
 
-    private showToggleNotice() {
-        if (this.toggleNotice) return;
-        this.toggleNotice = new Notice("正在应用更改，请勿频繁操作。", 3000);
-    }
-
-    private hideToggleNotice() {
-        if (this.toggleNotice) {
-            this.toggleNotice.hide();
-            this.toggleNotice = null;
-        }
-    }
-
-    private exportFileName(mp: ManagerPlugin): string {
-        const base = (mp.name || mp.id || "plugin").trim();
-        const safe = base.replace(/[/\\?%*:|"<>]/g, "-").replace(/\s+/g, " ");
-        return safe || "plugin";
-    }
-
-    // 查找/重命名导出文件：优先按 frontmatter 中的 bpm_ro_id 匹配，必要时将旧文件名重命名为当前 name
-    private async resolveExportPath(mp: ManagerPlugin, vaultRelativeDir: string): Promise<string> {
-        const adapter = this.app.vault.adapter;
-        const normalizedDir = normalizePath(vaultRelativeDir);
-        const desired = normalizePath(`${normalizedDir}/${this.exportFileName(mp)}.md`);
-
-        // 1) 在导出目录内按 frontmatter 查找
-        const files = this.app.vault.getMarkdownFiles().filter(f => {
-            const p = normalizePath(f.path);
-            return p === normalizedDir || p.startsWith(normalizedDir + "/");
-        });
-        for (const f of files) {
-            try {
-                const content = await this.app.vault.read(f);
-                const { frontmatter } = this.parseFrontmatter(content);
-                if (frontmatter?.["bpm_ro_id"] === mp.id) {
-                    const currentPath = normalizePath(f.path);
-                    if (currentPath !== desired) {
-                        // 如果目标不存在，则重命名以保持文件名与 name 一致
-                        if (!(await adapter.exists(desired))) {
-                            await adapter.rename(currentPath, desired);
-                            return desired;
-                        }
-                        return currentPath;
-                    }
-                    return currentPath;
-                }
-            } catch {
-                // ignore parse errors
-            }
-        }
-
-        // 2) 如果目标路径已存在，直接使用
-        if (await adapter.exists(desired)) return desired;
-
-        // 3) 回退：如果存在基于 id 的旧文件名，复用它并重命名到当前 desired
-        const legacyById = normalizePath(`${normalizedDir}/${(mp.id || "plugin").replace(/[/\\?%*:|"<>]/g, "-") || "plugin"}.md`);
-        if (await adapter.exists(legacyById)) {
-            if (!(await adapter.exists(desired))) {
-                await adapter.rename(legacyById, desired);
-                return desired;
-            }
-            return legacyById;
-        }
-
-        // 4) 默认使用当前 name 生成的路径
-        return desired;
-    }
-
     // 关闭延时 调用
     public disableDelay() {
         const plugins = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id) as PluginManifest[];
@@ -668,12 +533,21 @@ export default class Manager extends Plugin {
     }
 
     // 开启延时 调用
+    private isBpmIgnoredPlugin(pluginId: string): boolean {
+        return Boolean(this.settings.Plugins.find(plugin => plugin.id === pluginId)?.tags.includes(BPM_IGNORE_TAG));
+    }
+
+    private getDelayManagedPluginManifests(): PluginManifest[] {
+        return Object.values(this.appPlugins.manifests)
+            .filter((pm: PluginManifest) => pm.id !== this.manifest.id && !this.isBpmIgnoredPlugin(pm.id)) as PluginManifest[];
+    }
+
     public enableDelay() {
         const plugins = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id) as PluginManifest[];
         // 同步插件
         this.synchronizePlugins(plugins);
         // 开始延时启动插件
-        plugins.forEach((plugin: PluginManifest) => this.startPluginWithDelay(plugin.id));
+        this.getDelayManagedPluginManifests().forEach((plugin: PluginManifest) => this.startPluginWithDelay(plugin.id));
     }
 
     // 为所有插件启动延迟
@@ -683,7 +557,7 @@ export default class Manager extends Plugin {
         // 同步插件
         this.synchronizePlugins(plugins);
 
-        plugins.forEach(async (plugin: PluginManifest) => {
+        this.getDelayManagedPluginManifests().forEach(async (plugin: PluginManifest) => {
             // 插件状态
             const isEnabled = this.appPlugins.enabledPlugins.has(plugin.id);
             if (isEnabled) {
@@ -708,7 +582,7 @@ export default class Manager extends Plugin {
 
     // 为所有插件关闭延迟
     public disableDelaysForAllPlugins() {
-        const plugins = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id);
+        const plugins = this.getDelayManagedPluginManifests();
         plugins.forEach(async (pm: PluginManifest) => {
             const plugin = this.settings.Plugins.find(p => p.id === pm.id)
             if (plugin) {
@@ -723,6 +597,7 @@ export default class Manager extends Plugin {
     // 延时启动指定插件
     private startPluginWithDelay(id: string) {
         if (id === this.manifest.id) return;
+        if (this.isBpmIgnoredPlugin(id)) return;
         const plugin = this.settings.Plugins.find(p => p.id === id);
         if (plugin && plugin.enabled) {
             const delay = this.settings.DELAYS.find(item => item.id === plugin.delay);
@@ -763,7 +638,6 @@ export default class Manager extends Plugin {
         this.ensureSelfPluginRecord();
         // 保存设置
         this.saveSettings();
-        this.exportAllPluginNotes();
     }
 
     // 工具函数
@@ -877,33 +751,32 @@ export default class Manager extends Plugin {
                         st.versions = await this.fetchGithubVersions(st.repo);
                     }
                     st.hasUpdate = this.compareVersions(official, localVersion) > 0;
-                    statusMap[pm.id] = st;
                     if (this.settings.DEBUG) console.log("[BPM] update official match", pm.id, localVersion, "->", st.remoteVersion);
-                    continue;
-                }
-                // 2) GitHub：BPM 安装或有仓库映射 / 用户填写
-                let repo: string | null = this.settings.REPO_MAP[pm.id] || null;
-                if (!repo) {
-                    try {
-                        repo = await this.repoResolver.resolveRepo(pm.id);
-                    } catch {
-                        // ignore
-                    }
-                }
-                if (repo) {
-                    st.source = 'github';
-                    st.repo = repo;
-                    st.versions = await this.fetchGithubVersions(repo);
-                    // 选择一个默认的远端版本：优先最新稳定，否则第一个
-                    const pick = st.versions?.find(v => !v.prerelease) ?? st.versions?.[0] ?? null;
-                    st.remoteVersion = pick?.version ?? await this.fetchGithubManifestVersion(repo);
-                    st.hasUpdate = st.remoteVersion ? this.compareVersions(st.remoteVersion, localVersion) > 0 : false;
-                    if (!st.remoteVersion) st.message = '未获取到远端版本';
-                    if (this.settings.DEBUG) console.log("[BPM] update github match", pm.id, repo, localVersion, "->", st.remoteVersion);
                 } else {
-                    st.source = 'unknown';
-                    st.message = '无来源，无法检测';
-                    if (this.settings.DEBUG) console.log("[BPM] update unknown source", pm.id);
+                    // 2) GitHub：BPM 安装或有仓库映射 / 用户填写
+                    let repo: string | null = this.settings.REPO_MAP[pm.id] || null;
+                    if (!repo) {
+                        try {
+                            repo = await this.repoResolver.resolveRepo(pm.id);
+                        } catch {
+                            // ignore
+                        }
+                    }
+                    if (repo) {
+                        st.source = 'github';
+                        st.repo = repo;
+                        st.versions = await this.fetchGithubVersions(repo);
+                        // 选择一个默认的远端版本：优先最新稳定，否则第一个
+                        const pick = st.versions?.find(v => !v.prerelease) ?? st.versions?.[0] ?? null;
+                        st.remoteVersion = pick?.version ?? await this.fetchGithubManifestVersion(repo);
+                        st.hasUpdate = st.remoteVersion ? this.compareVersions(st.remoteVersion, localVersion) > 0 : false;
+                        if (!st.remoteVersion) st.message = this.translator.t("更新_未获取到远端版本");
+                        if (this.settings.DEBUG) console.log("[BPM] update github match", pm.id, repo, localVersion, "->", st.remoteVersion);
+                    } else {
+                        st.source = 'unknown';
+                        st.message = this.translator.t("更新_无来源无法检测");
+                        if (this.settings.DEBUG) console.log("[BPM] update unknown source", pm.id);
+                    }
                 }
             } catch (e) {
                 st.error = (e as Error)?.message || String(e);
@@ -950,11 +823,11 @@ export default class Manager extends Plugin {
                 const pick = st.versions?.find(v => !v.prerelease) ?? st.versions?.[0] ?? null;
                 st.remoteVersion = pick?.version ?? await this.fetchGithubManifestVersion(repo);
                 st.hasUpdate = st.remoteVersion ? this.compareVersions(st.remoteVersion, localVersion) > 0 : false;
-                if (!st.remoteVersion) st.message = "未获取到远端版本";
+                if (!st.remoteVersion) st.message = this.translator.t("更新_未获取到远端版本");
                 if (this.settings.DEBUG) console.log("[BPM] single update github", pm.id, repo, localVersion, "->", st.remoteVersion);
             } else {
                 st.source = "unknown";
-                st.message = "无来源，无法检测";
+                st.message = this.translator.t("更新_无来源无法检测");
                 if (this.settings.DEBUG) console.log("[BPM] single update unknown source", pm.id);
             }
         } catch (e) {
@@ -1130,15 +1003,15 @@ export default class Manager extends Plugin {
             baseSelector = `.side-dock-actions div.clickable-icon.side-dock-ribbon-action`;
         }
 
-        // 只生成显隐控制 CSS，不再生成 order
-        // 排序改由 DOM 操作完成，以兼容原生拖动
         const cssRules = items.map(item => {
             if (!item.name) return "";
+            const order = Number.isFinite(item.order) ? item.order : 9999;
             if (!item.visible) {
                 const selector = this.generateMultiLineAriaLabelSelector(baseSelector, item.name);
-                return `${selector} { display: none !important; }`;
+                return `${selector} { order: ${order}; display: none !important; }`;
             }
-            return "";
+            const selector = this.generateMultiLineAriaLabelSelector(baseSelector, item.name);
+            return `${selector} { order: ${order}; }`;
         }).filter(rule => rule !== "").join("\n");
 
         styleEl.innerHTML = cssRules;
@@ -1281,60 +1154,9 @@ export default class Manager extends Plugin {
 
 
 
-    // 将配置应用到 Obsidian 的内存对象中 (Hack)
-    // 这能确保 Obsidian 在退出保存时，写入的是我们期望的状态，防止覆盖我们的修改
+    // 功能编排只应用运行时样式，不写入 Obsidian workspace 配置或 Ribbon 内存状态。
     applyRibbonConfigToMemory(orderedIds: string[], hiddenStatus: Record<string, boolean>) {
-        // @ts-ignore
-        const ribbon = this.app.workspace.leftRibbon as any;
-        if (!ribbon || !ribbon.items || !Array.isArray(ribbon.items)) return;
-
-        // 修复: 彻底清理 items 数组中的空值，防止 Obsidian 内部 crash
-        // 直接在原数组上操作，移除 undefined/null
-        for (let i = ribbon.items.length - 1; i >= 0; i--) {
-            if (!ribbon.items[i]) {
-                ribbon.items.splice(i, 1);
-            }
-        }
-
-        const items = ribbon.items;
-
-        // 1. 更新 hidden 状态
-        items.forEach((item: any) => {
-            if (!item) return; // 必须添加空检查，防止数组中存在 undefined
-            if (item.id && hiddenStatus.hasOwnProperty(item.id)) {
-                // 直接修改内存对象的 hidden 属性
-                item.hidden = hiddenStatus[item.id];
-            }
-        });
-
-        // 2. 同步顺序
-        // 创建一个 id -> index 的映射
-        const orderMap = new Map<string, number>();
-        orderedIds.forEach((id, index) => orderMap.set(id, index));
-
-        // 原地排序 items 数组
-        items.sort((a: any, b: any) => {
-            const indexA = orderMap.has(a.id) ? orderMap.get(a.id)! : 9999;
-            const indexB = orderMap.has(b.id) ? orderMap.get(b.id)! : 9999;
-            return indexA - indexB;
-        });
-
-        // 3. 同步 DOM 顺序 (仅桌面端，且仅当容器存在时)
-        // 这样可以恢复原生的拖动排序功能，不再依赖 CSS order
-        if (!Platform.isMobile) {
-            const container = document.querySelector('.side-dock-actions');
-            if (container) {
-                items.forEach((item: any) => {
-                    if (!item) return;
-                    // 确保元素存在且当前就在容器中
-                    if (item.buttonEl && container.contains(item.buttonEl)) {
-                        container.appendChild(item.buttonEl);
-                    }
-                });
-            }
-        }
-
-        console.log("[BPM] Applied ribbon config to memory and DOM.", items);
+        this.updateRibbonStyles();
     }
 
     public async syncRibbonConfig(orderedIds: string[], hiddenStatus: Record<string, boolean>) {

@@ -10,7 +10,7 @@ import Manager from 'main';
  */
 export const managerOpen = (dir: string, manager: Manager) => {
 	if (Platform.isMobileApp) {
-		new Notice("移动端暂不支持打开文件夹，请在桌面端操作。");
+		new Notice(manager.translator.t("通用_移动端不支持打开文件夹_提示"));
 		return;
 	}
 	try {

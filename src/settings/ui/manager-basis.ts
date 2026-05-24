@@ -1,11 +1,19 @@
 import BaseSetting from "../base-setting";
-import { DropdownComponent, Setting, ToggleComponent, TextComponent, TFolder } from "obsidian";
+import { DropdownComponent, Setting, ToggleComponent, TextComponent } from "obsidian";
 import Commands from "src/command";
 // import { GROUP_STYLE, ITEM_STYLE, TAG_STYLE } from "src/data/data";
 
 export default class ManagerBasis extends BaseSetting {
 
     main(): void {
+        const heading = (key: string) => {
+            new Setting(this.containerEl)
+                .setHeading()
+                .setName(this.manager.translator.t(key));
+        };
+
+        heading('设置_基础设置_分组_常规');
+
         const languageBar = new Setting(this.containerEl)
             .setName(this.manager.translator.t('设置_基础设置_语言_标题'))
             .setDesc(this.manager.translator.t('设置_基础设置_语言_描述'));
@@ -21,6 +29,18 @@ export default class ManagerBasis extends BaseSetting {
             this.display(); // 保持当前内容区的刷新
         });
 
+        const persistenceBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t('设置_基础设置_筛选持久化_标题'))
+            .setDesc(this.manager.translator.t('设置_基础设置_筛选持久化_描述'));
+        const persistenceToggle = new ToggleComponent(persistenceBar.controlEl);
+        persistenceToggle.setValue(this.settings.PERSISTENCE);
+        persistenceToggle.onChange((value) => {
+            this.settings.PERSISTENCE = value;
+            this.manager.saveSettings();
+        });
+
+        heading('设置_基础设置_分组_启动接管');
+
         const DelayBar = new Setting(this.containerEl)
             .setName(this.manager.translator.t('设置_基础设置_延时启动_标题'))
             .setDesc(this.manager.translator.t('设置_基础设置_延时启动_描述'));
@@ -34,25 +54,19 @@ export default class ManagerBasis extends BaseSetting {
             this.display(); // 保持当前内容区的刷新
         });
 
-        const persistenceBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_筛选持久化_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_筛选持久化_描述'));
-        const persistenceToggle = new ToggleComponent(persistenceBar.controlEl);
-        persistenceToggle.setValue(this.settings.PERSISTENCE);
-        persistenceToggle.onChange((value) => {
-            this.settings.PERSISTENCE = value;
+        const autoTakeoverBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t('设置_基础设置_自动接管_标题'))
+            .setDesc(this.manager.translator.t('设置_基础设置_自动接管_描述'));
+        const autoTakeoverToggle = new ToggleComponent(autoTakeoverBar.controlEl);
+        autoTakeoverToggle.setValue(this.settings.AUTO_TAKEOVER);
+        autoTakeoverToggle.setDisabled(!this.settings.DELAY);
+        autoTakeoverToggle.onChange((value) => {
+            if (!this.settings.DELAY) return;
+            this.settings.AUTO_TAKEOVER = value;
             this.manager.saveSettings();
         });
 
-        const debugBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_调试模式_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_调试模式_描述'));
-        const debugToggle = new ToggleComponent(debugBar.controlEl);
-        debugToggle.setValue(this.settings.DEBUG);
-        debugToggle.onChange((value) => {
-            this.settings.DEBUG = value;
-            this.manager.saveSettings();
-        });
+        heading('设置_基础设置_分组_更新来源');
 
         const startupCheckBar = new Setting(this.containerEl)
             .setName(this.manager.translator.t('设置_基础设置_启动检查更新_标题'))
@@ -64,15 +78,40 @@ export default class ManagerBasis extends BaseSetting {
             this.manager.saveSettings();
         });
 
-        const autoTakeoverBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_自动接管_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_自动接管_描述'));
-        const autoTakeoverToggle = new ToggleComponent(autoTakeoverBar.controlEl);
-        autoTakeoverToggle.setValue(this.settings.AUTO_TAKEOVER);
-        autoTakeoverToggle.onChange((value) => {
-            this.settings.AUTO_TAKEOVER = value;
+        const sourceStartupCheckBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t('设置_基础设置_来源启动检查更新_标题'))
+            .setDesc(this.manager.translator.t('设置_基础设置_来源启动检查更新_描述'));
+        const sourceStartupCheckToggle = new ToggleComponent(sourceStartupCheckBar.controlEl);
+        sourceStartupCheckToggle.setValue(this.settings.SOURCE_STARTUP_CHECK_UPDATES);
+        sourceStartupCheckToggle.onChange((value) => {
+            this.settings.SOURCE_STARTUP_CHECK_UPDATES = value;
             this.manager.saveSettings();
         });
+
+        const sourceAutoUpdateBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t('设置_基础设置_来源自动更新_标题'))
+            .setDesc(this.manager.translator.t('设置_基础设置_来源自动更新_描述'));
+        const sourceAutoUpdateToggle = new ToggleComponent(sourceAutoUpdateBar.controlEl);
+        sourceAutoUpdateToggle.setValue(this.settings.SOURCE_AUTO_UPDATE);
+        sourceAutoUpdateToggle.onChange((value) => {
+            this.settings.SOURCE_AUTO_UPDATE = value;
+            this.manager.saveSettings();
+        });
+
+        heading('设置_基础设置_分组_界面展示');
+
+        const hideBpmTagBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t('设置_基础设置_隐藏BPM标签_标题'))
+            .setDesc(this.manager.translator.t('设置_基础设置_隐藏BPM标签_描述'));
+        const hideBpmTagToggle = new ToggleComponent(hideBpmTagBar.controlEl);
+        hideBpmTagToggle.setValue(this.settings.HIDE_BPM_TAG);
+        hideBpmTagToggle.onChange((value) => {
+            this.settings.HIDE_BPM_TAG = value;
+            this.manager.saveSettings();
+            this.manager.managerModal?.reloadShowData();
+        });
+
+        heading('设置_基础设置_分组_命令');
 
         const CommandItemBar = new Setting(this.containerEl)
             .setName(this.manager.translator.t('设置_基础设置_单独命令_标题'))
@@ -96,42 +135,17 @@ export default class ManagerBasis extends BaseSetting {
             Commands(this.app, this.manager);
         });
 
-        const hideBpmTagBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_隐藏BPM标签_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_隐藏BPM标签_描述'));
-        const hideBpmTagToggle = new ToggleComponent(hideBpmTagBar.controlEl);
-        hideBpmTagToggle.setValue(this.settings.HIDE_BPM_TAG);
-        hideBpmTagToggle.onChange((value) => {
-            this.settings.HIDE_BPM_TAG = value;
+        heading('设置_基础设置_分组_开发网络');
+
+        const debugBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t('设置_基础设置_调试模式_标题'))
+            .setDesc(this.manager.translator.t('设置_基础设置_调试模式_描述'));
+        const debugToggle = new ToggleComponent(debugBar.controlEl);
+        debugToggle.setValue(this.settings.DEBUG);
+        debugToggle.onChange((value) => {
+            this.settings.DEBUG = value;
             this.manager.saveSettings();
-            this.manager.managerModal?.reloadShowData();
         });
-
-        // 导出目录与前置提示
-        const exportDirBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_导出目录_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_导出目录_描述'));
-        const exportDirInput = new TextComponent(exportDirBar.controlEl);
-        exportDirInput.setPlaceholder(this.manager.translator.t('设置_基础设置_导出目录_示例'));
-        exportDirInput.setValue(this.settings.EXPORT_DIR || "");
-
-        exportDirInput.inputEl.addEventListener("blur", () => {
-            exportDirInput.setValue(exportDirInput.getValue().trim());
-        });
-
-        exportDirBar.addButton((btn) => {
-            btn.setButtonText(this.manager.translator.t('通用_保存_文本')).setCta();
-            btn.onClick(() => {
-                this.settings.EXPORT_DIR = exportDirInput.getValue().trim();
-                this.manager.saveSettings();
-                this.manager.setupExportWatcher();
-                this.manager.exportAllPluginNotes();
-            });
-        });
-
-        new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_导出提示_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_导出提示_描述'));
 
         const tokenBar = new Setting(this.containerEl)
             .setName(this.manager.translator.t('设置_基础设置_GITHUB_TOKEN_标题'))

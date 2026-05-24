@@ -1,9 +1,11 @@
-import { App, Modal, Setting, setIcon, ButtonComponent, Platform, Notice } from "obsidian";
+import { App, Modal, Setting, setIcon, ButtonComponent } from "obsidian";
 import Manager from "main";
 import { RibbonItem } from "../data/types";
 
 export class RibbonModal extends Modal {
     manager: Manager;
+    private renderRootEl?: HTMLElement;
+    private renderToolbarInRoot = true;
 
     // 拖拽相关变量
     draggedItemEl: HTMLElement | null = null;
@@ -31,24 +33,76 @@ export class RibbonModal extends Modal {
 
     // 同步 Ribbon 项：读取当前工作区的 Ribbon，合并到设置中
     async syncRibbonItems() {
-        // 始终从原生配置加载
-        const { orderedIds, hiddenStatus } = await this.manager.systemRibbonManager.load();
+        // 以 BPM 自己的 data.json 为源头，只从运行时内存补齐新出现的 Ribbon 项。
+        const savedItems = [...(this.manager.settings.RIBBON_SETTINGS || [])]
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const orderedIds = savedItems.map((item) => item.id);
+        const hiddenStatus: Record<string, boolean> = {};
+        savedItems.forEach((item) => hiddenStatus[item.id] = !item.visible);
         await this.manager.syncRibbonConfig(orderedIds, hiddenStatus);
     }
 
-    display() {
-        const { contentEl } = this;
+    private getRibbonFallbackIcon(item: RibbonItem): string {
+        const source = `${item.id} ${item.name} ${item.icon || ""}`.toLowerCase();
+        if (
+            source.includes("refresh") ||
+            source.includes("reload") ||
+            source.includes("sync") ||
+            source.includes("刷新") ||
+            source.includes("重载") ||
+            source.includes("同步")
+        ) {
+            return "refresh-cw";
+        }
+        return "help-circle";
+    }
+
+    private renderRibbonItemIcon(iconEl: HTMLElement, item: RibbonItem) {
+        iconEl.empty();
+        const icon = item.icon?.trim();
+        try {
+            if (icon) setIcon(iconEl, icon);
+        } catch {
+            // Plugin-provided icons can be unavailable when this panel renders.
+        }
+        if (!iconEl.querySelector("svg")) {
+            iconEl.empty();
+            setIcon(iconEl, this.getRibbonFallbackIcon(item));
+        }
+    }
+
+    display(targetEl?: HTMLElement, showToolbar = this.renderToolbarInRoot) {
+        const contentEl = targetEl || this.renderRootEl || this.contentEl;
+        this.renderRootEl = contentEl;
+        this.renderToolbarInRoot = showToolbar;
         contentEl.empty();
 
-        contentEl.createEl("p", {
-            text: this.manager.translator.t("Ribbon_说明"),
-            cls: "ribbon-manager-description"
-        });
-
+        if (showToolbar) this.renderToolbar(contentEl);
         this.renderDraggableList(contentEl);
     }
 
+    private renderToolbar(containerEl: HTMLElement) {
+        const t = (k: any) => this.manager.translator.t(k);
+        const toolbar = containerEl.createDiv("manager-hidden-toolbar ribbon-manager-toolbar");
+        const toolbarText = toolbar.createDiv("manager-hidden-toolbar__text");
+        toolbarText.createDiv({ cls: "manager-hidden-toolbar__title", text: t("Ribbon_功能编排_标题") });
+        toolbarText.createDiv({
+            cls: "manager-hidden-toolbar__desc",
+            text: t("Ribbon_功能编排_说明")
+        });
+        const toolbarActions = toolbar.createDiv("manager-hidden-toolbar__actions");
+        const resetBtn = new ButtonComponent(toolbarActions);
+        resetBtn.setIcon("rotate-ccw");
+        resetBtn.setButtonText(t("通用_重置_文本"));
+        resetBtn.setTooltip(t("Ribbon_重置_提示"));
+        resetBtn.onClick(async () => {
+            if (!window.confirm(t("Ribbon_重置_确认"))) return;
+            await this.resetRibbonLayout();
+        });
+    }
+
     renderDraggableList(containerEl: HTMLElement) {
+        const t = (k: any) => this.manager.translator.t(k);
         const listContainer = containerEl.createDiv("draggable-list-container");
         const items = this.manager.settings.RIBBON_SETTINGS;
 
@@ -62,18 +116,33 @@ export class RibbonModal extends Modal {
             const itemEl = setting.settingEl;
             itemEl.addClass("draggable-item");
             itemEl.setAttr("data-index", index);
+            itemEl.toggleClass("is-hidden", !item.visible);
+            setting.nameEl.addClass("ribbon-manager-item-name-root");
+            setting.controlEl.addClass("ribbon-manager-item-control-root");
 
             // 自定义内容布局
             const itemContent = setting.nameEl.createDiv({ cls: "draggable-item-content" });
 
+            const orderEl = itemContent.createDiv({ cls: "ribbon-manager-item-order" });
+            orderEl.setText(`${index + 1}`.padStart(2, "0"));
+
             // 图标
             const iconEl = itemContent.createDiv({ cls: "setting-item-icon" });
-            if (item.icon) setIcon(iconEl, item.icon);
+            this.renderRibbonItemIcon(iconEl, item);
 
-            // 名称
-            itemContent.createEl("div", {
+            const textWrap = itemContent.createDiv({ cls: "ribbon-manager-item-text" });
+            const titleLine = textWrap.createDiv({ cls: "ribbon-manager-item-title-line" });
+            titleLine.createEl("div", {
                 text: item.name || this.manager.translator.t("Ribbon_未命名"),
                 cls: "setting-item-name"
+            });
+            titleLine.createSpan({
+                text: item.visible ? t("管理器_状态_显示中") : t("管理器_状态_已隐藏"),
+                cls: `ribbon-manager-item-state ${item.visible ? "is-visible" : "is-hidden"}`
+            });
+            textWrap.createDiv({
+                text: item.id,
+                cls: "ribbon-manager-item-id"
             });
 
             const controlBar = setting.controlEl.createDiv({ cls: "ribbon-manager-control-bar" });
@@ -87,102 +156,14 @@ export class RibbonModal extends Modal {
                     const newValue = !item.visible;
                     item.visible = newValue;
 
-                    // 如果是启用，检查是否需要复活 (Restore)
-                    if (newValue) {
-                        // @ts-ignore
-                        const ribbon = this.app.workspace.leftRibbon as any;
-                        if (ribbon) {
-                            // 先清理一遍，防止之前的操作留下了 undefined
-                            this.manager.cleanRibbonItems();
-
-                            const ribbonItems = ribbon.items;
-                            if (!ribbonItems) return;
-
-                            // 查找原生 item
-                            // 必须加 i && ... 判断，防止 crash
-                            const nativeItemIndex = ribbonItems.findIndex((i: any) => i && i.id === item.id);
-
-                            // @ts-ignore
-                            const nativeItem = nativeItemIndex !== -1 ? ribbonItems[nativeItemIndex] : null;
-
-                            let needsRestore = false;
-                            if (nativeItem) {
-                                // 只有当 hidden 为 true (启动时隐藏) 或 buttonEl 丢失时才复活
-                                // 运行时隐藏的 (hidden=false, buttonEl exists) 不需要复活
-                                if (nativeItem.hidden === true || !nativeItem.buttonEl) {
-                                    needsRestore = true;
-                                }
-                            }
-
-                            if (needsRestore && nativeItem && nativeItem.callback) {
-                                console.log(`[BPM] Restoring ribbon item: ${item.id}`);
-                                try {
-                                    const { icon, callback } = nativeItem;
-
-                                    // 修复: 某些核心插件可能没有 title，使用 name 或 item.name 作为回退
-                                    // 防止 callback 被错误地转换为字符串显示为 "function () { [native code] }"
-                                    const titleToUse = item.name ||
-                                        (typeof nativeItem.title === 'string' ? nativeItem.title : "") ||
-                                        (typeof nativeItem.name === 'string' ? nativeItem.name : "") ||
-                                        "Ribbon Item";
-
-                                    // 1. 创建新按钮
-                                    // 使用 Public API addRibbonIcon 避免内部 API 签名变动问题
-                                    // 这将使图标暂时受 BPM 管理，但能确保只渲染正确
-                                    this.manager.addRibbonIcon(icon, titleToUse, callback);
-
-                                    // 2. 修正 ID
-                                    // addRibbonIcon 会在最后添加一个新项
-                                    const newItem = ribbonItems[ribbonItems.length - 1];
-                                    if (newItem && newItem.id !== item.id) {
-                                        // 替换 ID 为原始 ID (用于保持顺序和关联)
-                                        // 注意: 这可能会导致 BPM 在 unload 时找不到要移除的 icon (因为它记录的是旧 ID?)
-                                        // addRibbonIcon 并不返回 ID，而是 HTMLElement。Plugin 类内部维护了 ribbonIcons 数组(HTMLElement[])。
-                                        // 修改 items 里的 ID 不会影响 Plugin 的卸载清理 (它是按 DOM 元素引用的)。
-                                        newItem.id = item.id;
-                                        newItem.hidden = false;
-                                    }
-
-                                    // 3. 移除旧 item (清理僵尸条目)
-                                    ribbonItems.splice(nativeItemIndex, 1);
-
-                                    // 4. 安全清理: 再次确保没有 undefined 混入 (defensive programming)
-                                    for (let i = ribbonItems.length - 1; i >= 0; i--) {
-                                        if (!ribbonItems[i]) {
-                                            ribbonItems.splice(i, 1);
-                                        }
-                                    }
-
-                                    console.log(`[BPM] Item restored: ${item.id}`);
-                                } catch (e) {
-                                    console.error("[BPM] Restore failed:", e);
-                                    new Notice(this.manager.translator.t("Ribbon_复活失败"));
-                                }
-                            }
-                        }
-                    }
-
-                    await this.manager.saveSettings();
-
-                    const items = this.manager.settings.RIBBON_SETTINGS;
-                    const orderedIds = items.map(i => i.id);
-                    const hiddenStatus: Record<string, boolean> = {};
-                    items.forEach(i => hiddenStatus[i.id] = !i.visible);
-
-                    // 1. 保存到文件
-                    await this.manager.systemRibbonManager.save(orderedIds, hiddenStatus);
-                    // 2. 同步到内存 (Hack)
-                    this.manager.applyRibbonConfigToMemory(orderedIds, hiddenStatus);
-
-                    // @ts-ignore
-                    this.manager.updateRibbonStyles?.();
+                    await this.persistRibbonConfig();
                     this.display();
                 });
 
             // 拖拽手柄
             const handle = controlBar.createDiv({
                 cls: "ribbon-manager-control-drag",
-                attr: { role: "button", "aria-label": "Drag" }
+                attr: { role: "button", "aria-label": t("管理器_布局_拖动排序") }
             });
             setIcon(handle, "grip-vertical");
             handle.setAttr("draggable", "true");
@@ -220,7 +201,7 @@ export class RibbonModal extends Modal {
         this.placeholderEl = document.createElement("div");
         this.placeholderEl.className = "drag-gap-placeholder";
         this.placeholderEl.style.height = `${rect.height}px`;
-        this.placeholderEl.style.marginBottom = "8px"; // 对应 .draggable-item 的 margin-bottom
+        this.placeholderEl.style.marginBottom = "0";
 
         itemEl.parentNode!.insertBefore(this.placeholderEl, itemEl);
         itemEl.addClass("dragging");
@@ -311,24 +292,32 @@ export class RibbonModal extends Modal {
         const [movedItem] = items.splice(oldIndex, 1);
         items.splice(newIndex, 0, movedItem);
 
-        // 更新 order
-        items.forEach((item, idx) => item.order = idx);
+        await this.persistRibbonConfig();
+        this.display();
+    }
 
+    private async persistRibbonConfig() {
+        const items = this.manager.settings.RIBBON_SETTINGS;
+        items.forEach((item, idx) => item.order = idx);
         await this.manager.saveSettings();
 
-        // 原生同步
-        const currentItems = this.manager.settings.RIBBON_SETTINGS;
-        const orderedIds = currentItems.map(i => i.id);
+        const orderedIds = items.map(i => i.id);
         const hiddenStatus: Record<string, boolean> = {};
-        currentItems.forEach(i => hiddenStatus[i.id] = !i.visible);
-
-        // 1. 保存到文件
-        await this.manager.systemRibbonManager.save(orderedIds, hiddenStatus);
-        // 2. 同步到内存 (Hack)
+        items.forEach(i => hiddenStatus[i.id] = !i.visible);
         this.manager.applyRibbonConfigToMemory(orderedIds, hiddenStatus);
 
         // @ts-ignore
         this.manager.updateRibbonStyles?.();
+    }
+
+    async resetRibbonLayout() {
+        const items = this.manager.settings.RIBBON_SETTINGS;
+        items.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+        items.forEach((item, idx) => {
+            item.visible = true;
+            item.order = idx;
+        });
+        await this.persistRibbonConfig();
         this.display();
     }
 

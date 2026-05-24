@@ -1,4 +1,4 @@
-import { App, ExtraButtonComponent, Modal, Notice, Setting } from 'obsidian';
+import { App, ExtraButtonComponent, Modal, Notice, setIcon, Setting } from 'obsidian';
 import { ManagerSettings } from '../settings/data';
 import Manager from 'main';
 import { ManagerModal } from './manager-modal';
@@ -25,39 +25,117 @@ export class TagsModal extends Modal {
         this.add = false;
     }
 
+    private getExtraButtonEl(button: ExtraButtonComponent): HTMLElement | undefined {
+        return ((button as any).extraSettingsEl || (button as any).buttonEl) as HTMLElement | undefined;
+    }
+
+    private prepareIconButton(button: ExtraButtonComponent, label: string, className?: string) {
+        button.setTooltip(label);
+        const buttonEl = this.getExtraButtonEl(button);
+        buttonEl?.setAttribute('aria-label', label);
+        if (className) buttonEl?.addClass(className);
+    }
+
+    private getTagUsageCount(tagId: string): number {
+        return this.settings.Plugins.reduce((count, plugin) => count + (plugin.tags?.includes(tagId) ? 1 : 0), 0);
+    }
+
+    private isPresetTag(tagId: string): boolean {
+        return tagId === BPM_TAG_ID || tagId === BPM_IGNORE_TAG;
+    }
+
     private async showHead() {
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
         //@ts-ignore
         const modalEl: HTMLElement = this.contentEl.parentElement;
         modalEl.addClass('manager-editor__container');
-        modalEl.removeChild(modalEl.getElementsByClassName('modal-close-button')[0]);
+        modalEl.addClass('manager-tag-editor');
+        modalEl.getElementsByClassName('modal-close-button')[0]?.remove();
         this.titleEl.parentElement?.addClass('manager-container__header');
         this.contentEl.addClass('manager-item-container');
+        this.contentEl.addClass('manager-tag-editor__body');
         // [标题行]
-        const titleBar = new Setting(this.titleEl).setClass('manager-bar__title').setName(this.managerPlugin.name);
+        const titleBar = new Setting(this.titleEl).setClass('manager-bar__title');
+        titleBar.settingEl.addClass('manager-tag-editor__titlebar');
+        titleBar.nameEl.empty();
+        titleBar.descEl.empty();
+        const titleWrap = titleBar.nameEl.createDiv('manager-tag-editor__title');
+        const titleIcon = titleWrap.createSpan({ cls: 'manager-tag-editor__title-icon' });
+        setIcon(titleIcon, 'tags');
+        const titleText = titleWrap.createDiv('manager-tag-editor__title-text');
+        titleText.createDiv({ cls: 'manager-tag-editor__eyebrow', text: t('标签编辑_标题') });
+        titleText.createDiv({ cls: 'manager-tag-editor__plugin-name', text: this.managerPlugin.name || this.managerPlugin.id });
+        titleBar.descEl.setText(t('标签编辑_说明'));
         // [标题行] 关闭按钮
         const closeButton = new ExtraButtonComponent(titleBar.controlEl)
-        closeButton.setIcon('circle-x')
+        closeButton.setIcon('x')
+        this.prepareIconButton(closeButton, t('通用_关闭_文本'));
         closeButton.onClick(() => this.close());
     }
 
     private async showData() {
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
         // 预先生成缺省颜色，避免与现有标签颜色过近
         if (!this.defaultTagColor) {
             this.defaultTagColor = this.pickDistinctColor(this.settings.TAGS.map(t => t.color));
         }
+        const page = this.contentEl.createDiv('manager-tag-editor__page');
+        const assignedCount = this.settings.TAGS.filter((tag) => this.managerPlugin.tags.includes(tag.id)).length;
+        const summary = page.createDiv('manager-tag-editor__summary');
+        const summaryMain = summary.createDiv('manager-tag-editor__summary-main');
+        summaryMain.createDiv({ cls: 'manager-tag-editor__summary-title', text: t('标签编辑_分配标题') });
+        summaryMain.createDiv({ cls: 'manager-tag-editor__summary-desc', text: t('标签编辑_分配说明', { id: this.managerPlugin.id, selected: assignedCount, total: this.settings.TAGS.length }) });
+        const summaryStats = summary.createDiv('manager-tag-editor__summary-stats');
+        const createSummaryStat = (label: string, value: number, icon: string) => {
+            const stat = summaryStats.createSpan({ cls: 'manager-tag-editor__summary-stat' });
+            const statIcon = stat.createSpan({ cls: 'manager-tag-editor__summary-stat-icon' });
+            setIcon(statIcon, icon);
+            stat.createSpan({ cls: 'manager-tag-editor__summary-stat-label', text: label });
+            stat.createSpan({ cls: 'manager-tag-editor__summary-stat-value', text: `${value}` });
+        };
+        createSummaryStat(t('通用_全部_文本'), this.settings.TAGS.length, 'tags');
+        createSummaryStat(t('通用_已分配_文本'), assignedCount, 'check');
+
+        const list = page.createDiv('manager-tag-editor__list');
         for (const tag of this.settings.TAGS) {
-            const itemEl = new Setting(this.contentEl)
+            const assigned = this.managerPlugin.tags.includes(tag.id);
+            const usageCount = this.getTagUsageCount(tag.id);
+            const isPreset = this.isPresetTag(tag.id);
+            const isEditing = this.selected == tag.id;
+            const itemEl = new Setting(list)
             itemEl.setClass('manager-editor__item')
-            if (this.selected == '' || this.selected != tag.id) {
-                itemEl.addExtraButton(cb => cb
-                    .setIcon('settings')
-                    .onClick(() => {
+            itemEl.settingEl.addClass('manager-tag-editor__item');
+            itemEl.settingEl.toggleClass('is-assigned', assigned);
+            itemEl.settingEl.toggleClass('is-editing', isEditing);
+            itemEl.settingEl.toggleClass('is-system', isPreset);
+            itemEl.nameEl.empty();
+            itemEl.descEl.empty();
+            itemEl.controlEl.addClass('manager-tag-editor__item-actions');
+
+            const previewLine = itemEl.nameEl.createDiv('manager-tag-editor__preview-line');
+            const tagEl = this.manager.createTag(tag.name || tag.id, tag.color, this.settings.TAG_STYLE);
+            tagEl.addClass('manager-tag-editor__chip');
+            previewLine.appendChild(tagEl);
+            previewLine.createSpan({ cls: 'manager-tag-editor__id', text: tag.id });
+            if (isPreset) previewLine.createSpan({ cls: 'manager-tag-editor__badge is-system', text: t('通用_系统_文本') });
+            if (assigned) previewLine.createSpan({ cls: 'manager-tag-editor__badge is-assigned', text: t('通用_已分配_文本') });
+
+            const meta = itemEl.descEl.createDiv('manager-tag-editor__meta');
+            meta.createSpan({ text: t('设置_分类_插件使用数量', { count: usageCount }) });
+            if (tag.id === BPM_TAG_ID) meta.createSpan({ text: t('标签编辑_自动管理标签不可手动切换') });
+
+            if (!isEditing) {
+                itemEl.addExtraButton((cb) => {
+                    cb.setIcon('pencil');
+                    this.prepareIconButton(cb, t('通用_编辑项目_标签', { name: tag.name || tag.id }), 'manager-tag-editor__edit-button');
+                    cb.onClick(() => {
                         this.selected = tag.id;
                         this.reloadShowData();
-                    })
-                )
-                itemEl.addToggle(cb => cb
-                    .setValue(this.managerPlugin.tags.includes(tag.id))
+                    });
+                })
+                itemEl.addToggle(toggle => {
+                    toggle
+                    .setValue(assigned)
                     .setDisabled(tag.id === BPM_TAG_ID) // BPM 标签不可手动移除，但 Ignore 标签可以手动移除? 不，Ignore 标签应该可以自由加减
                     // 这里的 setDisabled 是指能不能给这个插件加上这个标签。BPM_TAG_ID 是系统自动加的，用户不能动。
                     // BPM_IGNORE_TAG 是用户手动加的，所以这里不能 Disable。
@@ -73,34 +151,38 @@ export class TagsModal extends Modal {
                         }
                         await this.manager.savePluginAndExport(this.managerPlugin.id);
                         this.managerModal.reloadShowData();
-                    })
-                );
-                const tempEl = createSpan({ cls: 'manager-item__name-group' });
-                itemEl.nameEl.appendChild(tempEl);
-                const tagEl = this.manager.createTag(tag.name, tag.color, this.settings.TAG_STYLE);
-                tempEl.appendChild(tagEl);
+                        this.reloadShowData();
+                    });
+                    toggle.toggleEl.addClass('manager-tag-editor__toggle');
+                    toggle.toggleEl.setAttribute('aria-label', t(assigned ? '通用_移除项目_标签' : '通用_添加项目_标签', { name: tag.name || tag.id }));
+                });
             }
-            if (this.selected != '' && this.selected == tag.id) {
+            if (isEditing) {
                 itemEl.addColorPicker(cb => cb
                     .setValue(tag.color)
                     .onChange((value) => {
                         tag.color = value;
                         this.manager.saveSettings();
-                        this.reloadShowData();
+                        tagEl.setAttribute('style', this.manager.generateTagStyle(value, this.settings.TAG_STYLE));
                     })
                 )
-                itemEl.addText(cb => cb
+                itemEl.addText(text => {
+                    text
                     .setValue(tag.name)
                     .onChange((value) => {
                         tag.name = value;
+                        tagEl.textContent = value || tag.id;
                         this.manager.saveSettings();
-                    })
-                    .inputEl.addClass('manager-editor__item-input')
-                )
-                itemEl.addExtraButton(cb => cb
-                    .setIcon('trash-2')
-                    .onClick(() => {
-                        if (tag.id === BPM_TAG_ID || tag.id === BPM_IGNORE_TAG) {
+                    });
+                    text.inputEl.addClass('manager-editor__item-input');
+                    text.inputEl.addClass('manager-tag-editor__name-input');
+                    text.inputEl.setAttribute('aria-label', t('标签编辑_标签名称_标签'));
+                })
+                itemEl.addExtraButton((cb) => {
+                    cb.setIcon('trash-2');
+                    this.prepareIconButton(cb, isPreset ? t('设置_标签设置_系统标签不可删除') : t('设置_标签设置_删除标签'), 'manager-tag-editor__delete-button');
+                    cb.onClick(() => {
+                        if (isPreset) {
                             new Notice(this.manager.translator.t('设置_标签设置_通知_预设不可删除'));
                             return;
                         }
@@ -114,36 +196,40 @@ export class TagsModal extends Modal {
                         } else {
                             new Notice(this.manager.translator.t('设置_标签设置_通知_四'));
                         }
-                    })
-                )
+                    });
+                })
 
-                itemEl.addExtraButton(cb => cb
-                    .setIcon('save')
-                    .onClick(() => {
+                itemEl.addExtraButton((cb) => {
+                    cb.setIcon('check');
+                    this.prepareIconButton(cb, t('通用_完成编辑_文本'), 'manager-tag-editor__save-button');
+                    cb.onClick(() => {
                         this.selected = '';
                         this.reloadShowData();
                         this.managerModal.reloadShowData();
-                    })
-                )
-                const groupEl = createSpan({ cls: 'manager-item__name-group' });
-                itemEl.nameEl.appendChild(groupEl);
-                const tagEl = this.manager.createTag(tag.name, tag.color, this.settings.TAG_STYLE);
-                groupEl.appendChild(tagEl);
+                    });
+                })
             }
         }
         if (this.add) {
             let id = '';
             let name = '';
             let color = this.pickDistinctColor(this.settings.TAGS.map(t => t.color));
-            const foodBar = new Setting(this.contentEl).setClass('manager-bar__title');
-            foodBar.infoEl.remove();
+            const foodBar = new Setting(page).setClass('manager-bar__title');
+            foodBar.settingEl.addClass('manager-tag-editor__add-panel');
+            foodBar.nameEl.empty();
+            foodBar.descEl.empty();
+            const addTitle = foodBar.nameEl.createDiv('manager-tag-editor__add-title');
+            const addIcon = addTitle.createSpan({ cls: 'manager-tag-editor__add-title-icon' });
+            setIcon(addIcon, 'plus');
+            addTitle.createSpan({ text: t('设置_标签设置_新增标签') });
+            foodBar.descEl.setText(t('设置_分类_ID说明'));
             foodBar.addColorPicker(cb => cb
                 .setValue(color)
                 .onChange((value) => { color = value; })
             )
             foodBar.addText(cb => cb
                 .setPlaceholder('ID')
-                .onChange((value) => { id = value; this.manager.saveSettings(); })
+                .onChange((value) => { id = value; })
                 .inputEl.addClass('manager-editor__item-input')
             )
             foodBar.addText(cb => cb
@@ -151,13 +237,16 @@ export class TagsModal extends Modal {
                 .onChange((value) => { name = value; })
                 .inputEl.addClass('manager-editor__item-input')
             )
-            foodBar.addExtraButton(cb => cb
-                .setIcon('plus')
-                .onClick(() => {
-                    const containsId = this.manager.settings.TAGS.some(tag => tag.id === id);
-                    if (!containsId && id !== '' && id !== BPM_TAG_ID && id !== BPM_IGNORE_TAG) {
+            foodBar.addExtraButton((cb) => {
+                cb.setIcon('plus');
+                this.prepareIconButton(cb, t('标签编辑_创建标签'), 'manager-tag-editor__save-button');
+                cb.onClick(() => {
+                    const nextId = id.trim();
+                    const nextName = name.trim() || nextId;
+                    const containsId = this.manager.settings.TAGS.some(tag => tag.id === nextId);
+                    if (!containsId && nextId !== '' && nextId !== BPM_TAG_ID && nextId !== BPM_IGNORE_TAG) {
                         if (color === '') color = this.pickDistinctColor(this.settings.TAGS.map(t => t.color));
-                        this.manager.settings.TAGS.push({ id, name, color });
+                        this.manager.settings.TAGS.push({ id: nextId, name: nextName, color });
                         this.manager.saveSettings();
                         this.add = false;
                         this.reloadShowData();
@@ -166,13 +255,16 @@ export class TagsModal extends Modal {
                     } else {
                         new Notice(this.manager.translator.t('设置_标签设置_通知_二'));
                     }
-                })
-            )
+                });
+            })
         } else {
             // [底部行] 新增
-            const foodBar = new Setting(this.contentEl).setClass('manager-bar__title').setName(this.manager.translator.t('通用_新增_文本'));
+            const foodBar = new Setting(page).setClass('manager-bar__title').setName(this.manager.translator.t('通用_新增_文本'));
+            foodBar.settingEl.addClass('manager-tag-editor__add-trigger');
+            foodBar.descEl.setText(t('标签编辑_创建全局标签'));
             const addButton = new ExtraButtonComponent(foodBar.controlEl)
             addButton.setIcon('circle-plus')
+            this.prepareIconButton(addButton, t('设置_标签设置_新增标签'), 'manager-tag-editor__save-button');
             addButton.onClick(() => {
                 this.add = true;
                 this.reloadShowData();

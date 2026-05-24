@@ -1,236 +1,316 @@
-/**
- * BPM 启动自检模块
- * 
- * 检测 community-plugins.json 中是否有非 BPM 插件，
- * 提示用户让 BPM 接管插件控制
- */
-
-import { App, ButtonComponent, Modal, Notice, setIcon } from 'obsidian';
+import { App, ButtonComponent, Modal, Notice, normalizePath, setIcon } from 'obsidian';
 import Manager from 'main';
 import { BPM_IGNORE_TAG } from './data/types';
 
-const COMMUNITY_PLUGINS_PATH = '.obsidian/community-plugins.json';
+type ManifestLike = {
+    name?: string;
+    description?: string;
+};
 
-/**
- * 读取 community-plugins.json
- */
-async function readCommunityPlugins(app: App): Promise<string[]> {
+const getCommunityPluginsPath = (manager: Manager): string =>
+    normalizePath(`${manager.app.vault.configDir}/community-plugins.json`);
+
+const uniq = (ids: string[]): string[] => {
+    const seen = new Set<string>();
+    return ids.filter((id) => {
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+    });
+};
+
+const samePluginList = (a: string[], b: string[]): boolean =>
+    a.length === b.length && a.every((id, index) => id === b[index]);
+
+const getManifestMap = (manager: Manager): Record<string, ManifestLike | undefined> => {
+    return ((manager.app as unknown as {
+        plugins?: { manifests?: Record<string, ManifestLike | undefined> };
+    }).plugins?.manifests || {});
+};
+
+const isBpmIgnoredPlugin = (manager: Manager, pluginId: string): boolean => {
+    return Boolean(manager.settings.Plugins.find((plugin) => plugin.id === pluginId)?.tags.includes(BPM_IGNORE_TAG));
+};
+
+const getTakeoverCandidates = (manager: Manager, communityPlugins: string[]): string[] => {
+    const bpmId = manager.manifest.id;
+    return uniq(communityPlugins).filter((id) => id !== bpmId && !isBpmIgnoredPlugin(manager, id));
+};
+
+const getObsidianControlledPluginsAfterTakeover = (manager: Manager, communityPlugins: string[]): string[] => {
+    const bpmId = manager.manifest.id;
+    const ignoredPlugins = uniq(communityPlugins).filter((id) => id !== bpmId && isBpmIgnoredPlugin(manager, id));
+    return uniq([bpmId, ...ignoredPlugins]);
+};
+
+async function readCommunityPlugins(manager: Manager): Promise<string[]> {
     try {
-        const adapter = app.vault.adapter;
-        const content = await adapter.read(COMMUNITY_PLUGINS_PATH);
-        return JSON.parse(content) as string[];
-    } catch (e) {
-        console.error('[BPM] Failed to read community-plugins.json:', e);
+        const adapter = manager.app.vault.adapter;
+        const path = getCommunityPluginsPath(manager);
+        if (!(await adapter.exists(path))) return [];
+
+        const parsed = JSON.parse(await adapter.read(path));
+        return Array.isArray(parsed) ? uniq(parsed.filter((id) => typeof id === 'string')) : [];
+    } catch (error) {
+        if (manager.settings.DEBUG) console.error('[BPM] Failed to read community-plugins.json:', error);
         return [];
     }
 }
 
-/**
- * 写入 community-plugins.json
- */
-async function writeCommunityPlugins(app: App, plugins: string[]): Promise<boolean> {
+async function writeCommunityPlugins(
+    manager: Manager,
+    plugins: string[],
+    currentPlugins?: string[]
+): Promise<boolean> {
     try {
-        const adapter = app.vault.adapter;
-        await adapter.write(COMMUNITY_PLUGINS_PATH, JSON.stringify(plugins, null, 2));
+        const nextPlugins = uniq(plugins);
+        const current = currentPlugins ?? await readCommunityPlugins(manager);
+        if (samePluginList(current, nextPlugins)) return true;
+
+        const adapter = manager.app.vault.adapter;
+        await adapter.write(getCommunityPluginsPath(manager), JSON.stringify(nextPlugins, null, 2));
         return true;
-    } catch (e) {
-        console.error('[BPM] Failed to write community-plugins.json:', e);
+    } catch (error) {
+        console.error('[BPM] Failed to write community-plugins.json:', error);
         return false;
     }
 }
 
-/**
- * 执行接管逻辑 (提取为独立函数)
- */
-async function execTakeover(app: App, manager: Manager, pluginIds: string[]): Promise<boolean> {
-    const bpmId = manager.manifest.id;
+function syncTakeoverPluginRecords(manager: Manager, pluginIds: string[]): boolean {
+    const manifests = getManifestMap(manager);
+    let changed = false;
 
-    // 将 community-plugins.json 改为只有 BPM
-    const success = await writeCommunityPlugins(app, [bpmId]);
-
-    if (success) {
-        // 确保这些插件在 BPM 的管理列表中
-        for (const id of pluginIds) {
-            const existing = manager.settings.Plugins.find(p => p.id === id);
-            if (existing) {
-                // 保持当前启用状态
+    for (const id of uniq(pluginIds).filter((pluginId) => !isBpmIgnoredPlugin(manager, pluginId))) {
+        const existing = manager.settings.Plugins.find((plugin) => plugin.id === id);
+        if (existing) {
+            if (!existing.enabled) {
                 existing.enabled = true;
-            } else {
-                // 添加到 BPM 管理列表
-                // @ts-ignore
-                const manifest = app.plugins.manifests[id];
-                if (manifest) {
-                    manager.settings.Plugins.push({
-                        id: id,
-                        name: manifest.name,
-                        desc: manifest.description || '',
-                        group: '',
-                        tags: [],
-                        enabled: true,
-                        delay: 'default',
-                        note: ''
-                    });
-                }
+                changed = true;
             }
+            continue;
         }
 
+        const manifest = manifests[id];
+        if (!manifest) continue;
+
+        manager.settings.Plugins.push({
+            id,
+            name: manifest.name || id,
+            desc: manifest.description || '',
+            group: '',
+            tags: [],
+            enabled: true,
+            delay: 'default',
+            note: '',
+        });
+        changed = true;
+    }
+
+    return changed;
+}
+
+async function execTakeover(
+    manager: Manager,
+    pluginIds: string[],
+    communityPlugins?: string[]
+): Promise<boolean> {
+    if (!manager.settings.DELAY) return false;
+
+    const currentPlugins = communityPlugins ?? await readCommunityPlugins(manager);
+    const nextCommunityPlugins = getObsidianControlledPluginsAfterTakeover(manager, currentPlugins);
+    const success = await writeCommunityPlugins(manager, nextCommunityPlugins, currentPlugins);
+    if (!success) return false;
+
+    if (syncTakeoverPluginRecords(manager, pluginIds)) {
         await manager.saveSettings();
-        return true;
-    } else {
-        return false;
     }
+
+    return true;
 }
 
-/**
- * 执行启动自检
- */
 export async function performSelfCheck(manager: Manager): Promise<void> {
-    const bpmId = manager.manifest.id;
-    const communityPlugins = await readCommunityPlugins(manager.app);
+    if (!manager.settings.DELAY) return;
 
-    // 过滤出非 BPM 插件，且未被标记为忽略的插件
-    const nonBpmPlugins = communityPlugins.filter(id => {
-        if (id === bpmId) return false;
+    const communityPlugins = await readCommunityPlugins(manager);
+    const takeoverCandidates = getTakeoverCandidates(manager, communityPlugins);
+    if (takeoverCandidates.length === 0) return;
 
-        // 检查是否存在 BPM 忽略标签
-        const pluginInBpm = manager.settings.Plugins.find(p => p.id === id);
-        if (pluginInBpm && pluginInBpm.tags.includes(BPM_IGNORE_TAG)) {
-            return false; // 忽略此插件
-        }
-
-        return true;
-    });
-
-    if (nonBpmPlugins.length === 0) {
-        return;
-    }
-
-    // 自动接管逻辑
     if (manager.settings.AUTO_TAKEOVER) {
-        const success = await execTakeover(manager.app, manager, nonBpmPlugins);
-        if (success) {
-            new Notice(manager.translator.t('自检_接管成功_通知'));
-        } else {
-            new Notice(manager.translator.t('自检_接管失败_通知'));
-        }
+        const success = await execTakeover(manager, takeoverCandidates, communityPlugins);
+        new Notice(manager.translator.t(success ? '自检_接管成功_通知' : '自检_接管失败_通知'));
         return;
     }
 
-    // 检查用户是否已选择忽略
-    if (manager.settings.SELF_CHECK_IGNORED) {
-        return;
-    }
+    if (manager.settings.SELF_CHECK_IGNORED) return;
 
-    // 显示接管对话框
-    new TakeoverModal(manager.app, manager, nonBpmPlugins).open();
+    new TakeoverModal(manager.app, manager, takeoverCandidates, communityPlugins).open();
 }
 
-/**
- * 接管确认对话框
- */
 class TakeoverModal extends Modal {
     private manager: Manager;
-    private nonBpmPlugins: string[];
+    private takeoverCandidates: string[];
+    private communityPlugins: string[];
     private t: (key: any) => string;
 
-    constructor(app: App, manager: Manager, nonBpmPlugins: string[]) {
+    constructor(app: App, manager: Manager, takeoverCandidates: string[], communityPlugins: string[]) {
         super(app);
         this.manager = manager;
-        this.nonBpmPlugins = nonBpmPlugins;
-        this.t = (k: any) => manager.translator.t(k);
+        this.takeoverCandidates = takeoverCandidates;
+        this.communityPlugins = communityPlugins;
+        this.t = (key: any) => manager.translator.t(key);
     }
 
     onOpen() {
         const { contentEl, titleEl } = this;
 
-        // 移除默认关闭按钮
-        // @ts-ignore
-        const modalEl: HTMLElement = contentEl.parentElement;
-        modalEl.addClass('bpm-takeover-modal');
-        const closeBtn = modalEl.querySelector('.modal-close-button');
-        if (closeBtn) closeBtn.remove();
+        const modalEl = contentEl.parentElement as HTMLElement | null;
+        modalEl?.addClass('bpm-takeover-modal');
+        modalEl?.querySelector('.modal-close-button')?.remove();
+        titleEl.parentElement?.addClass('takeover-titlebar');
 
-        // 标题
-        titleEl.setText(`⚠️ ${this.t('自检_检测到插件_标题')}`);
-
-        // 说明
-        contentEl.createEl('p', {
-            text: this.t('自检_检测到插件_说明'),
-            cls: 'takeover-desc'
+        titleEl.empty();
+        titleEl.addClass('takeover-title');
+        const titleMain = titleEl.createDiv('takeover-title__main');
+        const titleIcon = titleMain.createSpan({ cls: 'takeover-title__icon' });
+        setIcon(titleIcon, 'shield-alert');
+        const titleText = titleMain.createDiv('takeover-title__copy');
+        titleText.createDiv({ cls: 'takeover-title__eyebrow', text: 'BPM' });
+        titleText.createDiv({ cls: 'takeover-title__text', text: this.t('自检_检测到插件_标题') });
+        const titleMeta = titleEl.createDiv('takeover-title__meta');
+        titleMeta.createSpan({ cls: 'takeover-title__count', text: `${this.takeoverCandidates.length}` });
+        const closeButton = titleMeta.createEl('button', {
+            cls: 'clickable-icon takeover-title__close',
+            attr: { type: 'button', 'aria-label': this.t('自检_忽略_按钮') },
+            title: this.t('自检_忽略_按钮'),
+        });
+        setIcon(closeButton, 'x');
+        closeButton.addEventListener('click', () => {
+            void this.ignoreWarning();
         });
 
-        // 插件列表
-        const listContainer = contentEl.createDiv('takeover-plugin-list');
-        listContainer.createEl('h4', { text: this.t('自检_检测到插件_列表') });
-        const ul = listContainer.createEl('ul');
+        const page = contentEl.createDiv('takeover-page');
 
-        for (const id of this.nonBpmPlugins) {
+        const summary = page.createDiv('takeover-summary');
+        const summaryIcon = summary.createSpan({ cls: 'takeover-summary__icon' });
+        setIcon(summaryIcon, 'route');
+        const summaryMain = summary.createDiv('takeover-summary__main');
+        summaryMain.createDiv({
+            text: this.t('自检_检测到插件_说明'),
+            cls: 'takeover-desc',
+        });
+        const flow = summaryMain.createDiv('takeover-flow');
+        this.renderFlowChip(flow, 'file-json-2', 'community-plugins.json');
+        const flowArrow = flow.createSpan({ cls: 'takeover-flow__arrow' });
+        setIcon(flowArrow, 'arrow-right');
+        this.renderFlowChip(flow, 'shield-check', 'BPM');
+
+        const listContainer = page.createDiv('takeover-plugin-list');
+        const listHeader = listContainer.createDiv('takeover-plugin-list__header');
+        const listTitle = listHeader.createDiv('takeover-plugin-list__title');
+        const listIcon = listTitle.createSpan({ cls: 'takeover-plugin-list__icon' });
+        setIcon(listIcon, 'blocks');
+        listTitle.createEl('h4', { text: this.t('自检_检测到插件_列表') });
+        listHeader.createSpan({ cls: 'takeover-plugin-list__count', text: `${this.takeoverCandidates.length}` });
+        const pluginList = listContainer.createDiv({
+            cls: 'takeover-plugin-list__items',
+            attr: { role: 'list' },
+        });
+
+        for (const id of this.takeoverCandidates) {
             const name = this.getPluginName(id);
-            ul.createEl('li', { text: `${name} (${id})` });
+            const item = pluginList.createDiv({
+                cls: 'takeover-plugin-item',
+                attr: { role: 'listitem' },
+            });
+            const itemIcon = item.createSpan({ cls: 'takeover-plugin-item__icon' });
+            setIcon(itemIcon, 'plug');
+            const itemMain = item.createDiv('takeover-plugin-item__main');
+            itemMain.createSpan({ cls: 'takeover-plugin-item__name', text: name });
+            if (name !== id) {
+                itemMain.createSpan({ cls: 'takeover-plugin-item__id', text: id });
+            }
         }
 
-        // 警告说明
-        contentEl.createEl('p', {
+        const warning = page.createDiv('takeover-warning');
+        const warningIcon = warning.createSpan({ cls: 'takeover-warning__icon' });
+        setIcon(warningIcon, 'triangle-alert');
+        warning.createDiv({
             text: this.t('自检_警告_文本'),
-            cls: 'takeover-warning'
+            cls: 'takeover-warning__text',
         });
 
-        // 操作按钮
-        const actionContainer = contentEl.createDiv('takeover-actions');
+        const actionContainer = page.createDiv('takeover-actions');
 
         const takeoverBtn = new ButtonComponent(actionContainer);
         takeoverBtn.setButtonText(this.t('自检_接管_按钮'));
+        takeoverBtn.setIcon('shield-check');
         takeoverBtn.setCta();
-        takeoverBtn.onClick(async () => {
-            await this.takeoverPlugins();
-        });
+        takeoverBtn.buttonEl.addClass('takeover-actions__primary');
+        takeoverBtn.buttonEl.setAttribute('aria-label', this.t('自检_接管_按钮'));
 
         const ignoreBtn = new ButtonComponent(actionContainer);
         ignoreBtn.setButtonText(this.t('自检_忽略_按钮'));
+        ignoreBtn.setIcon('clock');
+        ignoreBtn.buttonEl.addClass('takeover-actions__secondary');
+        ignoreBtn.buttonEl.setAttribute('aria-label', this.t('自检_忽略_按钮'));
+
+        const ignoreForeverBtn = new ButtonComponent(actionContainer);
+        ignoreForeverBtn.setButtonText(this.t('自检_不再提示_按钮'));
+        ignoreForeverBtn.setIcon('bell-off');
+        ignoreForeverBtn.buttonEl.addClass('takeover-actions__secondary');
+        ignoreForeverBtn.buttonEl.setAttribute('aria-label', this.t('自检_不再提示_按钮'));
+
+        takeoverBtn.onClick(async () => {
+            takeoverBtn.setDisabled(true);
+            ignoreBtn.setDisabled(true);
+            ignoreForeverBtn.setDisabled(true);
+            const success = await this.takeoverPlugins();
+            if (!success) {
+                takeoverBtn.setDisabled(false);
+                ignoreBtn.setDisabled(false);
+                ignoreForeverBtn.setDisabled(false);
+            }
+        });
+
         ignoreBtn.onClick(async () => {
             await this.ignoreWarning();
         });
 
-        const ignoreForeverBtn = new ButtonComponent(actionContainer);
-        ignoreForeverBtn.setButtonText(this.t('自检_不再提示_按钮'));
         ignoreForeverBtn.onClick(async () => {
             await this.ignoreForever();
         });
     }
 
-    private getPluginName(id: string): string {
-        // @ts-ignore
-        const manifests = this.app.plugins.manifests;
-        return manifests[id]?.name || id;
+    private renderFlowChip(container: HTMLElement, iconName: string, text: string) {
+        const chip = container.createSpan({ cls: 'takeover-flow__chip' });
+        const icon = chip.createSpan({ cls: 'takeover-flow__chip-icon' });
+        setIcon(icon, iconName);
+        chip.createSpan({ cls: 'takeover-flow__chip-text', text });
     }
 
-    /**
-     * 执行接管
-     */
-    private async takeoverPlugins() {
-        const success = await execTakeover(this.app, this.manager, this.nonBpmPlugins);
+    private getPluginName(id: string): string {
+        return getManifestMap(this.manager)[id]?.name || id;
+    }
+
+    private async takeoverPlugins(): Promise<boolean> {
+        const success = await execTakeover(this.manager, this.takeoverCandidates, this.communityPlugins);
 
         if (success) {
             new Notice(this.t('自检_接管成功_通知'));
             this.close();
-            // 提示用户重启以使更改生效
             new Notice(this.t('自检_需要重启_通知'), 5000);
+            return true;
         } else {
             new Notice(this.t('自检_接管失败_通知'));
+            return false;
         }
     }
 
-    /**
-     * 忽略警告（本次）
-     */
     private async ignoreWarning() {
         new Notice(this.t('自检_忽略警告_通知'), 5000);
         this.close();
     }
 
-    /**
-     * 不再提示
-     */
     private async ignoreForever() {
         this.manager.settings.SELF_CHECK_IGNORED = true;
         await this.manager.saveSettings();
@@ -239,7 +319,6 @@ class TakeoverModal extends Modal {
     }
 
     onClose() {
-        const { contentEl } = this;
-        contentEl.empty();
+        this.contentEl.empty();
     }
 }
