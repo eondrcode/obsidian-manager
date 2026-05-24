@@ -1,10 +1,10 @@
 {
-    "id": "better-plugins-manager",
-    "name": "Better Plugins Manager",
-    "version": "0.4.3",
-    "minAppVersion": "1.5.8",
-    "description": "Plugin Manager: Simplify, Enhance, Personalize | 插件管理器：简化操作、增强功能、个性化设置",
-    "author": "zero",
-    "authorUrl": "https://github.com/0011000000110010/",
-    "isDesktopOnly": false
+	"id": "better-plugins-manager",
+	"name": "Better Plugins Manager",
+	"version": "1.0.0",
+	"minAppVersion": "1.5.8",
+	"description": "Plugin Manager: Simplify, Enhance, Personalize | 插件管理器：简化操作、增强功能、个性化设置",
+	"author": "zero",
+	"authorUrl": "https://github.com/0011000000110010/",
+	"isDesktopOnly": false
 }
