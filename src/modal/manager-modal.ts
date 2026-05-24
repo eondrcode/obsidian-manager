@@ -351,6 +351,16 @@ export class ManagerModal extends Modal {
         tab.searchComponent.inputEl.blur();
     }
 
+    private async openPluginMarket() {
+        await this.appSetting.open();
+        await this.appSetting.openTabById("community-plugins");
+        window.setTimeout(() => {
+            const tab = this.appSetting.activeTab;
+            const marketButton = tab?.containerEl?.querySelector<HTMLButtonElement>("button.mod-cta");
+            marketButton?.click();
+        }, 50);
+    }
+
     private async runSinglePluginUpdateCheck(pluginId: string) {
         const progress = this.showInlineProgress(this.manager.translator.t("通知_检测更新中文案"), pluginId);
         progress.update(0, 1, pluginId);
@@ -742,6 +752,16 @@ export class ManagerModal extends Modal {
         this.bindLongPressTooltip(supportGroupButton.buttonEl, SUPPORT_QQ_GROUP_TOOLTIP);
         supportGroupButton.onClick(() => this.openSupportQQGroup());
 
+        // [操作行] 插件市场
+        const marketButton = new ButtonComponent(actionBar.controlEl);
+        markTool(marketButton, "global");
+        marketButton.setIcon("store");
+        marketButton.setTooltip(this.manager.translator.t("管理器_插件市场_描述"));
+        this.bindLongPressTooltip(marketButton.buttonEl, this.manager.translator.t("管理器_插件市场_描述"));
+        marketButton.onClick(() => {
+            void this.openPluginMarket();
+        });
+
         // [操作行] 插件设置
         const settingsButton = new ButtonComponent(actionBar.controlEl);
         markTool(settingsButton, "global");
@@ -996,6 +1016,10 @@ export class ManagerModal extends Modal {
             // Ribbon 管理
             menu.addItem((item) => item.setTitle(t("管理器_Ribbon管理_描述")).setIcon("grip-vertical").onClick(() => {
                 new RibbonModal(this.app, this.manager).open();
+            }));
+            // 插件市场
+            menu.addItem((item) => item.setTitle(t("管理器_插件市场_描述")).setIcon("store").onClick(() => {
+                void this.openPluginMarket();
             }));
             // 插件设置
             menu.addItem((item) => item.setTitle(t("管理器_插件设置_描述")).setIcon("settings").onClick(() => {

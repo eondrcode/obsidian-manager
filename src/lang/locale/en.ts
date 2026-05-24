@@ -118,6 +118,7 @@ export default {
     管理器_一键禁用_描述: 'Disable all plugins at once',
     管理器_一键启用_描述: 'Enable all plugins at once',
     管理器_全选取消_描述: 'Select all / clear current list',
+    管理器_插件市场_描述: 'Open plugin market',
     管理器_插件设置_描述: 'Manage plugin settings',
     管理器_仅启用_描述: 'Only display enabled plugins',
     管理器_未分组_描述: 'Filter all ungrouped plugins',

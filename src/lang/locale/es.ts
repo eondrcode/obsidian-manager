@@ -24,6 +24,7 @@ export default {
     管理器_更多操作_描述: 'Más acciones',
     管理器_一键禁用_描述: 'Deshabilitar todos los plugins a la vez',
     管理器_一键启用_描述: 'Habilitar todos los plugins a la vez',
+    管理器_插件市场_描述: 'Abrir mercado de plugins',
     管理器_插件设置_描述: 'Administrar configuración de plugins',
     管理器_仅启用_描述: 'Mostrar solo plugins habilitados',
     管理器_打开设置_描述: 'Abrir la interfaz de configuración',

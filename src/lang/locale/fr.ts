@@ -96,6 +96,7 @@ export default {
     管理器_检查更新_描述: 'Vérifier les mises à jour de plugins',
     管理器_一键禁用_描述: 'Tout désactiver en un clic',
     管理器_一键启用_描述: 'Tout activer en un clic',
+    管理器_插件市场_描述: 'Ouvrir le marché des plugins',
     管理器_插件设置_描述: 'Gérer les paramètres du plugin',
     管理器_仅启用_描述: 'Afficher uniquement les plugins activés',
     管理器_未分组_描述: 'Filtrer les plugins non groupés',
