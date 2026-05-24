@@ -17,7 +17,7 @@ import {
 } from "obsidian";
 
 import { BetaSource, BPM_IGNORE_TAG, InstallHistoryItem, ManagerPlugin, PluginLayoutItem } from "../data/types";
-import { ManagerSettings } from "../settings/data";
+import { DEFAULT_MAIN_PAGE_ACTION_PLACEMENT, MainPageActionId, ManagerSettings } from "../settings/data";
 import { managerOpen } from "../utils";
 
 import Manager from "main";
@@ -60,6 +60,12 @@ type PluginUpdateViewStatus = {
     repo?: string | null;
     versions?: ReleaseVersion[];
     error?: string;
+};
+
+type PluginRepoActionState = {
+    repo: string | null;
+    tooltip: string;
+    disabled: boolean;
 };
 
 
@@ -203,6 +209,7 @@ export class ManagerModal extends Modal {
 
     private addPluginDownloadButton(controlEl: HTMLElement, pluginId: string, updateInfo: PluginUpdateViewStatus, prepend = false) {
         if (!updateInfo.remoteVersion) return;
+        if (!this.isMainPageActionOnItem("downloadUpdate")) return;
         const downloadBtn = new ExtraButtonComponent(controlEl);
         downloadBtn.setIcon("download");
         downloadBtn.setTooltip(this.manager.translator.t("管理器_下载更新_描述"));
@@ -244,6 +251,104 @@ export class ManagerModal extends Modal {
             card.remove();
             this.displayPlugins = this.displayPlugins.filter((plugin) => plugin.id !== pluginId);
         }
+    }
+
+    private getMainPageActionPlacement(actionId: MainPageActionId) {
+        return this.settings.MAIN_PAGE_ACTION_PLACEMENT?.[actionId]
+            ?? DEFAULT_MAIN_PAGE_ACTION_PLACEMENT[actionId];
+    }
+
+    private isMainPageActionOnItem(actionId: MainPageActionId): boolean {
+        return this.getMainPageActionPlacement(actionId) === "item";
+    }
+
+    private isMainPageActionInMenu(actionId: MainPageActionId): boolean {
+        return this.getMainPageActionPlacement(actionId) === "menu";
+    }
+
+    private createConfiguredItemAction(controlEl: HTMLElement, actionId: MainPageActionId): ExtraButtonComponent | null {
+        if (!this.isMainPageActionOnItem(actionId)) return null;
+        return new ExtraButtonComponent(controlEl);
+    }
+
+    private resolvePluginRepoAction(pluginId: string, repo: string | null): PluginRepoActionState {
+        if (repo) {
+            return {
+                repo,
+                tooltip: this.manager.translator.t("管理器_打开仓库_提示").replace("{repo}", repo),
+                disabled: false,
+            };
+        }
+
+        const isBpmInstall = this.manager.settings.BPM_INSTALLED.includes(pluginId);
+        return {
+            repo: null,
+            tooltip: isBpmInstall
+                ? this.manager.translator.t("管理器_仓库未记录_提示")
+                : this.manager.translator.t("管理器_仓库需手动添加_提示"),
+            disabled: true,
+        };
+    }
+
+    private handleMissingRepo(pluginId: string) {
+        const isBpmInstall = this.manager.settings.BPM_INSTALLED.includes(pluginId);
+        new Notice(isBpmInstall
+            ? this.manager.translator.t("管理器_仓库未记录_提示")
+            : this.manager.translator.t("管理器_仓库需手动添加_提示"));
+    }
+
+    private async openPluginRepo(pluginId: string, repo?: string | null) {
+        const resolvedRepo = repo ?? await this.manager.repoResolver.resolveRepo(pluginId);
+        if (resolvedRepo) {
+            window.open(`https://github.com/${resolvedRepo}`);
+            return;
+        }
+        this.handleMissingRepo(pluginId);
+    }
+
+    private async uninstallPluginWithConfirm(plugin: PluginManifest, isSelf: boolean) {
+        if (isSelf) return;
+        new DeleteModal(this.app, this.manager, async () => {
+            await this.appPlugins.uninstallPlugin(plugin.id);
+            await this.appPlugins.loadManifests();
+            this.reloadShowData();
+            Commands(this.app, this.manager);
+            this.manager.synchronizePlugins(Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manager.manifest.id) as PluginManifest[]);
+            new Notice(this.manager.translator.t("卸载_通知_一"));
+        }, { id: plugin.id, name: plugin.name }).open();
+    }
+
+    private async singleStartPlugin(plugin: PluginManifest) {
+        new Notice(this.manager.translator.t("管理器_单次启动中_提示"));
+        await this.appPlugins.enablePlugin(plugin.id);
+        await this.reloadShowData();
+    }
+
+    private async restartPlugin(plugin: PluginManifest) {
+        new Notice(this.manager.translator.t("管理器_重启中_提示"));
+        await this.appPlugins.disablePluginAndSave(plugin.id);
+        await this.appPlugins.enablePluginAndSave(plugin.id);
+        await this.reloadShowData();
+    }
+
+    private togglePluginHidden(pluginId: string) {
+        const isHidden = this.settings.HIDES.includes(pluginId);
+        if (isHidden) {
+            this.settings.HIDES = this.settings.HIDES.filter(id => id !== pluginId);
+        } else {
+            this.settings.HIDES.push(pluginId);
+        }
+        this.manager.saveSettings();
+        this.reloadShowData();
+    }
+
+    private async openPluginHotkeys(pluginId: string) {
+        await this.appSetting.open();
+        await this.appSetting.openTabById("hotkeys");
+        const tab = await this.appSetting.activeTab;
+        tab.searchComponent.inputEl.value = pluginId;
+        tab.updateHotkeyVisibility();
+        tab.searchComponent.inputEl.blur();
     }
 
     private async runSinglePluginUpdateCheck(pluginId: string) {
@@ -1296,57 +1401,64 @@ export class ManagerModal extends Modal {
             itemEl.settingEl.addEventListener("contextmenu", (event) => {
                 event.preventDefault(); // 阻止默认的右键菜单
                 const menu = new Menu();
+                let hasContextMenuItems = false;
+                const addContextSeparator = () => {
+                    if (hasContextMenuItems) menu.addSeparator();
+                };
                 // 第一组：插件信息类
-                menu.addItem((item) =>
-                    item.setTitle(this.manager.translator.t("菜单_检查更新_标题"))
-                        .setIcon("rss")
-                        .onClick(async () => {
-                            await this.runSinglePluginUpdateCheck(plugin.id);
-                        })
-                );
-                menu.addSeparator(); // 分隔符
+                if (this.isMainPageActionInMenu("checkUpdate")) {
+                    menu.addItem((item) =>
+                        item.setTitle(this.manager.translator.t("菜单_检查更新_标题"))
+                            .setIcon("rss")
+                            .onClick(async () => {
+                                await this.runSinglePluginUpdateCheck(plugin.id);
+                            })
+                    );
+                    hasContextMenuItems = true;
+                }
+                const currentUpdateInfo = this.manager.updateStatus?.[plugin.id] as PluginUpdateViewStatus | undefined;
+                if (this.isMainPageActionInMenu("downloadUpdate") && currentUpdateInfo?.hasUpdate && currentUpdateInfo.remoteVersion) {
+                    menu.addItem((item) =>
+                        item.setTitle(this.manager.translator.t("管理器_下载更新_描述"))
+                            .setIcon("download")
+                            .onClick(() => {
+                                this.openPluginUpdateModal(plugin.id, currentUpdateInfo);
+                            })
+                    );
+                    hasContextMenuItems = true;
+                }
                 // 第二组：插件管理类
+                const hasManageMenuItems = (!this.settings.DELAY && (this.isMainPageActionInMenu("singleStart") || this.isMainPageActionInMenu("restart"))) || this.isMainPageActionInMenu("hide");
+                if (hasManageMenuItems) addContextSeparator();
                 // [菜单] 单次启动
-                if (!this.settings.DELAY) menu.addItem((item) =>
+                if (!this.settings.DELAY && this.isMainPageActionInMenu("singleStart")) menu.addItem((item) =>
                     item.setTitle(this.manager.translator.t("菜单_单次启动_描述"))
                         .setIcon("repeat-1")
                         .setDisabled(isSelf || isEnabled)
                         .onClick(async () => {
-                            new Notice(this.manager.translator.t("管理器_单次启动中_提示"));
-                            await this.appPlugins.enablePlugin(plugin.id);
-                            await this.reloadShowData();
-
+                            await this.singleStartPlugin(plugin);
                         })
                 );
                 // [菜单] 重启插件
-                if (!this.settings.DELAY) menu.addItem((item) =>
+                if (!this.settings.DELAY && this.isMainPageActionInMenu("restart")) menu.addItem((item) =>
                     item.setTitle(this.manager.translator.t("菜单_重启插件_描述"))
                         .setIcon("refresh-ccw")
                         .setDisabled(isSelf || !isEnabled)
                         .onClick(async () => {
-                            new Notice(this.manager.translator.t("管理器_重启中_提示"));
-                            await this.appPlugins.disablePluginAndSave(plugin.id);
-                            await this.appPlugins.enablePluginAndSave(plugin.id);
-                            await this.reloadShowData();
+                            await this.restartPlugin(plugin);
                         })
                 );
                 // [菜单] 隐藏插件
-                menu.addItem((item) =>
+                if (this.isMainPageActionInMenu("hide")) menu.addItem((item) =>
                     item.setTitle(this.manager.translator.t("菜单_隐藏插件_标题"))
                         .setIcon("eye-off")
                         .setDisabled(isSelf)
                         .onClick(() => {
                             if (isSelf) return;
-                            const isHidden = this.settings.HIDES.includes(plugin.id);
-                            if (isHidden) {
-                                this.settings.HIDES = this.settings.HIDES.filter(id => id !== plugin.id);
-                            } else {
-                                this.settings.HIDES.push(plugin.id);
-                            }
-                            this.manager.saveSettings();
-                            this.reloadShowData();
+                            this.togglePluginHidden(plugin.id);
                         })
                 );
+                if (hasManageMenuItems) hasContextMenuItems = true;
                 // [菜单] 分享插件
                 // menu.addItem((item) =>
                 //     item.setTitle("分享插件_标题")
@@ -1357,25 +1469,64 @@ export class ManagerModal extends Modal {
                 //         })
                 // );
 
-                menu.addSeparator(); // 分隔符
+                const hasOpenMenuItems = this.isMainPageActionInMenu("openSettings") || this.isMainPageActionInMenu("openDir") || this.isMainPageActionInMenu("openRepo") || this.isMainPageActionInMenu("delete");
+                if (hasOpenMenuItems) addContextSeparator();
+                if (this.isMainPageActionInMenu("openSettings")) {
+                    menu.addItem((item) =>
+                        item.setTitle(this.manager.translator.t("管理器_打开设置_描述"))
+                            .setIcon("settings")
+                            .setDisabled(!isEnabled)
+                            .onClick(() => {
+                                this.appSetting.open();
+                                this.appSetting.openTabById(plugin.id);
+                            })
+                    );
+                }
+                if (this.isMainPageActionInMenu("openDir")) {
+                    menu.addItem((item) =>
+                        item.setTitle(this.manager.translator.t("管理器_打开目录_描述"))
+                            .setIcon("folder-open")
+                            .onClick(() => {
+                                managerOpen(pluginDir, this.manager);
+                            })
+                    );
+                }
+                if (this.isMainPageActionInMenu("openRepo")) {
+                    menu.addItem((item) =>
+                        item.setTitle(this.manager.translator.t("管理器_打开仓库_标题"))
+                            .setIcon("github")
+                            .onClick(async () => {
+                                await this.openPluginRepo(plugin.id);
+                            })
+                    );
+                }
+                if (this.isMainPageActionInMenu("delete")) {
+                    menu.addItem((item) =>
+                        item.setTitle(this.manager.translator.t("管理器_删除插件_描述"))
+                            .setIcon("trash")
+                            .setDisabled(isSelf)
+                            .onClick(async () => {
+                                await this.uninstallPluginWithConfirm(plugin, isSelf);
+                            })
+                    );
+                }
+                if (hasOpenMenuItems) hasContextMenuItems = true;
+
                 // 第三组：插件设置类
+                const hasConfigMenuItems = this.isMainPageActionInMenu("note") || this.isMainPageActionInMenu("hotkeys") || this.isMainPageActionInMenu("copyId");
+                if (hasConfigMenuItems) addContextSeparator();
                 // [菜单] 插件笔记
-                menu.addItem((item) =>
+                if (this.isMainPageActionInMenu("note")) menu.addItem((item) =>
                     item.setTitle(this.manager.translator.t("菜单_笔记_标题")).setIcon("notebook-pen").onClick(() => { new NoteModal(this.app, this.manager, ManagerPlugin, this).open(); })
                 );
                 // [菜单] 快捷键
-                menu.addItem((item) =>
+                if (this.isMainPageActionInMenu("hotkeys")) menu.addItem((item) =>
                     item.setTitle(this.manager.translator.t("菜单_快捷键_标题")).setIcon("circle-plus").onClick(async () => {
-                        await this.appSetting.open();
-                        await this.appSetting.openTabById("hotkeys");
-                        const tab = await this.appSetting.activeTab;
-                        tab.searchComponent.inputEl.value = plugin.id;
-                        tab.updateHotkeyVisibility();
-                        tab.searchComponent.inputEl.blur();
+                        await this.openPluginHotkeys(plugin.id);
                     })
                 );
                 // [菜单] 复制ID
-                menu.addItem((item) =>
+                if (this.isMainPageActionInMenu("copyId")) menu.addItem((item) =>
                     item.setTitle(this.manager.translator.t("菜单_复制ID_标题"))
                         .setIcon("copy")
                         .onClick(() => {
@@ -1383,6 +1534,7 @@ export class ManagerModal extends Modal {
                             new Notice(this.manager.translator.t("通知_ID已复制"));
                         })
                 );
+                if (hasConfigMenuItems) hasContextMenuItems = true;
                 // 第三组：测试类
                 // menu.addSeparator(); // 分隔符
 
@@ -1567,7 +1719,7 @@ export class ManagerModal extends Modal {
                 versionWrap.appendChild(arrow);
                 const remote = createSpan({ text: `${updateInfo.remoteVersion}`, cls: ["manager-item__name-remote"] });
                 versionWrap.appendChild(remote);
-                if (!this.editorMode && !Platform.isMobileApp) {
+                if (!this.editorMode) {
                     this.addPluginDownloadButton(itemEl.controlEl, plugin.id, updateInfo);
                 }
             }
@@ -1647,7 +1799,20 @@ export class ManagerModal extends Modal {
                 let openPluginSetting: ExtraButtonComponent | null = null;
                 let openPluginSettingEl: HTMLElement | undefined;
 
-                if (isMobile) {
+                if (isMobile && [
+                    "checkUpdate",
+                    "downloadUpdate",
+                    "singleStart",
+                    "restart",
+                    "hide",
+                    "note",
+                    "hotkeys",
+                    "copyId",
+                    "openRepo",
+                    "openSettings",
+                    "openDir",
+                    "delete",
+                ].some((id) => this.isMainPageActionInMenu(id as MainPageActionId))) {
                     const moreButton = new ExtraButtonComponent(itemEl.controlEl);
                     moreButton.setIcon("more-vertical");
                     moreButton.setTooltip(this.manager.translator.t("管理器_更多操作_描述"));
@@ -1657,89 +1822,231 @@ export class ManagerModal extends Modal {
                         event.preventDefault();
                         event.stopPropagation();
                         const menu = new Menu();
-                        menu.addItem((item) => item
-                            .setTitle(this.manager.translator.t("菜单_检查更新_标题"))
-                            .setIcon("rss")
-                            .onClick(async () => {
-                                await this.runSinglePluginUpdateCheck(plugin.id);
-                            }));
+                        let hasPreviousGroup = false;
+                        let hasCurrentGroup = false;
+                        if (this.isMainPageActionInMenu("checkUpdate")) {
+                            menu.addItem((item) => item
+                                .setTitle(this.manager.translator.t("菜单_检查更新_标题"))
+                                .setIcon("rss")
+                                .onClick(async () => {
+                                    await this.runSinglePluginUpdateCheck(plugin.id);
+                                }));
+                            hasCurrentGroup = true;
+                        }
                         const currentUpdateInfo = this.manager.updateStatus?.[plugin.id] as PluginUpdateViewStatus | undefined;
-                        if (currentUpdateInfo?.hasUpdate && currentUpdateInfo.remoteVersion) {
+                        if (this.isMainPageActionInMenu("downloadUpdate") && currentUpdateInfo?.hasUpdate && currentUpdateInfo.remoteVersion) {
                             menu.addItem((item) => item
                                 .setTitle(this.manager.translator.t("管理器_下载更新_描述"))
                                 .setIcon("download")
                                 .onClick(() => {
                                     this.openPluginUpdateModal(plugin.id, currentUpdateInfo);
                                 }));
+                            hasCurrentGroup = true;
                         }
-                        menu.addSeparator();
-                        menu.addItem((item) => item
-                            .setTitle(this.manager.translator.t("管理器_打开设置_描述"))
-                            .setIcon("settings")
-                            .setDisabled(!isEnabled)
-                            .onClick(() => {
-                                this.appSetting.open();
-                                this.appSetting.openTabById(plugin.id);
-                            }));
-                        menu.addItem((item) => item
-                            .setTitle(this.manager.translator.t("管理器_打开目录_描述"))
-                            .setIcon("folder-open")
-                            .onClick(() => {
-                                managerOpen(pluginDir, this.manager);
-                            }));
-                        menu.addItem((item) => item
-                            .setTitle(this.manager.translator.t("管理器_打开仓库_标题"))
-                            .setIcon("github")
-                            .onClick(async () => {
-                                const repo = await this.manager.repoResolver.resolveRepo(plugin.id);
-                                if (repo) {
-                                    window.open(`https://github.com/${repo}`);
-                                } else {
-                                    const isBpmInstall = this.manager.settings.BPM_INSTALLED.includes(plugin.id);
-                                    new Notice(isBpmInstall
-                                        ? this.manager.translator.t("管理器_仓库未记录_提示")
-                                        : this.manager.translator.t("管理器_仓库需手动添加_提示"));
-                                }
-                            }));
-                        menu.addSeparator();
-                        menu.addItem((item) => item
-                            .setTitle(this.manager.translator.t("管理器_删除插件_描述"))
-                            .setIcon("trash")
-                            .setDisabled(isSelf)
-                            .onClick(async () => {
-                                if (isSelf) return;
-                                new DeleteModal(this.app, this.manager, async () => {
-                                    await this.appPlugins.uninstallPlugin(plugin.id);
-                                    await this.appPlugins.loadManifests();
-                                    this.reloadShowData();
-                                    Commands(this.app, this.manager);
-                                    this.manager.synchronizePlugins(Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manager.manifest.id) as PluginManifest[]);
-                                    new Notice(this.manager.translator.t("卸载_通知_一"));
-                                }).open();
-                            }));
+                        hasPreviousGroup = hasCurrentGroup;
+                        hasCurrentGroup = false;
+
+                        if (!this.settings.DELAY && this.isMainPageActionInMenu("singleStart")) {
+                            if (hasPreviousGroup && !hasCurrentGroup) menu.addSeparator();
+                            menu.addItem((item) => item
+                                .setTitle(this.manager.translator.t("菜单_单次启动_描述"))
+                                .setIcon("repeat-1")
+                                .setDisabled(isSelf || isEnabled)
+                                .onClick(async () => {
+                                    await this.singleStartPlugin(plugin);
+                                }));
+                            hasCurrentGroup = true;
+                        }
+                        if (!this.settings.DELAY && this.isMainPageActionInMenu("restart")) {
+                            if (hasPreviousGroup && !hasCurrentGroup) menu.addSeparator();
+                            menu.addItem((item) => item
+                                .setTitle(this.manager.translator.t("菜单_重启插件_描述"))
+                                .setIcon("refresh-ccw")
+                                .setDisabled(isSelf || !isEnabled)
+                                .onClick(async () => {
+                                    await this.restartPlugin(plugin);
+                                }));
+                            hasCurrentGroup = true;
+                        }
+                        if (this.isMainPageActionInMenu("hide")) {
+                            if (hasPreviousGroup && !hasCurrentGroup) menu.addSeparator();
+                            menu.addItem((item) => item
+                                .setTitle(this.manager.translator.t("菜单_隐藏插件_标题"))
+                                .setIcon("eye-off")
+                                .setDisabled(isSelf)
+                                .onClick(() => {
+                                    if (isSelf) return;
+                                    this.togglePluginHidden(plugin.id);
+                                }));
+                            hasCurrentGroup = true;
+                        }
+                        hasPreviousGroup = hasPreviousGroup || hasCurrentGroup;
+                        hasCurrentGroup = false;
+
+                        if (this.isMainPageActionInMenu("openSettings")) {
+                            if (hasPreviousGroup && !hasCurrentGroup) menu.addSeparator();
+                            menu.addItem((item) => item
+                                .setTitle(this.manager.translator.t("管理器_打开设置_描述"))
+                                .setIcon("settings")
+                                .setDisabled(!isEnabled)
+                                .onClick(() => {
+                                    this.appSetting.open();
+                                    this.appSetting.openTabById(plugin.id);
+                                }));
+                            hasCurrentGroup = true;
+                        }
+                        if (this.isMainPageActionInMenu("openDir")) {
+                            if (hasPreviousGroup && !hasCurrentGroup) menu.addSeparator();
+                            menu.addItem((item) => item
+                                .setTitle(this.manager.translator.t("管理器_打开目录_描述"))
+                                .setIcon("folder-open")
+                                .onClick(() => {
+                                    managerOpen(pluginDir, this.manager);
+                                }));
+                            hasCurrentGroup = true;
+                        }
+                        if (this.isMainPageActionInMenu("openRepo")) {
+                            if (hasPreviousGroup && !hasCurrentGroup) menu.addSeparator();
+                            menu.addItem((item) => item
+                                .setTitle(this.manager.translator.t("管理器_打开仓库_标题"))
+                                .setIcon("github")
+                                .onClick(async () => {
+                                    await this.openPluginRepo(plugin.id);
+                                }));
+                            hasCurrentGroup = true;
+                        }
+                        if (this.isMainPageActionInMenu("delete")) {
+                            if (hasPreviousGroup && !hasCurrentGroup) menu.addSeparator();
+                            menu.addItem((item) => item
+                                .setTitle(this.manager.translator.t("管理器_删除插件_描述"))
+                                .setIcon("trash")
+                                .setDisabled(isSelf)
+                                .onClick(async () => {
+                                    await this.uninstallPluginWithConfirm(plugin, isSelf);
+                                }));
+                            hasCurrentGroup = true;
+                        }
+                        hasPreviousGroup = hasPreviousGroup || hasCurrentGroup;
+                        hasCurrentGroup = false;
+
+                        if (this.isMainPageActionInMenu("note")) {
+                            if (hasPreviousGroup && !hasCurrentGroup) menu.addSeparator();
+                            menu.addItem((item) => item
+                                .setTitle(this.manager.translator.t("菜单_笔记_标题"))
+                                .setIcon("notebook-pen")
+                                .onClick(() => { new NoteModal(this.app, this.manager, ManagerPlugin, this).open(); }));
+                            hasCurrentGroup = true;
+                        }
+                        if (this.isMainPageActionInMenu("hotkeys")) {
+                            if (hasPreviousGroup && !hasCurrentGroup) menu.addSeparator();
+                            menu.addItem((item) => item
+                                .setTitle(this.manager.translator.t("菜单_快捷键_标题"))
+                                .setIcon("circle-plus")
+                                .onClick(async () => {
+                                    await this.openPluginHotkeys(plugin.id);
+                                }));
+                            hasCurrentGroup = true;
+                        }
+                        if (this.isMainPageActionInMenu("copyId")) {
+                            if (hasPreviousGroup && !hasCurrentGroup) menu.addSeparator();
+                            menu.addItem((item) => item
+                                .setTitle(this.manager.translator.t("菜单_复制ID_标题"))
+                                .setIcon("copy")
+                                .onClick(() => {
+                                    navigator.clipboard.writeText(plugin.id);
+                                    new Notice(this.manager.translator.t("通知_ID已复制"));
+                                }));
+                        }
                         menu.showAtMouseEvent(event as MouseEvent);
                     });
-                } else {
-                    // [按钮] 打开仓库
-                    const openRepoButton = new ExtraButtonComponent(itemEl.controlEl);
+                }
+
+                const checkUpdateButton = this.createConfiguredItemAction(itemEl.controlEl, "checkUpdate");
+                if (checkUpdateButton) {
+                    checkUpdateButton.setIcon("rss");
+                    checkUpdateButton.setTooltip(this.manager.translator.t("菜单_检查更新_标题"));
+                    checkUpdateButton.onClick(async () => {
+                        await this.runSinglePluginUpdateCheck(plugin.id);
+                    });
+                }
+
+                if (!this.settings.DELAY) {
+                    const singleStartButton = this.createConfiguredItemAction(itemEl.controlEl, "singleStart");
+                    if (singleStartButton) {
+                        singleStartButton.setIcon("repeat-1");
+                        singleStartButton.setTooltip(this.manager.translator.t("菜单_单次启动_描述"));
+                        singleStartButton.setDisabled(isSelf || isEnabled);
+                        singleStartButton.onClick(async () => {
+                            await this.singleStartPlugin(plugin);
+                        });
+                    }
+
+                    const restartButton = this.createConfiguredItemAction(itemEl.controlEl, "restart");
+                    if (restartButton) {
+                        restartButton.setIcon("refresh-ccw");
+                        restartButton.setTooltip(this.manager.translator.t("菜单_重启插件_描述"));
+                        restartButton.setDisabled(isSelf || !isEnabled);
+                        restartButton.onClick(async () => {
+                            await this.restartPlugin(plugin);
+                        });
+                    }
+                }
+
+                const hideButton = this.createConfiguredItemAction(itemEl.controlEl, "hide");
+                if (hideButton) {
+                    hideButton.setIcon("eye-off");
+                    hideButton.setTooltip(this.manager.translator.t("菜单_隐藏插件_标题"));
+                    hideButton.setDisabled(isSelf);
+                    hideButton.onClick(() => {
+                        if (isSelf) return;
+                        this.togglePluginHidden(plugin.id);
+                    });
+                }
+
+                const noteButton = this.createConfiguredItemAction(itemEl.controlEl, "note");
+                if (noteButton) {
+                    noteButton.setIcon("notebook-pen");
+                    noteButton.setTooltip(this.manager.translator.t("菜单_笔记_标题"));
+                    noteButton.onClick(() => { new NoteModal(this.app, this.manager, ManagerPlugin, this).open(); });
+                }
+
+                const hotkeysButton = this.createConfiguredItemAction(itemEl.controlEl, "hotkeys");
+                if (hotkeysButton) {
+                    hotkeysButton.setIcon("circle-plus");
+                    hotkeysButton.setTooltip(this.manager.translator.t("菜单_快捷键_标题"));
+                    hotkeysButton.onClick(async () => {
+                        await this.openPluginHotkeys(plugin.id);
+                    });
+                }
+
+                const copyIdButton = this.createConfiguredItemAction(itemEl.controlEl, "copyId");
+                if (copyIdButton) {
+                    copyIdButton.setIcon("copy");
+                    copyIdButton.setTooltip(this.manager.translator.t("菜单_复制ID_标题"));
+                    copyIdButton.onClick(() => {
+                        navigator.clipboard.writeText(plugin.id);
+                        new Notice(this.manager.translator.t("通知_ID已复制"));
+                    });
+                }
+
+                const openRepoButton = this.createConfiguredItemAction(itemEl.controlEl, "openRepo");
+                if (openRepoButton) {
                     openRepoButton.setIcon("github");
                     openRepoButton.setTooltip(this.manager.translator.t("管理器_仓库检测中_提示"));
                     openRepoButton.setDisabled(true);
                     const repo = await this.manager.repoResolver.resolveRepo(plugin.id);
                     if (!this.isRenderCurrent(renderGeneration, page)) return;
-                    if (repo) {
-                        openRepoButton.setTooltip(this.manager.translator.t("管理器_打开仓库_提示").replace("{repo}", repo));
-                        openRepoButton.setDisabled(false);
-                        openRepoButton.onClick(() => window.open(`https://github.com/${repo}`));
-                    } else {
-                        const isBpmInstall = this.manager.settings.BPM_INSTALLED.includes(plugin.id);
-                        openRepoButton.setTooltip(isBpmInstall
-                            ? this.manager.translator.t("管理器_仓库未记录_提示")
-                            : this.manager.translator.t("管理器_仓库需手动添加_提示"));
-                    }
+                    const repoState = this.resolvePluginRepoAction(plugin.id, repo);
+                    openRepoButton.setTooltip(repoState.tooltip);
+                    openRepoButton.setDisabled(repoState.disabled);
+                    openRepoButton.onClick(async () => {
+                        await this.openPluginRepo(plugin.id, repoState.repo);
+                    });
+                }
 
-                    // [按钮] 打开设置
-                    openPluginSetting = new ExtraButtonComponent(itemEl.controlEl);
+                // [按钮] 打开设置
+                openPluginSetting = this.createConfiguredItemAction(itemEl.controlEl, "openSettings");
+                if (openPluginSetting) {
                     openPluginSetting.setIcon("settings");
                     openPluginSetting.setTooltip(this.manager.translator.t("管理器_打开设置_描述"));
                     openPluginSetting.onClick(() => {
@@ -1753,9 +2060,11 @@ export class ManagerModal extends Modal {
                         openPluginSetting.setDisabled(true);
                         if (openPluginSettingEl) openPluginSettingEl.style.display = "none";
                     }
+                }
 
-                    // [按钮] 打开目录
-                    const openPluginDirButton = new ExtraButtonComponent(itemEl.controlEl);
+                // [按钮] 打开目录
+                const openPluginDirButton = this.createConfiguredItemAction(itemEl.controlEl, "openDir");
+                if (openPluginDirButton) {
                     openPluginDirButton.setIcon("folder-open");
                     openPluginDirButton.setTooltip(this.manager.translator.t("管理器_打开目录_描述"));
                     openPluginDirButton.onClick(() => {
@@ -1763,24 +2072,16 @@ export class ManagerModal extends Modal {
                         managerOpen(pluginDir, this.manager);
                         openPluginDirButton.setDisabled(false);
                     });
+                }
 
-                    // [按钮] 删除插件
-                    const deletePluginButton = new ExtraButtonComponent(itemEl.controlEl);
+                // [按钮] 删除插件
+                const deletePluginButton = this.createConfiguredItemAction(itemEl.controlEl, "delete");
+                if (deletePluginButton) {
                     deletePluginButton.setIcon("trash");
                     deletePluginButton.setTooltip(this.manager.translator.t("管理器_删除插件_描述"));
                     if (isSelf) deletePluginButton.setDisabled(true);
                     deletePluginButton.onClick(async () => {
-                        if (isSelf) return;
-                        new DeleteModal(this.app, this.manager, async () => {
-                            await this.appPlugins.uninstallPlugin(plugin.id);
-                            await this.appPlugins.loadManifests();
-                            this.reloadShowData();
-                            // 刷新命令行
-                            Commands(this.app, this.manager);
-                            // 删除同理
-                            this.manager.synchronizePlugins(Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manager.manifest.id) as PluginManifest[]);
-                            new Notice(this.manager.translator.t("卸载_通知_一"));
-                        }).open();
+                        await this.uninstallPluginWithConfirm(plugin, isSelf);
                     });
                 }
 
@@ -1790,8 +2091,8 @@ export class ManagerModal extends Modal {
                 toggleSwitch.setValue(isEnabled);
 
                 // 检查 BPM 忽略标签
-                const ManagerPlugin = this.settings.Plugins.find((p) => p.id === plugin.id);
-                const isBpmIgnored = ManagerPlugin?.tags?.includes(BPM_IGNORE_TAG);
+                const managerPluginForToggle = ManagerPlugin;
+                const isBpmIgnored = managerPluginForToggle.tags?.includes(BPM_IGNORE_TAG);
 
                 if (isSelf) {
                     toggleSwitch.setValue(true);
@@ -1836,20 +2137,20 @@ export class ManagerModal extends Modal {
                         };
                         if (this.settings.DELAY) {
                             if (targetEnabled) {
-                                if (ManagerPlugin) ManagerPlugin.enabled = true;
+                                managerPluginForToggle.enabled = true;
                                 await this.manager.savePluginAndExport(plugin.id);
                                 await this.appPlugins.enablePlugin(plugin.id);
                             } else {
-                                if (ManagerPlugin) ManagerPlugin.enabled = false;
+                                managerPluginForToggle.enabled = false;
                                 await this.manager.savePluginAndExport(plugin.id);
                                 await this.appPlugins.disablePlugin(plugin.id);
                             }
                         } else {
                             if (targetEnabled) {
-                                if (ManagerPlugin) ManagerPlugin.enabled = true;
+                                managerPluginForToggle.enabled = true;
                                 await this.appPlugins.enablePluginAndSave(plugin.id);
                             } else {
-                                if (ManagerPlugin) ManagerPlugin.enabled = false;
+                                managerPluginForToggle.enabled = false;
                                 await this.appPlugins.disablePluginAndSave(plugin.id);
                             }
                             await this.manager.savePluginAndExport(plugin.id);

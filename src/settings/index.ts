@@ -6,6 +6,7 @@ import ManagerStyle from './ui/manager-style';
 import ManagerDelay from './ui/manager-delay';
 import ManagerTag from './ui/manager-tag';
 import ManagerGroup from './ui/manager-group';
+import ManagerMainPage from './ui/manager-main-page';
 
 
 class ManagerSettingTab extends PluginSettingTab {
@@ -30,6 +31,7 @@ class ManagerSettingTab extends PluginSettingTab {
 
         const tabItems = [
             { text: this.manager.translator.t('设置_基础设置_前缀'), content: () => this.basisDisplay() },
+            { text: this.manager.translator.t('设置_主页面功能_前缀'), content: () => this.mainPageDisplay() },
             { text: this.manager.translator.t('设置_样式设置_前缀'), content: () => this.styleDisplay() },
             { text: this.manager.translator.t('设置_分组设置_前缀'), content: () => this.groupDisplay() },
             { text: this.manager.translator.t('设置_标签设置_前缀'), content: () => this.tagDisplay() },
@@ -53,6 +55,7 @@ class ManagerSettingTab extends PluginSettingTab {
         });
     }
     basisDisplay() { this.contentEl.empty(); new ManagerBasis(this).display(); }
+    mainPageDisplay() { this.contentEl.empty(); new ManagerMainPage(this).display(); }
     styleDisplay() { this.contentEl.empty(); new ManagerStyle(this).display(); }
     delayDisplay() { this.contentEl.empty(); new ManagerDelay(this).display(); }
     groupDisplay() { this.contentEl.empty(); new ManagerGroup(this).display(); }

@@ -1,6 +1,40 @@
 import { BetaSource, Delay, InstallHistoryItem, ManagerPlugin, PluginLayoutItem, RibbonItem, Tag, Type } from '../data/types';
 import { TroubleshootState } from '../troubleshoot/troubleshoot-state';
 
+export const MAIN_PAGE_ACTION_IDS = [
+    "checkUpdate",
+    "downloadUpdate",
+    "singleStart",
+    "restart",
+    "hide",
+    "note",
+    "hotkeys",
+    "copyId",
+    "openRepo",
+    "openSettings",
+    "openDir",
+    "delete",
+] as const;
+
+export type MainPageActionId = typeof MAIN_PAGE_ACTION_IDS[number];
+export type MainPageActionPlacement = "item" | "menu";
+export type MainPageActionPlacementSettings = Partial<Record<MainPageActionId, MainPageActionPlacement>>;
+
+export const DEFAULT_MAIN_PAGE_ACTION_PLACEMENT: Record<MainPageActionId, MainPageActionPlacement> = {
+    checkUpdate: "menu",
+    downloadUpdate: "item",
+    singleStart: "menu",
+    restart: "menu",
+    hide: "menu",
+    note: "menu",
+    hotkeys: "menu",
+    copyId: "menu",
+    openRepo: "item",
+    openSettings: "item",
+    openDir: "item",
+    delete: "item",
+};
+
 export interface ManagerSettings {
     // 系统 / 生命周期
     /** 当前界面语言。空字符串表示首次启动时按 Obsidian 当前语言自动初始化。 */
@@ -21,6 +55,8 @@ export interface ManagerSettings {
     DELAY: boolean;
     /** 是否在插件卡片中隐藏 BPM 内置标签，例如 BPM 管理标识和 BPM 忽略。 */
     HIDE_BPM_TAG: boolean;
+    /** 管理页插件功能显示位置；item 表示直接展示在插件卡片上，menu 表示收纳到右键菜单。 */
+    MAIN_PAGE_ACTION_PLACEMENT: MainPageActionPlacementSettings;
     /** 自检发现非 BPM 管理插件时，是否自动接管 community-plugins.json。 */
     AUTO_TAKEOVER: boolean;
     /** 用户是否选择不再显示自检接管提示。 */
@@ -109,6 +145,7 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     CENTER: false,
     DELAY: false,
     HIDE_BPM_TAG: false,
+    MAIN_PAGE_ACTION_PLACEMENT: { ...DEFAULT_MAIN_PAGE_ACTION_PLACEMENT },
     AUTO_TAKEOVER: false,
     SELF_CHECK_IGNORED: false,
     COMMAND_ITEM: false,
