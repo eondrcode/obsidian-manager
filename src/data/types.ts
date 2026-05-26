@@ -67,3 +67,13 @@ export interface InstallHistoryItem {
 	trackSource?: boolean;
 	usedAt?: number;
 }
+
+export interface SharedVaultEntry {
+	id: string;
+	name: string;
+	path: string;
+	pluginsLinked?: boolean;
+	themesLinked?: boolean;
+	createdAt: number;
+	lastSeenAt?: number;
+}

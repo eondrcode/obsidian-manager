@@ -49,8 +49,27 @@ import {
     ManagerTransferTheme,
     parseManagerTransferPackage,
 } from "../import-export";
+import {
+    createSharedVaultLinks,
+    forgetSharedVault,
+    getSharedVaultSnapshot,
+    isSharedVaultFsAvailable,
+    normalizeSharedVaultInputPath,
+    readSharedPluginCatalog,
+    readSharedThemeCatalog,
+    setCurrentVaultAsSharedMain,
+    setSharedVaultPluginEnabled,
+    setSharedVaultTheme,
+    SharedFolderKind,
+    SharedPluginCatalogItem,
+    SharedThemeCatalogItem,
+    SharedVaultFolderStatus,
+    SharedVaultRole,
+    SharedVaultStatus,
+    unlinkSharedVaultFolder,
+} from "../vault-share";
 
-type ManagerPage = "plugins" | "install" | "sources" | "transfer" | "ribbon" | "hidden" | "troubleshoot";
+type ManagerPage = "plugins" | "install" | "sources" | "transfer" | "vaults" | "ribbon" | "hidden" | "troubleshoot";
 const SUPPORT_QQ_GROUP_URL = "https://qm.qq.com/cgi-bin/qm/qr?k=kHTS0iC1FC5igTXbdbKzff6_tc54mOF5&jump_from=webapi&authKey=AoSkriW+nDeDzBPqBl9jcpbAYkPXN2QRbrMh0hFbvMrGbqZyRAbJwaD6JKbOy4Nx";
 const SUPPORT_QQ_GROUP_LABEL = "\u52a0\u5165 QQ \u7fa4";
 const SUPPORT_QQ_GROUP_TOOLTIP = "\u52a0\u5165 QQ \u7fa4\u54a8\u8be2\u95ee\u9898";
@@ -454,6 +473,7 @@ export class ManagerModal extends Modal {
     private installTabEl?: HTMLButtonElement;
     private sourcesTabEl?: HTMLButtonElement;
     private transferTabEl?: HTMLButtonElement;
+    private vaultsTabEl?: HTMLButtonElement;
     private ribbonTabEl?: HTMLButtonElement;
     private hiddenTabEl?: HTMLButtonElement;
     private troubleshootTabEl?: HTMLButtonElement;
@@ -477,6 +497,11 @@ export class ManagerModal extends Modal {
     private hiddenDragOffsetX = 0;
     private hiddenDragOffsetY = 0;
     private hiddenActivePointerId: number | null = null;
+    private vaultTargetPath = "";
+    private vaultLinkPlugins = true;
+    private vaultLinkThemes = true;
+    private vaultBackupExisting = false;
+    private vaultExpandedId = "";
 
     constructor(app: App, manager: Manager) {
         super(app);
@@ -621,6 +646,7 @@ export class ManagerModal extends Modal {
         this.installTabEl = createTab("install", t("管理器_Tab_安装来源"), "download");
         this.sourcesTabEl = undefined;
         this.transferTabEl = createTab("transfer", t("导入导出_Tab_标题"), "archive-restore", t("导入导出_Tab_说明"));
+        this.vaultsTabEl = createTab("vaults", t("共享库_Tab_标题"), "folder-sync", t("共享库_Tab_说明"));
         this.ribbonTabEl = createTab("ribbon", t("管理器_Tab_功能编排"), "grip-vertical", t("Ribbon_功能编排_说明"));
         this.hiddenTabEl = createTab("hidden", t("管理器_Tab_隐藏管理"), "layout-list", t("管理器_布局_描述"));
         this.troubleshootTabEl = createTab("troubleshoot", t("排查_Tab_短标题"), "search-check");
@@ -988,6 +1014,13 @@ export class ManagerModal extends Modal {
             }));
             menu.addItem((item) => item.setTitle(t("导入导出_Tab_标题")).setIcon("archive-restore").onClick(() => {
                 this.activePage = "transfer";
+                this.installMode = false;
+                this.syncPageChrome();
+                this.renderContent();
+                this.showHeadMobile();
+            }));
+            menu.addItem((item) => item.setTitle(t("共享库_Tab_标题")).setIcon("folder-sync").onClick(() => {
+                this.activePage = "vaults";
                 this.installMode = false;
                 this.syncPageChrome();
                 this.renderContent();
@@ -2304,6 +2337,7 @@ export class ManagerModal extends Modal {
         const isSources = this.activePage === "sources";
         const isInstallWorkspace = isInstall || isSources;
         const isTransfer = this.activePage === "transfer";
+        const isVaults = this.activePage === "vaults";
         const isRibbon = this.activePage === "ribbon";
         const isHidden = this.activePage === "hidden";
         const isTroubleshoot = this.activePage === "troubleshoot";
@@ -2312,6 +2346,7 @@ export class ManagerModal extends Modal {
         this.installTabEl?.classList.toggle("is-active", isInstallWorkspace);
         this.sourcesTabEl?.classList.toggle("is-active", isSources);
         this.transferTabEl?.classList.toggle("is-active", isTransfer);
+        this.vaultsTabEl?.classList.toggle("is-active", isVaults);
         this.ribbonTabEl?.classList.toggle("is-active", isRibbon);
         this.hiddenTabEl?.classList.toggle("is-active", isHidden);
         this.troubleshootTabEl?.classList.toggle("is-active", isTroubleshoot);
@@ -2319,6 +2354,7 @@ export class ManagerModal extends Modal {
         this.installTabEl?.setAttribute("aria-selected", `${isInstallWorkspace}`);
         this.sourcesTabEl?.setAttribute("aria-selected", `${isSources}`);
         this.transferTabEl?.setAttribute("aria-selected", `${isTransfer}`);
+        this.vaultsTabEl?.setAttribute("aria-selected", `${isVaults}`);
         this.ribbonTabEl?.setAttribute("aria-selected", `${isRibbon}`);
         this.hiddenTabEl?.setAttribute("aria-selected", `${isHidden}`);
         this.troubleshootTabEl?.setAttribute("aria-selected", `${isTroubleshoot}`);
@@ -2326,6 +2362,7 @@ export class ManagerModal extends Modal {
         this.desktopActionWrapper?.classList.toggle("is-install-page", isInstall);
         this.desktopActionWrapper?.classList.toggle("is-sources-page", isSources);
         this.desktopActionWrapper?.classList.toggle("is-transfer-page", isTransfer);
+        this.desktopActionWrapper?.classList.toggle("is-vaults-page", isVaults);
         this.desktopActionWrapper?.classList.toggle("is-ribbon-page", isRibbon);
         this.desktopActionWrapper?.classList.toggle("is-hidden-page", isHidden);
         this.desktopActionWrapper?.classList.toggle("is-troubleshoot-page", isTroubleshoot);
@@ -4363,6 +4400,457 @@ export class ManagerModal extends Modal {
         this.renderTransferResult(page);
     }
 
+    private getVaultRoleLabel(role: SharedVaultRole): string {
+        const t = (k: any) => this.manager.translator.t(k);
+        switch (role) {
+            case "main": return t("共享库_角色_主库");
+            case "linked": return t("共享库_角色_软链接库");
+            case "mixed": return t("共享库_角色_部分链接");
+            case "missing": return t("共享库_角色_路径失效");
+            default: return t("共享库_角色_本地库");
+        }
+    }
+
+    private getVaultFolderLabel(status: SharedVaultFolderStatus): string {
+        const t = (k: any) => this.manager.translator.t(k);
+        if (!status.exists) return t("共享库_状态_不存在");
+        if (status.isSymlink) return t("共享库_状态_已链接");
+        return t("共享库_状态_本地文件夹");
+    }
+
+    private renderVaultMetric(container: HTMLElement, iconName: string, label: string, value: string | number) {
+        const item = container.createDiv("manager-vault-metric");
+        const icon = item.createSpan({ cls: "manager-vault-metric__icon" });
+        setIcon(icon, iconName);
+        const text = item.createDiv("manager-vault-metric__text");
+        text.createSpan({ cls: "manager-vault-metric__label", text: label });
+        text.createSpan({ cls: "manager-vault-metric__value", text: `${value}` });
+    }
+
+    private renderVaultFolderPill(container: HTMLElement, status: SharedVaultFolderStatus) {
+        const kindLabel = status.kind === "plugins"
+            ? this.manager.translator.t("共享库_文件夹_插件")
+            : this.manager.translator.t("共享库_文件夹_主题");
+        const pill = container.createSpan({ cls: "manager-vault-folder-pill" });
+        pill.toggleClass("is-linked", status.isSymlink);
+        pill.toggleClass("is-missing", !status.exists);
+        const icon = pill.createSpan({ cls: "manager-vault-folder-pill__icon" });
+        setIcon(icon, status.kind === "plugins" ? "blocks" : "palette");
+        pill.createSpan({ cls: "manager-vault-folder-pill__label", text: kindLabel });
+        pill.createSpan({ cls: "manager-vault-folder-pill__state", text: this.getVaultFolderLabel(status) });
+        pill.createSpan({ cls: "manager-vault-folder-pill__count", text: `${status.itemCount}` });
+    }
+
+    private renderVaultEmpty(container: HTMLElement, iconName: string, title: string, desc: string) {
+        const empty = container.createDiv("manager-vault-empty");
+        const icon = empty.createDiv("manager-vault-empty__icon");
+        setIcon(icon, iconName);
+        empty.createDiv({ cls: "manager-vault-empty__title", text: title });
+        empty.createDiv({ cls: "manager-vault-empty__desc", text: desc });
+    }
+
+    private renderVaultWarning(container: HTMLElement, text: string) {
+        const warning = container.createDiv("manager-vault-warning");
+        const icon = warning.createSpan({ cls: "manager-vault-warning__icon" });
+        setIcon(icon, "triangle-alert");
+        warning.createSpan({ cls: "manager-vault-warning__text", text });
+    }
+
+    private createVaultActionButton(
+        container: HTMLElement,
+        iconName: string,
+        tooltip: string,
+        onClick: () => void | Promise<void>,
+        disabled = false
+    ) {
+        const button = new ButtonComponent(container);
+        button.setIcon(iconName);
+        button.setTooltip(tooltip);
+        button.buttonEl.addClass("manager-vault-action");
+        button.buttonEl.setAttribute("aria-label", tooltip);
+        button.setDisabled(disabled);
+        button.onClick(() => {
+            void onClick();
+        });
+        return button;
+    }
+
+    private async runVaultOperation(action: () => Promise<void>, successMessage: string) {
+        try {
+            await action();
+            new Notice(successMessage);
+            await this.reloadShowData();
+        } catch (error) {
+            console.error("[BPM] shared vault operation failed", error);
+            new Notice((error as Error)?.message || this.manager.translator.t("通用_失败_文本"));
+        }
+    }
+
+    private async handleCreateSharedVaultLinks() {
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const targetPath = this.vaultTargetPath.trim();
+        const kinds: SharedFolderKind[] = [
+            ...(this.vaultLinkPlugins ? ["plugins" as SharedFolderKind] : []),
+            ...(this.vaultLinkThemes ? ["themes" as SharedFolderKind] : []),
+        ];
+        if (!targetPath) {
+            new Notice(t("共享库_提示_请输入目标库"));
+            return;
+        }
+        if (kinds.length === 0) {
+            new Notice(t("共享库_提示_至少选择文件夹"));
+            return;
+        }
+        if (this.vaultBackupExisting && !window.confirm(t("共享库_确认_备份后链接"))) return;
+
+        await this.runVaultOperation(async () => {
+            const results = await createSharedVaultLinks(this.manager, targetPath, kinds, this.vaultBackupExisting);
+            this.vaultTargetPath = normalizeSharedVaultInputPath(targetPath);
+            if (results.some((result) => result.backupPath)) {
+                new Notice(t("共享库_提示_已备份原文件夹"));
+            }
+        }, t("共享库_提示_创建链接成功"));
+    }
+
+    private renderVaultToggleOption(
+        container: HTMLElement,
+        iconName: string,
+        title: string,
+        desc: string,
+        value: boolean,
+        onChange: (value: boolean) => void
+    ) {
+        const option = container.createDiv("manager-vault-option");
+        const icon = option.createSpan({ cls: "manager-vault-option__icon" });
+        setIcon(icon, iconName);
+        const text = option.createDiv("manager-vault-option__text");
+        text.createDiv({ cls: "manager-vault-option__title", text: title });
+        text.createDiv({ cls: "manager-vault-option__desc", text: desc });
+        const control = option.createDiv("manager-vault-option__control");
+        new ToggleComponent(control)
+            .setValue(value)
+            .onChange(onChange);
+    }
+
+    private renderVaultSetupCard(page: HTMLElement, snapshotVaultCount: number, currentVault?: SharedVaultStatus) {
+        const t = (k: any) => this.manager.translator.t(k);
+        const card = page.createDiv("manager-vault-card manager-vault-setup");
+        const header = card.createDiv("manager-vault-card__header");
+        const icon = header.createDiv("manager-vault-card__icon");
+        setIcon(icon, "folder-sync");
+        const title = header.createDiv("manager-vault-card__title-group");
+        title.createDiv({ cls: "manager-vault-card__title", text: t("共享库_链接设置_标题") });
+        title.createDiv({ cls: "manager-vault-card__desc", text: t("共享库_链接设置_说明") });
+
+        const form = card.createDiv("manager-vault-form");
+        const pathField = form.createDiv("manager-vault-path-field");
+        const pathText = pathField.createDiv("manager-vault-path-field__text");
+        pathText.createDiv({ cls: "manager-vault-path-field__label", text: t("共享库_目标库路径_标题") });
+        pathText.createDiv({ cls: "manager-vault-path-field__desc", text: t("共享库_目标库路径_说明") });
+        const pathControl = pathField.createDiv("manager-vault-path-field__control");
+        const input = new TextComponent(pathControl);
+        input.setPlaceholder(t("共享库_目标库路径_占位"));
+        input.setValue(this.vaultTargetPath);
+        input.onChange((value) => {
+            this.vaultTargetPath = value;
+        });
+
+        const options = form.createDiv("manager-vault-options");
+        this.renderVaultToggleOption(
+            options,
+            "blocks",
+            t("共享库_链接插件_标题"),
+            t("共享库_链接插件_说明"),
+            this.vaultLinkPlugins,
+            (value) => {
+                this.vaultLinkPlugins = value;
+            }
+        );
+        this.renderVaultToggleOption(
+            options,
+            "palette",
+            t("共享库_链接主题_标题"),
+            t("共享库_链接主题_说明"),
+            this.vaultLinkThemes,
+            (value) => {
+                this.vaultLinkThemes = value;
+            }
+        );
+        this.renderVaultToggleOption(
+            options,
+            "archive",
+            t("共享库_备份已有_标题"),
+            t("共享库_备份已有_说明"),
+            this.vaultBackupExisting,
+            (value) => {
+                this.vaultBackupExisting = value;
+            }
+        );
+
+        const actions = card.createDiv("manager-vault-form__actions");
+        const setMainButton = new ButtonComponent(actions);
+        setMainButton.setIcon("crown");
+        setMainButton.setButtonText(t("共享库_设为主库_按钮"));
+        const canSetCurrentAsMain = !currentVault || currentVault.role === "main" || currentVault.role === "local";
+        setMainButton.setDisabled(!canSetCurrentAsMain);
+        setMainButton.onClick(() => {
+            void this.runVaultOperation(async () => {
+                await setCurrentVaultAsSharedMain(this.manager);
+            }, t("共享库_提示_已设为主库"));
+        });
+
+        const linkButton = new ButtonComponent(actions);
+        linkButton.setIcon("link");
+        linkButton.setButtonText(t("共享库_创建链接_按钮"));
+        linkButton.setCta();
+        linkButton.onClick(() => {
+            void this.handleCreateSharedVaultLinks();
+        });
+
+        if (snapshotVaultCount === 0) {
+            this.renderVaultWarning(card, t("共享库_提示_未发现库"));
+        }
+        if (!canSetCurrentAsMain) {
+            this.renderVaultWarning(card, t("共享库_提示_当前库不能设为主库"));
+        }
+    }
+
+    private renderVaultList(container: HTMLElement, vaults: SharedVaultStatus[]) {
+        const t = (k: any) => this.manager.translator.t(k);
+        const list = container.createDiv("manager-vault-list");
+        for (const vault of vaults) {
+            const selected = vault.id === this.vaultExpandedId;
+            const card = list.createDiv("manager-vault-item");
+            card.toggleClass("is-current", vault.isCurrent);
+            card.toggleClass("is-selected", selected);
+            card.toggleClass("is-missing", !vault.exists);
+
+            const main = card.createDiv("manager-vault-item__main");
+            const icon = main.createDiv("manager-vault-item__icon");
+            setIcon(icon, vault.role === "main" ? "crown" : vault.role === "linked" ? "link" : "folder");
+            const text = main.createDiv("manager-vault-item__text");
+            const titleRow = text.createDiv("manager-vault-item__title-row");
+            titleRow.createSpan({ cls: "manager-vault-item__name", text: vault.name });
+            if (vault.isCurrent) titleRow.createSpan({ cls: "manager-vault-item__badge", text: t("共享库_当前库") });
+            titleRow.createSpan({ cls: `manager-vault-item__role is-${vault.role}`, text: this.getVaultRoleLabel(vault.role) });
+            text.createDiv({ cls: "manager-vault-item__path", text: vault.path });
+            const folderRow = text.createDiv("manager-vault-item__folders");
+            this.renderVaultFolderPill(folderRow, vault.plugins);
+            this.renderVaultFolderPill(folderRow, vault.themes);
+
+            const actions = card.createDiv("manager-vault-item__actions");
+            this.createVaultActionButton(actions, selected ? "check" : "sliders-horizontal", t("共享库_操作_管理"), () => {
+                this.vaultExpandedId = vault.id;
+                this.renderContent();
+            }, selected);
+            this.createVaultActionButton(actions, "folder-open", t("共享库_操作_打开目录"), () => {
+                managerOpen(vault.path, this.manager);
+            }, !vault.exists);
+            this.createVaultActionButton(actions, "unlink", t("共享库_操作_解除插件链接"), async () => {
+                if (!window.confirm(t("共享库_确认_解除链接"))) return;
+                await this.runVaultOperation(async () => {
+                    await unlinkSharedVaultFolder(this.manager, vault.path, "plugins");
+                }, t("共享库_提示_解除链接成功"));
+            }, !vault.plugins.isSymlink || vault.isCurrent);
+            this.createVaultActionButton(actions, "palette", t("共享库_操作_解除主题链接"), async () => {
+                if (!window.confirm(t("共享库_确认_解除链接"))) return;
+                await this.runVaultOperation(async () => {
+                    await unlinkSharedVaultFolder(this.manager, vault.path, "themes");
+                }, t("共享库_提示_解除链接成功"));
+            }, !vault.themes.isSymlink);
+            this.createVaultActionButton(actions, "trash-2", t("共享库_操作_移出列表"), async () => {
+                await this.runVaultOperation(async () => {
+                    await forgetSharedVault(this.manager, vault.path);
+                }, t("共享库_提示_已移出列表"));
+            }, vault.isCurrent || vault.role === "main");
+        }
+    }
+
+    private renderVaultPluginManager(container: HTMLElement, vault: SharedVaultStatus, plugins: SharedPluginCatalogItem[]) {
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const card = container.createDiv("manager-vault-panel");
+        const header = card.createDiv("manager-vault-panel__header");
+        const title = header.createDiv("manager-vault-panel__title");
+        const icon = title.createSpan({ cls: "manager-vault-panel__icon" });
+        setIcon(icon, "blocks");
+        title.createSpan({ text: t("共享库_插件管理_标题") });
+        header.createSpan({ cls: "manager-vault-panel__count", text: `${vault.enabledPluginIds.length}/${plugins.length}` });
+
+        const canManagePlugins = vault.exists && (vault.role === "main" || vault.plugins.isSymlink);
+        if (!canManagePlugins) {
+            this.renderVaultEmpty(card, "link", t("共享库_插件管理_未链接标题"), t("共享库_插件管理_未链接说明"));
+            return;
+        }
+        if (plugins.length === 0) {
+            this.renderVaultEmpty(card, "package-x", t("共享库_插件管理_空标题"), t("共享库_插件管理_空说明"));
+            return;
+        }
+
+        if (this.settings.DELAY) {
+            this.renderVaultWarning(card, t("共享库_延迟模式_提示"));
+        }
+
+        const enabledSet = new Set(vault.enabledPluginIds);
+        const list = card.createDiv("manager-vault-plugin-list");
+        for (const plugin of plugins) {
+            const isSelf = vault.isCurrent && plugin.id === this.manager.manifest.id;
+            const enabled = isSelf ? true : enabledSet.has(plugin.id);
+            const item = list.createDiv("manager-vault-plugin");
+            item.toggleClass("is-enabled", enabled);
+            const itemIcon = item.createDiv("manager-vault-plugin__icon");
+            setIcon(itemIcon, enabled ? "check-circle-2" : "circle");
+            const text = item.createDiv("manager-vault-plugin__text");
+            text.createDiv({ cls: "manager-vault-plugin__name", text: plugin.name || plugin.id });
+            text.createDiv({
+                cls: "manager-vault-plugin__meta",
+                text: `${plugin.id}${plugin.version ? ` · v${plugin.version}` : ""}`,
+            });
+            const control = item.createDiv("manager-vault-plugin__control");
+            const toggle = new ToggleComponent(control);
+            toggle.setValue(enabled);
+            toggle.setDisabled(isSelf);
+            toggle.onChange(async (value) => {
+                toggle.setDisabled(true);
+                await this.runVaultOperation(async () => {
+                    await setSharedVaultPluginEnabled(this.manager, vault.path, plugin.id, value);
+                }, t("共享库_提示_插件状态已更新", { name: plugin.name || plugin.id }));
+            });
+        }
+    }
+
+    private renderVaultThemeManager(container: HTMLElement, vault: SharedVaultStatus, themes: SharedThemeCatalogItem[]) {
+        const t = (k: any) => this.manager.translator.t(k);
+        const card = container.createDiv("manager-vault-panel");
+        const header = card.createDiv("manager-vault-panel__header");
+        const title = header.createDiv("manager-vault-panel__title");
+        const icon = title.createSpan({ cls: "manager-vault-panel__icon" });
+        setIcon(icon, "palette");
+        title.createSpan({ text: t("共享库_主题管理_标题") });
+        header.createSpan({ cls: "manager-vault-panel__count", text: `${themes.length}` });
+
+        const canManageThemes = vault.exists && (vault.role === "main" || vault.themes.isSymlink);
+        if (!canManageThemes) {
+            this.renderVaultEmpty(card, "link", t("共享库_主题管理_未链接标题"), t("共享库_主题管理_未链接说明"));
+            return;
+        }
+
+        const row = card.createDiv("manager-vault-theme-row");
+        const text = row.createDiv("manager-vault-theme-row__text");
+        text.createDiv({ cls: "manager-vault-theme-row__label", text: t("共享库_当前主题_标题") });
+        text.createDiv({ cls: "manager-vault-theme-row__desc", text: vault.activeTheme || t("共享库_默认主题") });
+        const control = row.createDiv("manager-vault-theme-row__control");
+        const dropdown = new DropdownComponent(control);
+        dropdown.addOption("", t("共享库_默认主题"));
+        const hasActiveTheme = !vault.activeTheme || themes.some((theme) => theme.name === vault.activeTheme);
+        if (!hasActiveTheme) dropdown.addOption(vault.activeTheme, vault.activeTheme);
+        for (const theme of themes) {
+            dropdown.addOption(theme.name, `${theme.name}${theme.version ? ` · v${theme.version}` : ""}`);
+        }
+        dropdown.setValue(vault.activeTheme);
+        dropdown.onChange(async (value) => {
+            await this.runVaultOperation(async () => {
+                await setSharedVaultTheme(this.manager, vault.path, value);
+            }, t("共享库_提示_主题已更新"));
+        });
+    }
+
+    private renderVaultSelector(container: HTMLElement, vaults: SharedVaultStatus[], selectedVault: SharedVaultStatus) {
+        const t = (k: any) => this.manager.translator.t(k);
+        const selector = container.createDiv("manager-vault-selector");
+        const label = selector.createDiv("manager-vault-selector__label");
+        const icon = label.createSpan({ cls: "manager-vault-selector__icon" });
+        setIcon(icon, "folder-cog");
+        const text = label.createDiv("manager-vault-selector__text");
+        text.createDiv({ cls: "manager-vault-selector__title", text: t("共享库_管理库_标题") });
+        text.createDiv({ cls: "manager-vault-selector__desc", text: t("共享库_管理库_说明") });
+        const control = selector.createDiv("manager-vault-selector__control");
+        const dropdown = new DropdownComponent(control);
+        for (const vault of vaults) {
+            const suffix = [
+                this.getVaultRoleLabel(vault.role),
+                vault.isCurrent ? t("共享库_当前库") : "",
+            ].filter(Boolean).join(" · ");
+            dropdown.addOption(vault.id, `${vault.name}${suffix ? ` · ${suffix}` : ""}`);
+        }
+        dropdown.setValue(selectedVault.id);
+        dropdown.onChange((value) => {
+            this.vaultExpandedId = value;
+            this.renderContent();
+        });
+    }
+
+    private renderVaultDetail(container: HTMLElement, vault: SharedVaultStatus, vaults: SharedVaultStatus[], plugins: SharedPluginCatalogItem[], themes: SharedThemeCatalogItem[]) {
+        const t = (k: any) => this.manager.translator.t(k);
+        const detail = container.createDiv("manager-vault-detail");
+        this.renderVaultSelector(detail, vaults, vault);
+        const header = detail.createDiv("manager-vault-detail__header");
+        const title = header.createDiv("manager-vault-detail__title");
+        const icon = title.createSpan({ cls: "manager-vault-detail__icon" });
+        setIcon(icon, vault.role === "main" ? "crown" : "folder-cog");
+        title.createSpan({ text: vault.name });
+        header.createSpan({ cls: `manager-vault-detail__role is-${vault.role}`, text: this.getVaultRoleLabel(vault.role) });
+        detail.createDiv({ cls: "manager-vault-detail__path", text: vault.path });
+
+        if (!vault.exists) {
+            this.renderVaultEmpty(detail, "folder-x", t("共享库_详情_路径失效标题"), t("共享库_详情_路径失效说明"));
+            return;
+        }
+
+        const panels = detail.createDiv("manager-vault-detail__panels");
+        this.renderVaultPluginManager(panels, vault, plugins);
+        this.renderVaultThemeManager(panels, vault, themes);
+    }
+
+    private async showVaultSharePanel(renderGeneration = this.renderGeneration) {
+        this.contentEl.empty();
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const page = this.contentEl.createDiv("manager-vault-share");
+
+        if (Platform.isMobileApp || !isSharedVaultFsAvailable()) {
+            this.renderVaultEmpty(page, "monitor-x", t("共享库_桌面端限定_标题"), t("共享库_桌面端限定_说明"));
+            return;
+        }
+
+        const [snapshot, plugins, themes] = await Promise.all([
+            getSharedVaultSnapshot(this.manager),
+            readSharedPluginCatalog(this.manager),
+            readSharedThemeCatalog(this.manager),
+        ]);
+        if (!this.isRenderCurrent(renderGeneration, "vaults")) return;
+
+        const currentVault = snapshot.vaults.find((vault) => vault.isCurrent) || snapshot.vaults[0];
+        if (!this.vaultExpandedId || !snapshot.vaults.some((vault) => vault.id === this.vaultExpandedId)) {
+            this.vaultExpandedId = currentVault?.id || "";
+        }
+        const selectedVault = snapshot.vaults.find((vault) => vault.id === this.vaultExpandedId) || currentVault;
+
+        const summary = page.createDiv("manager-vault-summary");
+        this.renderVaultMetric(summary, "crown", t("共享库_统计_主库"), snapshot.mainVaultPath ? snapshot.mainVaultPath : t("共享库_未设置"));
+        this.renderVaultMetric(summary, "folder-kanban", t("共享库_统计_纳管库"), snapshot.vaults.length);
+        this.renderVaultMetric(summary, "blocks", t("共享库_统计_共享插件"), plugins.length);
+        this.renderVaultMetric(summary, "palette", t("共享库_统计_共享主题"), themes.length);
+
+        if (snapshot.error) {
+            this.renderVaultWarning(page, snapshot.error);
+        }
+
+        this.renderVaultSetupCard(page, snapshot.vaults.length, currentVault);
+
+        const workspace = page.createDiv("manager-vault-workspace");
+        const vaultListCard = workspace.createDiv("manager-vault-card");
+        const listHeader = vaultListCard.createDiv("manager-vault-card__header");
+        const listIcon = listHeader.createDiv("manager-vault-card__icon");
+        setIcon(listIcon, "folder-kanban");
+        const listTitle = listHeader.createDiv("manager-vault-card__title-group");
+        listTitle.createDiv({ cls: "manager-vault-card__title", text: t("共享库_库列表_标题") });
+        listTitle.createDiv({ cls: "manager-vault-card__desc", text: t("共享库_库列表_说明") });
+        this.renderVaultList(vaultListCard, snapshot.vaults);
+
+        if (selectedVault) {
+            this.renderVaultDetail(workspace, selectedVault, snapshot.vaults, plugins, themes);
+        }
+    }
+
     private renderContent() {
         const renderGeneration = this.nextRenderGeneration();
         this.contentEl.empty();
@@ -4374,6 +4862,8 @@ export class ManagerModal extends Modal {
             this.showTroubleshootPanel();
         } else if (this.activePage === "transfer") {
             void this.showTransferPanel(renderGeneration);
+        } else if (this.activePage === "vaults") {
+            void this.showVaultSharePanel(renderGeneration);
         } else if (this.activePage === "install" || this.activePage === "sources" || this.installMode) {
             this.showInstallPanel();
         } else {
@@ -4412,6 +4902,10 @@ export class ManagerModal extends Modal {
         } else if (this.activePage === "transfer") {
             await this.showTransferPanel(renderGeneration);
             if (!this.isRenderCurrent(renderGeneration, "transfer")) return;
+            modalElement.scrollTo(0, scrollTop);
+        } else if (this.activePage === "vaults") {
+            await this.showVaultSharePanel(renderGeneration);
+            if (!this.isRenderCurrent(renderGeneration, "vaults")) return;
             modalElement.scrollTo(0, scrollTop);
         } else if (this.activePage === "install" || this.activePage === "sources" || this.installMode) {
             this.showInstallPanel();
