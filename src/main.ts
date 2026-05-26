@@ -608,17 +608,18 @@ export default class Manager extends Plugin {
 
     // 同步插件到配置文件
     public synchronizePlugins(p1: PluginManifest[]) {
-        const p2 = this.settings.Plugins;
-        p2.forEach(p2Item => {
-            if (p2Item.id === this.manifest.id) return;
-            if (!p1.some(p1Item => p1Item.id === p2Item.id)) {
-                this.settings.Plugins = this.settings.Plugins.filter(pm => pm.id !== p2Item.id);
-            }
+        const manifestIds = new Set(p1.map((plugin) => plugin.id));
+        const bpmInstalledIds = new Set(this.settings.BPM_INSTALLED || []);
+        const nextPlugins = this.settings.Plugins.filter((plugin) => {
+            return plugin.id === this.manifest.id || manifestIds.has(plugin.id);
         });
+        const pluginSettingsById = new Map(nextPlugins.map((plugin) => [plugin.id, plugin]));
+
         p1.forEach(p1Item => {
-            if (!p2.some(p2Item => p2Item.id === p1Item.id)) {
+            let mp = pluginSettingsById.get(p1Item.id);
+            if (!mp) {
                 const isEnabled = this.appPlugins.enabledPlugins.has(p1Item.id);
-                this.settings.Plugins.push({
+                mp = {
                     'id': p1Item.id,
                     'name': p1Item.name,
                     'desc': p1Item.description,
@@ -627,13 +628,15 @@ export default class Manager extends Plugin {
                     'enabled': isEnabled,
                     'delay': '',
                     'note': ''
-                });
+                };
+                nextPlugins.push(mp);
+                pluginSettingsById.set(p1Item.id, mp);
             }
-            const mp = this.settings.Plugins.find(pm => pm.id === p1Item.id);
-            if (mp && this.settings.BPM_INSTALLED.includes(p1Item.id) && !mp.tags.includes(BPM_TAG_ID)) {
+            if (bpmInstalledIds.has(p1Item.id) && !mp.tags.includes(BPM_TAG_ID)) {
                 mp.tags.push(BPM_TAG_ID);
             }
         });
+        this.settings.Plugins = nextPlugins;
         // BPM 自身保持启用且不允许延迟
         this.ensureSelfPluginRecord();
         // 保存设置

@@ -1343,6 +1343,14 @@ export class ManagerModal extends Modal {
         const uniquePlugins = Array.from(uniqMap.values()).sort((a, b) => a.name.localeCompare(b.name));
         const manifestById = new Map(uniquePlugins.map((plugin) => [plugin.id, plugin]));
         const layoutItems = this.getPluginLayout(uniquePlugins);
+        const pluginSettingsById = new Map(this.manager.settings.Plugins.map((plugin) => [plugin.id, plugin]));
+        const groupSettingsById = new Map(this.settings.GROUPS.map((group) => [group.id, group]));
+        const tagSettingsById = new Map(this.settings.TAGS.map((tag) => [tag.id, tag]));
+        const delaySettingsById = new Map(this.settings.DELAYS.map((delay) => [delay.id, delay]));
+        const hiddenPluginIds = new Set(this.settings.HIDES || []);
+        const lowerSearchText = this.searchText.toLowerCase();
+        const getBasePath = (this.app.vault.adapter as any)?.getBasePath?.() as string | undefined;
+        const basePath = getBasePath ? normalizePath(getBasePath) : "";
         const showSeparators = this.shouldRenderPluginLayoutSeparators();
         let pendingSeparator: string | null = null;
         if (this.settings.DEBUG) console.log("[BPM] render showData uniquePlugins:", uniquePlugins.map(p => p.id).join(","));
@@ -1360,10 +1368,8 @@ export class ManagerModal extends Modal {
             if (!plugin) continue;
             if (renderedIds.has(plugin.id)) continue;
             renderedIds.add(plugin.id);
-            const ManagerPlugin = this.manager.settings.Plugins.find((mp) => mp.id === plugin.id);
+            const ManagerPlugin = pluginSettingsById.get(plugin.id);
             // 计算插件目录的绝对路径：基于 vault 根路径 + configDir + plugin.dir
-            const getBasePath = (this.app.vault.adapter as any)?.getBasePath?.() as string | undefined;
-            const basePath = getBasePath ? normalizePath(getBasePath) : "";
             const cfgDir = this.app.vault.configDir; // 默认 .obsidian
             const rawDir = plugin.dir || `plugins/${plugin.id}`;
             const isAbsolute = new RegExp("^(?:[a-zA-Z]:[\\\\/]|[\\\\/])").test(rawDir);
@@ -1428,9 +1434,9 @@ export class ManagerModal extends Modal {
                 if (this.delay !== "" && ManagerPlugin.delay !== this.delay) continue;
             }
             // [过滤] 搜索
-            if (this.searchText !== "" && ManagerPlugin.name.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1 && ManagerPlugin.desc.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1 && plugin.author.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1) continue;
+            if (lowerSearchText !== "" && ManagerPlugin.name.toLowerCase().indexOf(lowerSearchText) == -1 && ManagerPlugin.desc.toLowerCase().indexOf(lowerSearchText) == -1 && (plugin.author || "").toLowerCase().indexOf(lowerSearchText) == -1) continue;
             // [过滤] 隐藏
-            if (!isSelf && this.settings.HIDES.includes(plugin.id)) continue;
+            if (!isSelf && hiddenPluginIds.has(plugin.id)) continue;
 
             if (pendingSeparator && this.displayPlugins.length > 0) {
                 this.renderPluginLayoutSeparator(pendingSeparator);
@@ -1702,7 +1708,7 @@ export class ManagerModal extends Modal {
             if (ManagerPlugin.group !== "") {
                 const group = createSpan({ cls: "manager-item__name-group", });
                 itemEl.nameEl.appendChild(group);
-                const item = this.settings.GROUPS.find((t) => t.id === ManagerPlugin.group);
+                const item = groupSettingsById.get(ManagerPlugin.group);
                 if (item) {
                     const tag = this.manager.createTag(item.name, item.color, this.settings.GROUP_STYLE);
                     if (this.editorMode) tag.onclick = () => { new GroupModal(this.app, this.manager, this, ManagerPlugin).open(); };
@@ -1794,7 +1800,7 @@ export class ManagerModal extends Modal {
 
             // [默认] 延迟
             if (this.settings.DELAY && !this.editorMode && !isSelf && ManagerPlugin.delay !== "") {
-                const d = this.settings.DELAYS.find((item) => item.id === ManagerPlugin.delay);
+                const d = delaySettingsById.get(ManagerPlugin.delay);
                 if (d) {
                     const delay = createSpan({ text: `${d.time}s`, cls: ["manager-item__name-delay"], });
                     itemEl.nameEl.appendChild(delay);
@@ -1824,7 +1830,7 @@ export class ManagerModal extends Modal {
             itemEl.descEl.appendChild(tags);
             let visibleTagCount = 0;
             ManagerPlugin.tags.map((id: string) => {
-                const item = this.settings.TAGS.find((item) => item.id === id);
+                const item = tagSettingsById.get(id);
                 if (item) {
                     if ((item.id === BPM_TAG_ID || item.id === BPM_IGNORE_TAG) && this.settings.HIDE_BPM_TAG) {
                         // skip render
@@ -2089,15 +2095,12 @@ export class ManagerModal extends Modal {
                 const openRepoButton = this.createConfiguredItemAction(itemEl.controlEl, "openRepo");
                 if (openRepoButton) {
                     openRepoButton.setIcon("github");
-                    openRepoButton.setTooltip(this.manager.translator.t("管理器_仓库检测中_提示"));
-                    openRepoButton.setDisabled(true);
-                    const repo = await this.manager.repoResolver.resolveRepo(plugin.id);
-                    if (!this.isRenderCurrent(renderGeneration, page)) return;
-                    const repoState = this.resolvePluginRepoAction(plugin.id, repo);
-                    openRepoButton.setTooltip(repoState.tooltip);
-                    openRepoButton.setDisabled(repoState.disabled);
+                    const knownRepo = this.manager.settings.REPO_MAP?.[plugin.id] || null;
+                    const repoState = this.resolvePluginRepoAction(plugin.id, knownRepo);
+                    openRepoButton.setTooltip(knownRepo ? repoState.tooltip : this.manager.translator.t("管理器_打开仓库_标题"));
+                    openRepoButton.setDisabled(false);
                     openRepoButton.onClick(async () => {
-                        await this.openPluginRepo(plugin.id, repoState.repo);
+                        await this.openPluginRepo(plugin.id, knownRepo);
                     });
                 }
 
@@ -2266,9 +2269,9 @@ export class ManagerModal extends Modal {
                 const cards = Array.from(this.contentEl.querySelectorAll(".manager-item"));
                 console.log("[BPM] render showData after loop, cards:", cards.length, "ids:", cards.map(el => el.getAttribute("data-plugin-id")).filter(Boolean).join(","));
             }
-            // 计算页尾
-            this.updateStats();
         }
+        // 计算页尾
+        this.updateStats();
     }
 
     private getCounts() {
