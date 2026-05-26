@@ -273,7 +273,7 @@ export default {
     // Plugin Conflict Troubleshooter
     排查_欢迎_标题: '🔍 Plugin Conflict Troubleshooter',
     排查_欢迎_说明: 'This wizard uses binary search and verification steps to help locate a single-plugin issue or a two-plugin conflict. Plugins will be enabled/disabled during the process. Original state can be restored afterwards.',
-    排查_Tab_短标题: 'Conflicts',
+    排查_Tab_短标题: 'Conflict Scan',
     排查_Tab_标题: 'Plugin Conflict Troubleshooter',
     排查_Tab_说明: 'Manage enabled sets, feedback, results, and restoration through a visual workflow.',
     排查_结论_标题: 'Not 100% guaranteed',
@@ -451,10 +451,10 @@ export default {
     安装_暂无更新说明: 'No release notes',
 
     // Manager additions
-    管理器_Tab_插件管理: 'Plugins',
-    管理器_Tab_安装来源: 'Install Sources',
-    管理器_Tab_功能编排: 'Ribbon Layout',
-    管理器_Tab_隐藏管理: 'Page Layout',
+    管理器_Tab_插件管理: 'Plugin View',
+    管理器_Tab_安装来源: 'Install Hub',
+    管理器_Tab_功能编排: 'Ribbon Order',
+    管理器_Tab_隐藏管理: 'List Layout',
     管理器_插件操作_标签: '{name} actions',
     管理器_插件分享_描述: 'Share plugin',
     管理器_状态_管理器: 'Manager',
@@ -571,13 +571,13 @@ export default {
 
     // Ribbon additions
     Ribbon_已隐藏_通知: 'Hidden Ribbon icon: {name}',
-    Ribbon_功能编排_标题: 'Ribbon Layout',
+    Ribbon_功能编排_标题: 'Ribbon Order',
     Ribbon_功能编排_说明: 'Reorder Ribbon icons and toggle visibility. Saved only to BPM data, not Obsidian workspace config.',
     Ribbon_重置_提示: 'Show all and sort by name',
     Ribbon_重置_确认: 'Reset Ribbon layout? This will show all Ribbon items and sort them by name.',
 
     // Import/export
-    导入导出_Tab_标题: 'Import Export',
+    导入导出_Tab_标题: 'Transfer Pack',
     导入导出_Tab_说明: 'Export plugin and theme lists from the current vault, then download items one by one or in bulk after import.',
     导入导出_本机插件: 'Local plugins',
     导入导出_本机主题: 'Local themes',
@@ -687,7 +687,7 @@ export default {
     导入导出_无下载项: 'The plugin pack contains no plugins or themes.',
 
     // Shared vaults
-    共享库_Tab_标题: 'Shared Vaults',
+    共享库_Tab_标题: 'Vault Share',
     共享库_Tab_说明: 'Share plugin/theme folders across vaults with symlinks while keeping per-vault enabled state.',
     共享库_角色_主库: 'Main',
     共享库_角色_软链接库: 'Linked',

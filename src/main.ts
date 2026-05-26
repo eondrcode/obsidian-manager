@@ -34,7 +34,7 @@ export default class Manager extends Plugin {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     public appPlugins: any;
     public appWorkspace: Workspace;
-    public translator: Translator;
+    public translator: Translator; 
 
     public agreement: Agreement;
     public repoResolver: RepoResolver;

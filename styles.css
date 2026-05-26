@@ -3326,6 +3326,33 @@ body.theme-dark {
     width: min(220px, 100%);
 }
 
+.manager-install__version-control .dropdown::before,
+.manager-install__version-control .dropdown::after,
+.manager-source-item__strategy .dropdown::before,
+.manager-source-item__strategy .dropdown::after {
+    display: none;
+}
+
+.manager-install__version-select,
+.manager-source-item__mode {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    padding-right: 30px;
+    background-image:
+        linear-gradient(45deg, transparent 50%, currentColor 50%),
+        linear-gradient(135deg, currentColor 50%, transparent 50%) !important;
+    background-position:
+        calc(100% - 15px) 50%,
+        calc(100% - 10px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+}
+
+.manager-install__version-select::-ms-expand,
+.manager-source-item__mode::-ms-expand {
+    display: none;
+}
+
 .manager-install__version-input {
     width: min(150px, 100%);
 }
