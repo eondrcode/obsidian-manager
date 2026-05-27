@@ -476,6 +476,12 @@ export default {
     筛选_标签_标签: 'Tag filter',
     筛选_延迟_标签: 'Delay filter',
     筛选_搜索插件_标签: 'Search plugins',
+    筛选_状态取反_标签: 'Include or exclude status',
+    筛选_分组取反_标签: 'Include or exclude group',
+    筛选_标签取反_标签: 'Include or exclude tag',
+    筛选_延迟取反_标签: 'Include or exclude delay',
+    筛选_操作符_包含: 'Include',
+    筛选_操作符_排除: 'Exclude',
 
     // Layout and hidden items
     管理器_布局_分割线: 'Separator',

@@ -11,7 +11,7 @@ import {
     ToggleComponent,
 } from "obsidian";
 
-import { ManagerSettings } from "../settings/data";
+import { ManagerSettings, TagFilterOperator } from "../settings/data";
 
 import Manager from "main";
 import { ManagerModal } from "./manager-modal";
@@ -55,8 +55,29 @@ export class HideModal extends Modal {
     searchEl: SearchComponent;
     delay: string = "";
     tag: string = "";
+    tagOperator: TagFilterOperator = "contains";
     group: string = "";
+    groupOperator: TagFilterOperator = "contains";
+    delayOperator: TagFilterOperator = "contains";
     filter: string = "all";
+
+    private addOrderedOptions(dropdown: DropdownComponent, options: Array<[string, string]>) {
+        for (const [value, text] of options) {
+            dropdown.addOption(value, text);
+        }
+    }
+
+    private matchesSingleValueFilter(value: string, filterValue: string, operator: TagFilterOperator): boolean {
+        if (!filterValue) return true;
+        const matched = value === filterValue;
+        return operator === "contains" ? matched : !matched;
+    }
+
+    private matchesTagFilter(pluginTags: string[] = [], tagId: string, operator: TagFilterOperator): boolean {
+        if (!tagId) return true;
+        const hasTag = pluginTags.includes(tagId);
+        return operator === "contains" ? hasTag : !hasTag;
+    }
 
     constructor(app: App, manager: Manager, managerModal: ManagerModal, plugins: PluginManifest[]) {
         super(app);
@@ -109,26 +130,70 @@ export class HideModal extends Modal {
 
         // [搜索行] 分组选择列表
         const groupCounts = this.settings.Plugins.reduce((acc: { [key: string]: number }, plugin) => { const groupId = plugin.group || ""; acc[groupId] = (acc[groupId] || 0) + 1; return acc; }, { "": 0 });
-        const groups = this.settings.GROUPS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} [${groupCounts[item.id] || 0}]`; return acc; }, { "": this.manager.translator.t("通用_无分组_文本") });
+        const groups: Array<[string, string]> = [
+            ["", this.manager.translator.t("通用_无分组_文本")],
+            ...this.settings.GROUPS.map((item): [string, string] => [item.id, `${item.name} [${groupCounts[item.id] || 0}]`]),
+        ];
+        const operatorOptions = {
+            "contains": this.manager.translator.t("筛选_操作符_包含"),
+            "not-contains": this.manager.translator.t("筛选_操作符_排除"),
+        };
+        const groupOperatorDropdown = new DropdownComponent(searchBar.controlEl);
+        groupOperatorDropdown.selectEl.parentElement?.addClass("manager-filter-operator-dropdown");
+        groupOperatorDropdown.selectEl.addClass("manager-filter-operator");
+        groupOperatorDropdown.addOptions(operatorOptions);
+        groupOperatorDropdown.setValue(this.groupOperator);
+        groupOperatorDropdown.selectEl.setAttribute("aria-label", this.manager.translator.t("筛选_分组取反_标签"));
+        groupOperatorDropdown.onChange((value) => {
+            this.groupOperator = value === "not-contains" ? "not-contains" : "contains";
+            this.reloadShowData();
+        });
         const groupsDropdown = new DropdownComponent(searchBar.controlEl);
-        groupsDropdown.addOptions(groups);
+        this.addOrderedOptions(groupsDropdown, groups);
         groupsDropdown.setValue(this.group);
         groupsDropdown.onChange((value) => { this.group = value; this.reloadShowData(); });
 
         // [搜索行] 标签选择列表
         const tagCounts: { [key: string]: number } = this.settings.Plugins.reduce((acc, plugin) => { plugin.tags.forEach((tag) => { acc[tag] = (acc[tag] || 0) + 1; }); return acc; }, {} as { [key: string]: number });
-        const tags = this.settings.TAGS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} [${tagCounts[item.id] || 0}]`; return acc; }, { "": this.manager.translator.t("通用_无标签_文本") });
+        const tags: Array<[string, string]> = [
+            ["", this.manager.translator.t("通用_无标签_文本")],
+            ...this.settings.TAGS.map((item): [string, string] => [item.id, `${item.name} [${tagCounts[item.id] || 0}]`]),
+        ];
+        const tagOperatorDropdown = new DropdownComponent(searchBar.controlEl);
+        tagOperatorDropdown.selectEl.parentElement?.addClass("manager-filter-operator-dropdown");
+        tagOperatorDropdown.selectEl.addClass("manager-filter-operator");
+        tagOperatorDropdown.addOptions(operatorOptions);
+        tagOperatorDropdown.setValue(this.tagOperator);
+        tagOperatorDropdown.selectEl.setAttribute("aria-label", this.manager.translator.t("筛选_标签取反_标签"));
+        tagOperatorDropdown.onChange((value) => {
+            this.tagOperator = value === "not-contains" ? "not-contains" : "contains";
+            this.reloadShowData();
+        });
+
         const tagsDropdown = new DropdownComponent(searchBar.controlEl);
-        tagsDropdown.addOptions(tags);
+        this.addOrderedOptions(tagsDropdown, tags);
         tagsDropdown.setValue(this.tag);
         tagsDropdown.onChange((value) => { this.tag = value; this.reloadShowData(); });
 
         // [搜索行] 延迟选择列表
         if (this.settings.DELAY) {
             const delayCounts = this.settings.Plugins.reduce((acc: { [key: string]: number }, plugin) => { const delay = plugin.delay || ""; acc[delay] = (acc[delay] || 0) + 1; return acc; }, { "": 0 });
-            const delays = this.settings.DELAYS.reduce((acc: { [key: string]: string }, item) => { acc[item.id] = `${item.name} (${delayCounts[item.id] || 0})`; return acc; }, { "": this.manager.translator.t("通用_无延迟_文本") });
+            const delays: Array<[string, string]> = [
+                ["", this.manager.translator.t("通用_无延迟_文本")],
+                ...this.settings.DELAYS.map((item): [string, string] => [item.id, `${item.name} (${delayCounts[item.id] || 0})`]),
+            ];
+            const delayOperatorDropdown = new DropdownComponent(searchBar.controlEl);
+            delayOperatorDropdown.selectEl.parentElement?.addClass("manager-filter-operator-dropdown");
+            delayOperatorDropdown.selectEl.addClass("manager-filter-operator");
+            delayOperatorDropdown.addOptions(operatorOptions);
+            delayOperatorDropdown.setValue(this.delayOperator);
+            delayOperatorDropdown.selectEl.setAttribute("aria-label", this.manager.translator.t("筛选_延迟取反_标签"));
+            delayOperatorDropdown.onChange((value) => {
+                this.delayOperator = value === "not-contains" ? "not-contains" : "contains";
+                this.reloadShowData();
+            });
             const delaysDropdown = new DropdownComponent(searchBar.controlEl);
-            delaysDropdown.addOptions(delays);
+            this.addOrderedOptions(delaysDropdown, delays);
             delaysDropdown.setValue(this.delay || "");
             delaysDropdown.onChange((value) => { this.delay = value; this.reloadShowData(); });
         }
@@ -171,9 +236,9 @@ export class HideModal extends Modal {
                         break; // 其他情况显示所有插件
                 }
                 // [过滤] 分组 标签 延时
-                if (this.group !== "" && (ManagerPlugin.group !== this.group)) continue;
-                if (this.tag !== "" && !ManagerPlugin.tags.includes(this.tag)) continue;
-                if (this.delay !== "" && ManagerPlugin.delay !== this.delay) continue;
+                if (!this.matchesSingleValueFilter(ManagerPlugin.group, this.group, this.groupOperator)) continue;
+                if (!this.matchesTagFilter(ManagerPlugin.tags, this.tag, this.tagOperator)) continue;
+                if (!this.matchesSingleValueFilter(ManagerPlugin.delay, this.delay, this.delayOperator)) continue;
                 // [过滤] 搜索
                 if (this.searchText !== "" && ManagerPlugin.name.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1 && ManagerPlugin.desc.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1 && plugin.author.toLowerCase().indexOf(this.searchText.toLowerCase()) == -1) continue;
                 // [过滤] 自身
