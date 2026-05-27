@@ -2215,6 +2215,22 @@ body.theme-dark {
     background: var(--bpm-card);
 }
 
+.bpm-stat-chip--interactive {
+    cursor: pointer;
+    user-select: none;
+}
+
+.bpm-stat-chip--interactive:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}
+
+.bpm-stat-chip.is-active {
+    border-color: color-mix(in srgb, var(--interactive-accent) 42%, var(--bpm-border));
+    background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+    color: var(--text-normal);
+}
+
 .bpm-stat-chip__icon {
     display: inline-flex;
     align-items: center;

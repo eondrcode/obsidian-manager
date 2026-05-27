@@ -106,7 +106,7 @@ export class TagsModal extends Modal {
             itemEl.setClass('manager-editor__item')
             itemEl.settingEl.addClass('manager-tag-editor__item');
             itemEl.settingEl.toggleClass('is-assigned', assigned);
-            itemEl.settingEl.toggleClass('is-editing', isEditing);
+            itemEl.settingEl.toggleClass('is-editing', isEditing); 
             itemEl.settingEl.toggleClass('is-system', isPreset);
             itemEl.nameEl.empty();
             itemEl.descEl.empty();

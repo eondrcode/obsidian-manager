@@ -88,6 +88,8 @@ type PluginRepoActionState = {
     disabled: boolean;
 };
 
+type StatusFilterValue = "all" | "enabled" | "disabled" | "grouped" | "ungrouped" | "tagged" | "untagged" | "noted" | "has-update" | "hidden";
+
 
 
 // ==============================
@@ -131,6 +133,8 @@ export class ManagerModal extends Modal {
     installVersions: ReleaseVersion[] = [];
     installTrackSource = true;
     searchBarEl?: HTMLElement;
+    statusDropdown?: DropdownComponent;
+    statusOperatorDropdown?: DropdownComponent;
     groupDropdown?: DropdownComponent;
     tagDropdown?: DropdownComponent;
     delayDropdown?: DropdownComponent;
@@ -196,6 +200,7 @@ export class ManagerModal extends Modal {
             "untagged": t("筛选_无标签_描述"),
             "noted": t("筛选_有笔记_描述"),
             "has-update": t("筛选_可更新_描述"),
+            "hidden": t("管理器_状态_已隐藏"),
         };
     }
 
@@ -307,6 +312,17 @@ export class ManagerModal extends Modal {
         }
     }
 
+    private setStatusFilterFromStats(value: StatusFilterValue) {
+        this.activePage = "plugins";
+        this.installMode = false;
+        this.setStatusFilterOperator("contains");
+        this.setStatusFilterValue(value);
+        this.statusDropdown?.setValue(value);
+        this.statusOperatorDropdown?.setValue("contains");
+        this.syncPageChrome();
+        void this.reloadShowData();
+    }
+
     private setGroupFilterValue(value: string) {
         if (this.settings.PERSISTENCE) {
             this.settings.FILTER_GROUP = value;
@@ -400,6 +416,8 @@ export class ManagerModal extends Modal {
                     return Boolean(plugin.note);
                 case "has-update":
                     return Boolean(this.manager.updateStatus[manifest.id]?.hasUpdate);
+                case "hidden":
+                    return this.isPluginHidden(manifest.id);
                 default:
                     return true;
             }
@@ -1151,7 +1169,7 @@ export class ManagerModal extends Modal {
 
         // 过滤器
         const statusControl = createFilterSelectField(t("通用_状态_文本"), "list-filter", "compound");
-        createOperatorDropdown(statusControl, this.getStatusFilterOperator(), t("筛选_状态取反_标签"), (value) => this.setStatusFilterOperator(value));
+        this.statusOperatorDropdown = createOperatorDropdown(statusControl, this.getStatusFilterOperator(), t("筛选_状态取反_标签"), (value) => this.setStatusFilterOperator(value));
         const filterDropdown = new DropdownComponent(statusControl);
         filterDropdown.addOptions(this.getStatusFilterOptions());
         filterDropdown.setValue(this.getStatusFilterValue());
@@ -1160,6 +1178,7 @@ export class ManagerModal extends Modal {
             this.setStatusFilterValue(value);
             this.reloadShowData();
         });
+        this.statusDropdown = filterDropdown;
 
 
         // [过滤行] 分组选择列表
@@ -1681,7 +1700,7 @@ export class ManagerModal extends Modal {
             // [过滤] 搜索
             if (lowerSearchText !== "" && ManagerPlugin.name.toLowerCase().indexOf(lowerSearchText) == -1 && ManagerPlugin.desc.toLowerCase().indexOf(lowerSearchText) == -1 && (plugin.author || "").toLowerCase().indexOf(lowerSearchText) == -1) continue;
             // [过滤] 隐藏
-            if (!this.editorMode && !isSelf && hiddenPluginIds.has(plugin.id)) continue;
+            if (!this.editorMode && !isSelf && hiddenPluginIds.has(plugin.id) && this.getStatusFilterValue() !== "hidden") continue;
 
             if (pendingSeparator && this.displayPlugins.length > 0) {
                 this.renderPluginLayoutSeparator(pendingSeparator);
@@ -2569,6 +2588,11 @@ export class ManagerModal extends Modal {
         return this.getUniquePluginManifests().reduce((count, plugin) => count + (hiddenIds.has(plugin.id) ? 1 : 0), 0);
     }
 
+    private isPluginHidden(pluginId: string): boolean {
+        if (pluginId === this.manager.manifest.id) return false;
+        return (this.settings.HIDES || []).includes(pluginId);
+    }
+
     private updateStats() {
         if (!this.footEl) return;
         const { totalCount, enabledCount, disabledCount } = this.getCounts();
@@ -2580,13 +2604,14 @@ export class ManagerModal extends Modal {
         const updateStatuses = this.manager.updateStatus || {};
         const checkedCount = Object.keys(updateStatuses).length;
         const updateCount = this.getPluginUpdateCount(updateStatuses);
+        const activeStatusFilter = this.getStatusFilterValue();
 
         this.footEl.empty();
-        const statItems = [
-            { cls: "bpm-stat-chip--total", icon: "layout-grid", label: totalLabel, value: totalCount },
-            { cls: "bpm-stat-chip--enabled", icon: "circle-check", label: enabledLabel, value: enabledCount },
-            { cls: "bpm-stat-chip--disabled", icon: "circle-minus", label: disabledLabel, value: disabledCount },
-            { cls: "bpm-stat-chip--hidden", icon: "eye-off", label: hiddenLabel, value: hiddenCount },
+        const statItems: Array<{ cls: string; icon: string; label: string; value: number; filter: StatusFilterValue }> = [
+            { cls: "bpm-stat-chip--total", icon: "layout-grid", label: totalLabel, value: totalCount, filter: "all" },
+            { cls: "bpm-stat-chip--enabled", icon: "circle-check", label: enabledLabel, value: enabledCount, filter: "enabled" },
+            { cls: "bpm-stat-chip--disabled", icon: "circle-minus", label: disabledLabel, value: disabledCount, filter: "disabled" },
+            { cls: "bpm-stat-chip--hidden", icon: "eye-off", label: hiddenLabel, value: hiddenCount, filter: "hidden" },
         ];
         if (checkedCount > 0) {
             statItems.push({
@@ -2594,15 +2619,28 @@ export class ManagerModal extends Modal {
                 icon: updateCount > 0 ? "download" : "check-check",
                 label: this.manager.translator.t("通用_可更新_文本"),
                 value: updateCount,
+                filter: "has-update",
             });
         }
         statItems.forEach((item) => {
             const chip = this.footEl.createSpan({ cls: `bpm-stat-chip ${item.cls}` });
+            chip.addClass("bpm-stat-chip--interactive");
+            chip.toggleClass("is-active", activeStatusFilter === item.filter && this.getStatusFilterOperator() === "contains");
+            chip.setAttribute("role", "button");
+            chip.setAttribute("tabindex", "0");
             chip.setAttribute("aria-label", `${item.label} ${item.value}`);
+            chip.setAttribute("aria-pressed", `${activeStatusFilter === item.filter && this.getStatusFilterOperator() === "contains"}`);
             const icon = chip.createSpan({ cls: "bpm-stat-chip__icon" });
             setIcon(icon, item.icon);
             chip.createSpan({ cls: "bpm-stat-chip__label", text: item.label });
             chip.createSpan({ cls: "bpm-stat-chip__value", text: `${item.value}` });
+            const activate = () => this.setStatusFilterFromStats(item.filter);
+            chip.addEventListener("click", activate);
+            chip.addEventListener("keydown", (event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                activate();
+            });
         });
     }
 
