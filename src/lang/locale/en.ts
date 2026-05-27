@@ -183,6 +183,10 @@ export default {
     设置_基础设置_目录样式_选项_二: 'Never Expanded',
     设置_基础设置_目录样式_选项_三: 'Hover to Expand',
     设置_基础设置_目录样式_选项_四: 'Click to Expand',
+    设置_样式设置_插件总览布局_标题: 'Plugin overview layout',
+    设置_样式设置_插件总览布局_描述: 'Choose list or two-column layout for the plugin overview.',
+    设置_样式设置_插件总览布局_选项_列表: 'List',
+    设置_样式设置_插件总览布局_选项_双列: 'Two columns',
 
     设置_基础设置_分组样式_标题: 'Group Style',
     设置_基础设置_分组样式_描述: 'Select the style of the group to make it more noticeable and easy to identify.',

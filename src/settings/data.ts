@@ -21,6 +21,7 @@ export type MainPageActionPlacement = "item" | "menu";
 export type MainPageActionPlacementSettings = Partial<Record<MainPageActionId, MainPageActionPlacement>>;
 export type FilterOperator = "contains" | "not-contains";
 export type TagFilterOperator = FilterOperator;
+export type PluginOverviewLayout = "list" | "two-column";
 
 export const DEFAULT_MAIN_PAGE_ACTION_PLACEMENT: Record<MainPageActionId, MainPageActionPlacement> = {
     checkUpdate: "menu",
@@ -92,6 +93,8 @@ export interface ManagerSettings {
     FILTER_DELAY_OPERATOR: FilterOperator;
 
     // 样式设置页
+    /** 插件总览的显示模式：列表或双列。 */
+    PLUGIN_OVERVIEW_LAYOUT: PluginOverviewLayout;
     /** 插件卡片展开样式，控制描述、标签、备注等详情的显示策略。 */
     ITEM_STYLE: string;
     /** 分组标签的视觉样式。 */
@@ -180,6 +183,7 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     FILTER_DELAY_OPERATOR: "contains",
 
     // 样式设置页
+    PLUGIN_OVERVIEW_LAYOUT: "list",
     ITEM_STYLE: "alwaysExpand",
     GROUP_STYLE: "a",
     TAG_STYLE: "b",

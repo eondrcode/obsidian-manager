@@ -1,9 +1,14 @@
 import BaseSetting from "../base-setting";
 import { DropdownComponent, Setting, ToggleComponent } from "obsidian";
 import Commands from "src/command";
+import { PluginOverviewLayout } from "../data";
 // import { GROUP_STYLE, ITEM_STYLE, TAG_STYLE } from "src/data/data";
 
 export default class ManagerBasis extends BaseSetting {
+    private PLUGIN_OVERVIEW_LAYOUT = {
+        'list': this.manager.translator.t('设置_样式设置_插件总览布局_选项_列表'),
+        'two-column': this.manager.translator.t('设置_样式设置_插件总览布局_选项_双列'),
+    }
     private ITEM_STYLE = {
         'alwaysExpand': this.manager.translator.t('设置_基础设置_目录样式_选项_一'),
         'neverExpand': this.manager.translator.t('设置_基础设置_目录样式_选项_二'),
@@ -25,6 +30,17 @@ export default class ManagerBasis extends BaseSetting {
 
 
     main(): void {
+
+        const overviewLayoutBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t('设置_样式设置_插件总览布局_标题'))
+            .setDesc(this.manager.translator.t('设置_样式设置_插件总览布局_描述'));
+        const overviewLayoutDropdown = new DropdownComponent(overviewLayoutBar.controlEl);
+        overviewLayoutDropdown.addOptions(this.PLUGIN_OVERVIEW_LAYOUT);
+        overviewLayoutDropdown.setValue(this.settings.PLUGIN_OVERVIEW_LAYOUT || 'list');
+        overviewLayoutDropdown.onChange((value) => {
+            this.settings.PLUGIN_OVERVIEW_LAYOUT = value as PluginOverviewLayout;
+            this.manager.saveSettings();
+        });
 
         const itemStyleBar = new Setting(this.containerEl)
             .setName(this.manager.translator.t('设置_基础设置_目录样式_标题'))

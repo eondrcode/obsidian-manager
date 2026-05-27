@@ -70,6 +70,7 @@ import {
 } from "../vault-share";
 
 type ManagerPage = "plugins" | "install" | "sources" | "transfer" | "vaults" | "ribbon" | "troubleshoot";
+const SHARED_VAULTS_ENABLED = false;
 const SUPPORT_QQ_GROUP_URL = "https://qm.qq.com/cgi-bin/qm/qr?k=kHTS0iC1FC5igTXbdbKzff6_tc54mOF5&jump_from=webapi&authKey=AoSkriW+nDeDzBPqBl9jcpbAYkPXN2QRbrMh0hFbvMrGbqZyRAbJwaD6JKbOy4Nx";
 const SUPPORT_QQ_GROUP_LABEL = "\u52a0\u5165 QQ \u7fa4";
 const SUPPORT_QQ_GROUP_TOOLTIP = "\u52a0\u5165 QQ \u7fa4\u54a8\u8be2\u95ee\u9898";
@@ -139,7 +140,9 @@ export class ManagerModal extends Modal {
     private mobileFiltersCollapsed = true;
     private isCheckingPluginUpdates = false;
     private renderGeneration = 0;
-    private readonly desktopPages: ManagerPage[] = ["plugins", "install", "sources", "transfer", "vaults", "ribbon", "troubleshoot"];
+    private readonly desktopPages: ManagerPage[] = SHARED_VAULTS_ENABLED
+        ? ["plugins", "install", "sources", "transfer", "vaults", "ribbon", "troubleshoot"]
+        : ["plugins", "install", "sources", "transfer", "ribbon", "troubleshoot"];
 
     private nextRenderGeneration(): number {
         return ++this.renderGeneration;
@@ -147,6 +150,34 @@ export class ManagerModal extends Modal {
 
     private isRenderCurrent(renderGeneration: number, page: ManagerPage): boolean {
         return renderGeneration === this.renderGeneration && this.activePage === page;
+    }
+
+    private normalizeManagerPage(page: ManagerPage): ManagerPage {
+        if (!SHARED_VAULTS_ENABLED && page === "vaults") return "plugins";
+        return this.desktopPages.includes(page) ? page : "plugins";
+    }
+
+    private ensureAllowedActivePage() {
+        const nextPage = this.normalizeManagerPage(this.activePage);
+        if (nextPage === this.activePage) return;
+        this.activePage = nextPage;
+        this.installMode = false;
+    }
+
+    private getPluginOverviewLayout(): string {
+        const layout = this.settings.PLUGIN_OVERVIEW_LAYOUT;
+        return layout === "two-column" ? layout : "list";
+    }
+
+    private syncPluginOverviewLayoutClass() {
+        this.contentEl.removeClass("manager-plugin-overview--list");
+        this.contentEl.removeClass("manager-plugin-overview--two-column");
+        this.contentEl.addClass(`manager-plugin-overview--${this.getPluginOverviewLayout()}`);
+    }
+
+    private clearPluginOverviewLayoutClass() {
+        this.contentEl.removeClass("manager-plugin-overview--list");
+        this.contentEl.removeClass("manager-plugin-overview--two-column");
     }
 
     private getPluginUpdateCount(statusMap?: Record<string, { hasUpdate?: boolean }>): number {
@@ -879,7 +910,9 @@ export class ManagerModal extends Modal {
         this.installTabEl = createTab("install", t("管理器_Tab_安装来源"), "download");
         this.sourcesTabEl = undefined;
         this.transferTabEl = createTab("transfer", t("导入导出_Tab_标题"), "archive-restore", t("导入导出_Tab_说明"));
-        this.vaultsTabEl = createTab("vaults", t("共享库_Tab_标题"), "folder-sync", t("共享库_Tab_说明"));
+        this.vaultsTabEl = SHARED_VAULTS_ENABLED
+            ? createTab("vaults", t("共享库_Tab_标题"), "folder-sync", t("共享库_Tab_说明"))
+            : undefined;
         this.ribbonTabEl = createTab("ribbon", t("管理器_Tab_功能编排"), "grip-vertical", t("Ribbon_功能编排_说明"));
         this.troubleshootTabEl = createTab("troubleshoot", t("排查_Tab_短标题"), "search-check");
 
@@ -1251,13 +1284,15 @@ export class ManagerModal extends Modal {
                 this.renderContent();
                 this.showHeadMobile();
             }));
-            menu.addItem((item) => item.setTitle(t("共享库_Tab_标题")).setIcon("folder-sync").onClick(() => {
-                this.activePage = "vaults";
-                this.installMode = false;
-                this.syncPageChrome();
-                this.renderContent();
-                this.showHeadMobile();
-            }));
+            if (SHARED_VAULTS_ENABLED) {
+                menu.addItem((item) => item.setTitle(t("共享库_Tab_标题")).setIcon("folder-sync").onClick(() => {
+                    this.activePage = "vaults";
+                    this.installMode = false;
+                    this.syncPageChrome();
+                    this.renderContent();
+                    this.showHeadMobile();
+                }));
+            }
             menu.addSeparator();
             // 重载插件
             menu.addItem((item) => item.setTitle(t("管理器_重载插件_描述")).setIcon("refresh-ccw").onClick(async () => {
@@ -1575,6 +1610,7 @@ export class ManagerModal extends Modal {
     }
 
     public async showData(renderGeneration = this.renderGeneration) {
+        this.syncPluginOverviewLayoutClass();
         // 使用 manifests 按 id 去重，防止重复渲染
         const page: ManagerPage = "plugins";
         if (!this.isRenderCurrent(renderGeneration, page)) return;
@@ -2571,6 +2607,7 @@ export class ManagerModal extends Modal {
     }
 
     private syncPageChrome() {
+        this.ensureAllowedActivePage();
         const isPlugins = this.activePage === "plugins";
         const isInstall = this.activePage === "install";
         const isSources = this.activePage === "sources";
@@ -2613,7 +2650,7 @@ export class ManagerModal extends Modal {
     }
 
     private setDesktopPage(page: ManagerPage) {
-        if (!this.desktopPages.includes(page)) page = "plugins";
+        page = this.normalizeManagerPage(page);
         if (this.activePage === page) {
             this.syncPageChrome();
             return;
@@ -5102,6 +5139,15 @@ export class ManagerModal extends Modal {
     }
 
     private async showVaultSharePanel(renderGeneration = this.renderGeneration) {
+        if (!SHARED_VAULTS_ENABLED) {
+            this.activePage = "plugins";
+            this.installMode = false;
+            this.syncPageChrome();
+            this.contentEl.empty();
+            await this.showData(renderGeneration);
+            return;
+        }
+
         this.contentEl.empty();
         const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
         const page = this.contentEl.createDiv("manager-vault-share");
@@ -5152,8 +5198,10 @@ export class ManagerModal extends Modal {
     }
 
     private renderContent() {
+        this.ensureAllowedActivePage();
         const renderGeneration = this.nextRenderGeneration();
         this.contentEl.empty();
+        this.clearPluginOverviewLayoutClass();
         if (this.activePage === "ribbon") {
             void this.showRibbonPanel(renderGeneration);
         } else if (this.activePage === "troubleshoot") {
@@ -5182,11 +5230,13 @@ export class ManagerModal extends Modal {
     }
 
     public async reloadShowData() {
+        this.ensureAllowedActivePage();
         if (this.settings.DEBUG) console.log("[BPM] reloadShowData start, children before empty:", this.contentEl.children.length);
         const renderGeneration = this.nextRenderGeneration();
         const modalElement: HTMLElement = this.contentEl;
         const scrollTop = modalElement.scrollTop;
         modalElement.empty();
+        this.clearPluginOverviewLayoutClass();
         if (this.activePage === "ribbon") {
             await this.showRibbonPanel(renderGeneration);
             if (!this.isRenderCurrent(renderGeneration, "ribbon")) return;

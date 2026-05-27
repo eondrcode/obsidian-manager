@@ -7,6 +7,7 @@
 ![Last commit](https://img.shields.io/github/last-commit/zenozero-dev/obsidian-manager)
 ![Issues](https://img.shields.io/github/issues/zenozero-dev/obsidian-manager)
 ![Stars](https://img.shields.io/github/stars/zenozero-dev/obsidian-manager?style=social)
+[![爱发电](https://img.shields.io/badge/%E7%88%B1%E5%8F%91%E7%94%B5-%E6%94%AF%E6%8C%81%E4%BD%9C%E8%80%85-946ce6)](https://ifdian.net/a/eondr)
 
 ![Screenshot](docs/img/index.png)
 

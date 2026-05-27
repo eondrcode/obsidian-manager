@@ -112,6 +112,7 @@ export interface ManagerTransferWorkspaceSettings {
 	delayMode: boolean;
 	hideBpmTag: boolean;
 	startupCheckUpdates: boolean;
+	pluginOverviewLayout?: string;
 	itemStyle: string;
 	groupStyle: string;
 	tagStyle: string;
@@ -757,6 +758,7 @@ export const buildManagerTransferPackage = async (
 		delayMode: Boolean(manager.settings.DELAY),
 		hideBpmTag: Boolean(manager.settings.HIDE_BPM_TAG),
 		startupCheckUpdates: Boolean(manager.settings.STARTUP_CHECK_UPDATES),
+		pluginOverviewLayout: manager.settings.PLUGIN_OVERVIEW_LAYOUT,
 		itemStyle: manager.settings.ITEM_STYLE,
 		groupStyle: manager.settings.GROUP_STYLE,
 		tagStyle: manager.settings.TAG_STYLE,
@@ -989,6 +991,9 @@ export const applyManagerTransferPackage = async (
 		manager.settings.DELAY = workspace.delayMode;
 		manager.settings.HIDE_BPM_TAG = workspace.hideBpmTag;
 		manager.settings.STARTUP_CHECK_UPDATES = workspace.startupCheckUpdates;
+		manager.settings.PLUGIN_OVERVIEW_LAYOUT = workspace.pluginOverviewLayout === "two-column"
+			? workspace.pluginOverviewLayout
+			: "list";
 		manager.settings.ITEM_STYLE = workspace.itemStyle || manager.settings.ITEM_STYLE;
 		manager.settings.GROUP_STYLE = workspace.groupStyle || manager.settings.GROUP_STYLE;
 		manager.settings.TAG_STYLE = workspace.tagStyle || manager.settings.TAG_STYLE;
