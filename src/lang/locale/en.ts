@@ -166,12 +166,12 @@ export default {
     一键_取消: 'Cancel',
     一键_通知_一: 'Enable/Disable Successful',
 
-    设置_基础设置_前缀: 'Basic',
-    设置_主页面功能_前缀: 'Main Page',
-    设置_样式设置_前缀: 'Style',
-    设置_分组设置_前缀: 'Group',
-    设置_标签设置_前缀: 'Tag',
-    设置_延迟设置_前缀: 'Delay',
+    设置_基础设置_前缀: 'Settings',
+    设置_主页面功能_前缀: 'Actions',
+    设置_样式设置_前缀: 'Appearance',
+    设置_分组设置_前缀: 'Groups',
+    设置_标签设置_前缀: 'Tags',
+    设置_延迟设置_前缀: 'Startup',
 
     设置_基础设置_分组_常规: 'General',
     设置_基础设置_分组_启动接管: 'Startup & takeover',
