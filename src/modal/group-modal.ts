@@ -83,8 +83,15 @@ export class GroupModal extends Modal {
         summaryMain.createDiv({ cls: 'manager-tag-editor__summary-title', text: t('分组编辑_选择标题') });
         summaryMain.createDiv({ cls: 'manager-tag-editor__summary-desc', text: t('分组编辑_选择说明', { id: this.managerPlugin.id, selected: selectedCount, total: this.settings.GROUPS.length }) });
         const summaryStats = summary.createDiv('manager-tag-editor__summary-stats');
-        summaryStats.createSpan({ cls: 'manager-tag-editor__summary-stat', text: t('设置_分类_统计', { label: t('通用_全部_文本'), count: this.settings.GROUPS.length }) });
-        summaryStats.createSpan({ cls: 'manager-tag-editor__summary-stat', text: t('设置_分类_统计', { label: t('通用_已选择_文本'), count: selectedCount }) });
+        const createSummaryStat = (label: string, value: number, icon: string) => {
+            const stat = summaryStats.createSpan({ cls: 'manager-tag-editor__summary-stat' });
+            const statIcon = stat.createSpan({ cls: 'manager-tag-editor__summary-stat-icon' });
+            setIcon(statIcon, icon);
+            stat.createSpan({ cls: 'manager-tag-editor__summary-stat-label', text: label });
+            stat.createSpan({ cls: 'manager-tag-editor__summary-stat-value', text: `${value}` });
+        };
+        createSummaryStat(t('通用_全部_文本'), this.settings.GROUPS.length, 'folders');
+        createSummaryStat(t('通用_已选择_文本'), selectedCount, 'check');
 
         const list = page.createDiv('manager-tag-editor__list');
         for (const group of this.settings.GROUPS) {
@@ -103,7 +110,8 @@ export class GroupModal extends Modal {
             const previewLine = itemEl.nameEl.createDiv('manager-tag-editor__preview-line');
             const tag = this.manager.createTag(group.name || group.id, group.color, this.settings.GROUP_STYLE);
             tag.addClass('manager-tag-editor__chip');
-            previewLine.appendChild(tag);
+            const chipSlot = previewLine.createSpan({ cls: 'manager-tag-editor__chip-slot' });
+            chipSlot.appendChild(tag);
             previewLine.createSpan({ cls: 'manager-tag-editor__id', text: group.id });
             if (selected) previewLine.createSpan({ cls: 'manager-tag-editor__badge is-assigned', text: t('通用_已选择_文本') });
 
@@ -181,54 +189,103 @@ export class GroupModal extends Modal {
             }
         }
         if (this.add) {
-            let id = '';
-            let name = '';
             let color = this.pickDistinctColor(this.settings.GROUPS.map(g => g.color));
-            const foodBar = new Setting(page).setClass('manager-bar__title');
-            foodBar.settingEl.addClass('manager-tag-editor__add-panel');
-            foodBar.nameEl.empty();
-            foodBar.descEl.empty();
-            const addTitle = foodBar.nameEl.createDiv('manager-tag-editor__add-title');
-            const addIcon = addTitle.createSpan({ cls: 'manager-tag-editor__add-title-icon' });
-            setIcon(addIcon, 'plus');
-            addTitle.createSpan({ text: t('设置_分组设置_新增分组') });
-            foodBar.descEl.setText(t('设置_分类_ID说明'));
-            foodBar.addColorPicker(cb => cb
-                .setValue(color)
-                .onChange((value) => {
-                    color = value;
-                })
-            )
-            foodBar.addText(cb => cb
-                .setPlaceholder('ID')
-                .onChange((value) => { id = value; })
-                .inputEl.addClass('manager-editor__item-input')
-            )
-            foodBar.addText(cb => cb
-                .setPlaceholder(this.manager.translator.t('通用_名称_文本'))
-                .onChange((value) => { name = value; })
-                .inputEl.addClass('manager-editor__item-input')
-            )
-            foodBar.addExtraButton((cb) => {
-                cb.setIcon('plus');
-                this.prepareIconButton(cb, t('分组编辑_创建分组'), 'manager-tag-editor__save-button');
-                cb.onClick(() => {
-                    const nextId = id.trim();
-                    const nextName = name.trim() || nextId;
-                    const containsId = this.manager.settings.GROUPS.some(tag => tag.id === nextId);
-                    if (!containsId && nextId !== '') {
-                        if (color === '') color = this.pickDistinctColor(this.settings.GROUPS.map(g => g.color));
-                        this.manager.settings.GROUPS.push({ id: nextId, name: nextName, color });
-                        this.manager.saveSettings();
-                        this.add = false;
-                        this.reloadShowData();
-                        Commands(this.app, this.manager);
-                        new Notice(this.manager.translator.t('设置_分组设置_通知_一'));
-                    } else {
-                        new Notice(this.manager.translator.t('设置_分组设置_通知_二'));
-                    }
-                });
-            })
+            const addPanel = page.createDiv('manager-tag-editor__create-panel');
+            const preview = addPanel.createDiv('manager-tag-editor__create-preview');
+            const previewMain = preview.createDiv('manager-tag-editor__create-preview-main');
+            const previewChip = this.manager.createTag(t('通用_名称_文本'), color, this.settings.GROUP_STYLE);
+            previewChip.addClass('manager-tag-editor__chip');
+            previewChip.addClass('manager-tag-editor__create-chip');
+            const previewChipSlot = previewMain.createSpan({ cls: 'manager-tag-editor__chip-slot manager-tag-editor__chip-slot--preview' });
+            previewChipSlot.appendChild(previewChip);
+            const previewText = previewMain.createDiv('manager-tag-editor__create-preview-text');
+            previewText.createDiv({ cls: 'manager-tag-editor__create-title', text: t('设置_分组设置_新增分组') });
+            const previewId = previewText.createDiv({ cls: 'manager-tag-editor__create-id', text: 'ID' });
+            preview.createDiv({ cls: 'manager-tag-editor__create-desc', text: t('设置_分类_新增描述') });
+
+            const form = addPanel.createDiv('manager-tag-editor__create-form');
+            const createField = (label: string, className = '') => {
+                const field = form.createDiv(`manager-tag-editor__create-field ${className}`);
+                field.createDiv({ cls: 'manager-tag-editor__create-label', text: label });
+                return field;
+            };
+            const colorField = createField(t('通用_颜色_文本'), 'manager-tag-editor__create-field--color');
+            const colorInput = colorField.createEl('input');
+            colorInput.type = 'color';
+            colorInput.value = color;
+            colorInput.addClass('manager-tag-editor__create-color');
+            colorInput.setAttribute('aria-label', t('通用_颜色_文本'));
+
+            const idField = createField(t('通用_ID_文本'));
+            const idInput = idField.createEl('input');
+            idInput.type = 'text';
+            idInput.placeholder = 'group-id';
+            idInput.spellcheck = false;
+            idInput.addClass('manager-editor__item-input');
+            idInput.addClass('manager-tag-editor__create-input');
+            idInput.setAttribute('aria-label', t('通用_ID_文本'));
+
+            const nameField = createField(t('通用_名称_文本'));
+            const nameInput = nameField.createEl('input');
+            nameInput.type = 'text';
+            nameInput.placeholder = t('通用_名称_文本');
+            nameInput.addClass('manager-editor__item-input');
+            nameInput.addClass('manager-tag-editor__create-input');
+            nameInput.setAttribute('aria-label', t('通用_名称_文本'));
+
+            const updatePreview = () => {
+                const nextId = idInput.value.trim();
+                const nextName = nameInput.value.trim();
+                previewChip.textContent = nextName || nextId || t('通用_名称_文本');
+                previewChip.setAttribute('style', this.manager.generateTagStyle(color, this.settings.GROUP_STYLE));
+                previewId.setText(nextId || 'ID');
+            };
+            const submit = () => {
+                const nextId = idInput.value.trim();
+                const nextName = nameInput.value.trim() || nextId;
+                const containsId = this.manager.settings.GROUPS.some(tag => tag.id === nextId);
+                if (!containsId && nextId !== '') {
+                    this.manager.settings.GROUPS.push({ id: nextId, name: nextName, color });
+                    this.manager.saveSettings();
+                    this.add = false;
+                    this.reloadShowData();
+                    Commands(this.app, this.manager);
+                    new Notice(this.manager.translator.t('设置_分组设置_通知_一'));
+                } else {
+                    new Notice(this.manager.translator.t('设置_分组设置_通知_二'));
+                }
+            };
+            const onEnter = (event: KeyboardEvent) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                submit();
+            };
+            colorInput.addEventListener('input', () => {
+                color = colorInput.value;
+                updatePreview();
+            });
+            idInput.addEventListener('input', () => updatePreview());
+            nameInput.addEventListener('input', () => updatePreview());
+            idInput.addEventListener('keydown', onEnter);
+            nameInput.addEventListener('keydown', onEnter);
+
+            const actions = addPanel.createDiv('manager-tag-editor__create-actions');
+            const cancelButton = actions.createEl('button', { cls: 'manager-tag-editor__create-action' });
+            cancelButton.type = 'button';
+            cancelButton.setAttribute('aria-label', t('通用_取消_文本'));
+            setIcon(cancelButton.createSpan({ cls: 'manager-tag-editor__create-action-icon' }), 'x');
+            cancelButton.createSpan({ text: t('通用_取消_文本') });
+            cancelButton.addEventListener('click', () => {
+                this.add = false;
+                this.reloadShowData();
+            });
+            const submitButton = actions.createEl('button', { cls: 'manager-tag-editor__create-action manager-tag-editor__create-action--primary' });
+            submitButton.type = 'button';
+            submitButton.setAttribute('aria-label', t('分组编辑_创建分组'));
+            setIcon(submitButton.createSpan({ cls: 'manager-tag-editor__create-action-icon' }), 'plus');
+            submitButton.createSpan({ text: t('分组编辑_创建分组') });
+            submitButton.addEventListener('click', submit);
+            window.setTimeout(() => idInput.focus(), 0);
         } else {
             // [底部行] 新增
             const foodBar = new Setting(page).setClass('manager-bar__title').setName(this.manager.translator.t('通用_新增_文本'));

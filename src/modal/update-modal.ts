@@ -1,4 +1,4 @@
-import { App, DropdownComponent, Modal, Notice, Setting } from "obsidian";
+import { App, ExtraButtonComponent, Modal, Notice, setIcon, Setting } from "obsidian";
 import Manager from "main";
 import { ReleaseVersion, fetchReleaseVersions } from "src/github-install";
 
@@ -8,6 +8,9 @@ export class UpdateModal extends Modal {
     private versions: ReleaseVersion[];
     private defaultVersion?: string | null;
     private repo?: string;
+    private selectedVersion = "";
+    private downloadButton?: HTMLButtonElement;
+    private versionListEl?: HTMLElement;
 
     constructor(app: App, manager: Manager, pluginId: string, versions: ReleaseVersion[], defaultVersion?: string | null, repo?: string) {
         super(app);
@@ -20,15 +23,55 @@ export class UpdateModal extends Modal {
 
     async onOpen() {
         const { contentEl } = this;
-        const t = (k: any) => this.manager.translator.t(k);
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const manifest = this.manager.appPlugins.manifests?.[this.pluginId];
         contentEl.empty();
+        this.selectedVersion = this.defaultVersion || manifest?.version || (this.versions[0]?.version ?? "");
 
-        const title = contentEl.createEl("h3", { text: t("管理器_选择版本_标题") });
-        title.style.marginBottom = "8px";
+        const modalEl = contentEl.parentElement as HTMLElement | null;
+        modalEl?.addClass("manager-editor__container");
+        modalEl?.addClass("manager-version-picker");
+        modalEl?.getElementsByClassName("modal-close-button")[0]?.remove();
+        this.titleEl.parentElement?.addClass("manager-container__header");
+        contentEl.addClass("manager-item-container");
+        contentEl.addClass("manager-version-picker__body");
+
+        const titleBar = new Setting(this.titleEl).setClass("manager-bar__title");
+        titleBar.settingEl.addClass("manager-version-picker__titlebar");
+        titleBar.nameEl.empty();
+        titleBar.descEl.empty();
+        const titleWrap = titleBar.nameEl.createDiv("manager-version-picker__title");
+        const titleIcon = titleWrap.createSpan({ cls: "manager-version-picker__title-icon" });
+        setIcon(titleIcon, "package-down");
+        const titleText = titleWrap.createDiv("manager-version-picker__title-text");
+        titleText.createDiv({ cls: "manager-version-picker__eyebrow", text: t("管理器_选择版本_标题") });
+        titleText.createDiv({ cls: "manager-version-picker__plugin-name", text: manifest?.name || this.pluginId });
+        titleBar.descEl.setText(t("管理器_选择版本_说明"));
+        const closeButton = new ExtraButtonComponent(titleBar.controlEl);
+        closeButton.setIcon("x");
+        closeButton.setTooltip(t("通用_取消_文本"));
+        const closeEl = ((closeButton as any).extraSettingsEl || (closeButton as any).buttonEl) as HTMLElement | undefined;
+        closeEl?.setAttribute("aria-label", t("通用_取消_文本"));
+        closeButton.onClick(() => this.close());
+
+        const page = contentEl.createDiv("manager-version-picker__page");
+        const summary = page.createDiv("manager-version-picker__summary");
+        const summaryMain = summary.createDiv("manager-version-picker__summary-main");
+        summaryMain.createDiv({ cls: "manager-version-picker__summary-title", text: t("管理器_选择版本_列表标题") });
+        summaryMain.createDiv({
+            cls: "manager-version-picker__summary-desc",
+            text: t("管理器_选择版本_当前版本", { version: manifest?.version || "-" }),
+        });
+        const summaryStats = summary.createDiv("manager-version-picker__summary-stats");
+        const countStat = summaryStats.createSpan({ cls: "manager-version-picker__summary-stat" });
+        setIcon(countStat.createSpan({ cls: "manager-version-picker__summary-stat-icon" }), "tags");
+        countStat.createSpan({ text: `${this.versions.length}` });
+
+        this.versionListEl = page.createDiv("manager-version-picker__list");
 
         let versionList = [...this.versions];
         if (versionList.length === 0 && this.repo) {
-            const loading = contentEl.createDiv();
+            const loading = this.versionListEl.createDiv("manager-version-picker__empty");
             loading.setText(t("管理器_选择版本_获取中"));
             try {
                 versionList = await fetchReleaseVersions(this.manager, this.repo);
@@ -41,30 +84,42 @@ export class UpdateModal extends Modal {
             this.versions = versionList;
         }
 
-        let selected = this.defaultVersion || (versionList[0]?.version ?? "");
-        if (versionList.length > 0) {
-            new Setting(contentEl)
-                .setName(t("管理器_选择版本_版本_标题"))
-                .addDropdown((dd: DropdownComponent) => {
-                    versionList.forEach(v => {
-                        dd.addOption(v.version, `${v.version}${v.prerelease ? " (pre)" : ""}`);
-                    });
-                    dd.setValue(selected);
-                    dd.onChange((v) => { selected = v; });
-                });
+        const hasDefaultVersion = Boolean(this.defaultVersion && versionList.some((release) => release.version === this.defaultVersion));
+        const hasLocalVersion = Boolean(manifest?.version && versionList.some((release) => release.version === manifest.version));
+        this.selectedVersion = hasDefaultVersion
+            ? this.defaultVersion!
+            : hasLocalVersion
+                ? manifest!.version
+                : (versionList[0]?.version ?? "");
+        summaryStats.empty();
+        const releaseCount = summaryStats.createSpan({ cls: "manager-version-picker__summary-stat" });
+        setIcon(releaseCount.createSpan({ cls: "manager-version-picker__summary-stat-icon" }), "tags");
+        releaseCount.createSpan({ text: t("管理器_选择版本_版本数量", { count: versionList.length }) });
+        const currentStat = summaryStats.createSpan({ cls: "manager-version-picker__summary-stat" });
+        setIcon(currentStat.createSpan({ cls: "manager-version-picker__summary-stat-icon" }), "badge-check");
+        currentStat.createSpan({ text: this.selectedVersion || t("管理器_安装_版本_默认最新") });
+
+        if (versionList.length > 0 && this.versionListEl) {
+            this.renderVersionList(versionList, manifest?.version || "");
         } else {
-            const info = contentEl.createDiv();
+            const info = this.versionListEl?.createDiv("manager-version-picker__empty") ?? page.createDiv("manager-version-picker__empty");
             info.setText(t("管理器_选择版本_无版本提示"));
         }
 
-        new Setting(contentEl)
+        const footer = new Setting(page);
+        footer.settingEl.addClass("manager-version-picker__footer");
+        footer.nameEl.empty();
+        footer.descEl.empty();
+        footer
             .addButton((btn) => {
-                btn.setButtonText(t("管理器_选择版本_下载按钮"));
+                btn.setButtonText(t("管理器_选择版本_切换按钮"));
                 btn.setCta();
+                this.downloadButton = btn.buttonEl;
+                btn.setDisabled(!this.selectedVersion);
                 btn.onClick(async () => {
                     btn.setDisabled(true);
                     try {
-                        const ok = await this.manager.downloadUpdate(this.pluginId, selected);
+                        const ok = await this.manager.downloadUpdate(this.pluginId, this.selectedVersion);
                         if (ok) {
                             new Notice(t("管理器_选择版本_成功提示"), 3000);
                             this.close();
@@ -78,6 +133,50 @@ export class UpdateModal extends Modal {
                 btn.setButtonText(t("通用_取消_文本"));
                 btn.onClick(() => this.close());
             });
+    }
+
+    private renderVersionList(versionList: ReleaseVersion[], localVersion: string) {
+        if (!this.versionListEl) return;
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        this.versionListEl.empty();
+        versionList.forEach((release) => {
+            const item = this.versionListEl!.createEl("button", { cls: "manager-version-picker__item" });
+            item.type = "button";
+            item.toggleClass("is-selected", release.version === this.selectedVersion);
+            item.toggleClass("is-current", Boolean(localVersion && release.version === localVersion));
+            item.setAttribute("aria-pressed", `${release.version === this.selectedVersion}`);
+            item.setAttribute("aria-label", t("管理器_选择版本_选择版本", { version: release.version }));
+
+            const main = item.createDiv("manager-version-picker__item-main");
+            const title = main.createDiv("manager-version-picker__item-title");
+            title.createSpan({ cls: "manager-version-picker__item-version", text: release.version });
+            if (release.version === localVersion) {
+                title.createSpan({ cls: "manager-version-picker__badge", text: t("来源_当前") });
+            }
+            title.createSpan({
+                cls: `manager-version-picker__badge ${release.prerelease ? "is-prerelease" : "is-stable"}`,
+                text: t(release.prerelease ? "安装_发布类型_预发布" : "安装_发布类型_正式版"),
+            });
+
+            const meta = main.createDiv("manager-version-picker__item-meta");
+            if (release.name && release.name !== release.version) meta.createSpan({ text: release.name });
+            if (release.publishedAt) meta.createSpan({ text: this.formatDate(release.publishedAt) });
+
+            const check = item.createSpan({ cls: "manager-version-picker__item-check" });
+            setIcon(check, release.version === this.selectedVersion ? "check" : "circle");
+
+            item.addEventListener("click", () => {
+                this.selectedVersion = release.version;
+                this.renderVersionList(versionList, localVersion);
+                this.downloadButton?.removeAttribute("disabled");
+            });
+        });
+    }
+
+    private formatDate(value: string): string {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleDateString();
     }
 }
 

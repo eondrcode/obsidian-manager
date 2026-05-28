@@ -138,6 +138,8 @@ export class ManagerModal extends Modal {
     groupDropdown?: DropdownComponent;
     tagDropdown?: DropdownComponent;
     delayDropdown?: DropdownComponent;
+    private bulkEditMode = false;
+    private bulkSelectedPluginIds = new Set<string>();
     actionCollapsed = false;
     filterCollapsed = false;
     private reloadingManifests = false;
@@ -496,12 +498,50 @@ export class ManagerModal extends Modal {
         return ((button as any).extraSettingsEl || (button as any).buttonEl) as HTMLElement | undefined;
     }
 
+    private async openPluginVersionList(pluginId: string, updateInfo?: PluginUpdateViewStatus | null) {
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const progress = this.showInlineProgress(t("通知_获取版本中文案"), pluginId);
+        progress.update(0, 1, pluginId);
+        try {
+            let status = updateInfo ?? (this.manager.updateStatus?.[pluginId] as PluginUpdateViewStatus | undefined);
+            let repo = status?.repo || this.manager.settings.REPO_MAP?.[pluginId] || null;
+            if (!repo) {
+                try {
+                    repo = await this.manager.repoResolver.resolveRepo(pluginId);
+                } catch {
+                    repo = null;
+                }
+            }
+            if (!repo) {
+                new Notice(t("下载更新_缺少仓库提示"));
+                return;
+            }
+
+            const versions = await fetchReleaseVersions(this.manager, repo);
+            if (!status) status = {};
+            status.repo = repo;
+            status.versions = versions;
+            const stableVersion = versions.find((release) => !release.prerelease)?.version;
+            status.remoteVersion = stableVersion || versions[0]?.version || status.remoteVersion || null;
+            this.manager.updateStatus[pluginId] = {
+                ...(this.manager.updateStatus?.[pluginId] ?? {}),
+                ...status,
+            } as any;
+
+            progress.update(1, 1, pluginId);
+            this.refreshSinglePluginUpdateUi(pluginId);
+            this.updateStats();
+            new UpdateModal(this.app, this.manager, pluginId, versions, status.remoteVersion ?? null, repo).open();
+        } catch (e) {
+            console.error("[BPM] fetch remote versions failed", e);
+            new Notice(t("管理器_选择版本_获取失败提示"), 4000);
+        } finally {
+            progress.hide();
+        }
+    }
+
     private openPluginUpdateModal(pluginId: string, updateInfo: PluginUpdateViewStatus) {
-        if (!updateInfo.remoteVersion) return;
-        const versions = updateInfo.versions && updateInfo.versions.length > 0
-            ? updateInfo.versions
-            : [{ version: updateInfo.remoteVersion, prerelease: false }];
-        new UpdateModal(this.app, this.manager, pluginId, versions, updateInfo.remoteVersion, updateInfo.repo || undefined).open();
+        void this.openPluginVersionList(pluginId, updateInfo);
     }
 
     private addPluginDownloadButton(controlEl: HTMLElement, pluginId: string, updateInfo: PluginUpdateViewStatus, prepend = false) {
@@ -723,6 +763,265 @@ export class ManagerModal extends Modal {
         await this.reloadShowData();
     }
 
+    private getSelectedManagerPlugins(): ManagerPlugin[] {
+        return this.settings.Plugins.filter((plugin) => this.bulkSelectedPluginIds.has(plugin.id));
+    }
+
+    private getSelectableDisplayedPluginIds(): string[] {
+        return this.displayPlugins
+            .map((plugin) => plugin.id)
+            .filter((id) => id !== this.manager.manifest.id);
+    }
+
+    private getBulkSelectedCount(): number {
+        return this.getSelectedManagerPlugins().length;
+    }
+
+    private cleanupBulkSelection() {
+        const validIds = new Set(this.settings.Plugins.map((plugin) => plugin.id));
+        for (const id of Array.from(this.bulkSelectedPluginIds)) {
+            if (!validIds.has(id) || id === this.manager.manifest.id) this.bulkSelectedPluginIds.delete(id);
+        }
+    }
+
+    private setBulkEditMode(value: boolean) {
+        if (value && this.activePage !== "plugins") return;
+        this.bulkEditMode = value;
+        if (value) this.editorMode = false;
+        if (!value) this.bulkSelectedPluginIds.clear();
+        this.applyEditingStyle();
+        this.renderContent();
+        if (Platform.isMobileApp) this.showHeadMobile();
+    }
+
+    private toggleBulkPluginSelection(pluginId: string, selected: boolean) {
+        if (pluginId === this.manager.manifest.id) return;
+        if (selected) this.bulkSelectedPluginIds.add(pluginId);
+        else this.bulkSelectedPluginIds.delete(pluginId);
+        this.reloadShowData();
+    }
+
+    private selectDisplayedPlugins() {
+        this.bulkSelectedPluginIds = new Set(this.getSelectableDisplayedPluginIds());
+        this.reloadShowData();
+    }
+
+    private clearBulkSelection() {
+        this.bulkSelectedPluginIds.clear();
+        this.reloadShowData();
+    }
+
+    private createBulkActionButton(container: HTMLElement, icon: string, label: string, onClick: (event: MouseEvent) => void, disabled = false) {
+        const button = container.createEl("button", { cls: "manager-bulk-bar__button" });
+        button.type = "button";
+        button.disabled = disabled;
+        button.setAttribute("aria-label", label);
+        button.setAttribute("title", label);
+        const iconEl = button.createSpan({ cls: "manager-bulk-bar__button-icon" });
+        iconEl.setAttribute("aria-hidden", "true");
+        setIcon(iconEl, icon);
+        button.createSpan({ cls: "manager-bulk-bar__button-label", text: label });
+        button.addEventListener("click", onClick);
+        this.bindLongPressTooltip(button, label);
+        return button;
+    }
+
+    private showBulkGroupMenu(event: MouseEvent) {
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const menu = new Menu();
+        menu.addItem((item) => item
+            .setTitle(t("批量编辑_清除分组"))
+            .setIcon("folder-x")
+            .onClick(() => { void this.applyBulkGroup(""); }));
+        if (this.settings.GROUPS.length > 0) menu.addSeparator();
+        for (const group of this.settings.GROUPS) {
+            menu.addItem((item) => item
+                .setTitle(group.name || group.id)
+                .setIcon("folder-tree")
+                .onClick(() => { void this.applyBulkGroup(group.id); }));
+        }
+        menu.showAtMouseEvent(event);
+    }
+
+    private showBulkTagMenu(event: MouseEvent, mode: "add" | "remove") {
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const menu = new Menu();
+        const tags = this.settings.TAGS.filter((tag) => tag.id !== BPM_TAG_ID);
+        if (mode === "remove") {
+            menu.addItem((item) => item
+                .setTitle(t("批量编辑_清除全部标签"))
+                .setIcon("tags")
+                .onClick(() => { void this.applyBulkClearTags(); }));
+            if (tags.length > 0) menu.addSeparator();
+        }
+        for (const tag of tags) {
+            menu.addItem((item) => item
+                .setTitle(tag.name || tag.id)
+                .setIcon(mode === "add" ? "tag" : "tag-x")
+                .onClick(() => {
+                    if (mode === "add") void this.applyBulkAddTag(tag.id);
+                    else void this.applyBulkRemoveTag(tag.id);
+                }));
+        }
+        menu.showAtMouseEvent(event);
+    }
+
+    private showBulkDelayMenu(event: MouseEvent) {
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const menu = new Menu();
+        menu.addItem((item) => item
+            .setTitle(t("通用_无延迟_文本"))
+            .setIcon("timer-off")
+            .onClick(() => { void this.applyBulkDelay(""); }));
+        if (this.settings.DELAYS.length > 0) menu.addSeparator();
+        for (const delay of this.settings.DELAYS) {
+            menu.addItem((item) => item
+                .setTitle(`${delay.name || delay.id} (${delay.time}s)`)
+                .setIcon("timer")
+                .onClick(() => { void this.applyBulkDelay(delay.id); }));
+        }
+        menu.showAtMouseEvent(event);
+    }
+
+    private showBulkMoreMenu(event: MouseEvent) {
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const selectedCount = this.getBulkSelectedCount();
+        const disabled = selectedCount === 0;
+        const menu = new Menu();
+        menu.addItem((item) => item
+            .setTitle(t("通用_启用_文本"))
+            .setIcon("power")
+            .setDisabled(disabled)
+            .onClick(() => { void this.applyBulkEnabled(true); }));
+        menu.addItem((item) => item
+            .setTitle(t("通用_禁用_文本"))
+            .setIcon("power-off")
+            .setDisabled(disabled)
+            .onClick(() => { void this.applyBulkEnabled(false); }));
+        menu.addSeparator();
+        menu.addItem((item) => item
+            .setTitle(t("批量编辑_全选当前列表"))
+            .setIcon("list-checks")
+            .onClick(() => this.selectDisplayedPlugins()));
+        menu.addItem((item) => item
+            .setTitle(t("批量编辑_清空选择"))
+            .setIcon("x")
+            .setDisabled(this.bulkSelectedPluginIds.size === 0)
+            .onClick(() => this.clearBulkSelection()));
+        menu.showAtMouseEvent(event);
+    }
+
+    private renderBulkBar(container: HTMLElement) {
+        if (!this.bulkEditMode) return;
+        this.cleanupBulkSelection();
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const selectedCount = this.getBulkSelectedCount();
+        const displayedCount = this.getSelectableDisplayedPluginIds().length;
+        const disabled = selectedCount === 0;
+        const bar = container.createDiv("manager-bulk-bar");
+        const summary = bar.createDiv("manager-bulk-bar__summary");
+        const summaryIcon = summary.createSpan({ cls: "manager-bulk-bar__summary-icon" });
+        setIcon(summaryIcon, "square-check-big");
+        const text = summary.createDiv("manager-bulk-bar__summary-text");
+        text.createSpan({ cls: "manager-bulk-bar__title", text: t("批量编辑_标题") });
+        text.createSpan({ cls: "manager-bulk-bar__count", text: t("批量编辑_已选择数量", { count: selectedCount, total: displayedCount }) });
+
+        const actions = bar.createDiv("manager-bulk-bar__actions");
+        this.createBulkActionButton(actions, "list-checks", t("批量编辑_全选当前列表"), () => this.selectDisplayedPlugins(), displayedCount === 0);
+        this.createBulkActionButton(actions, "folder-tree", t("批量编辑_设置分组"), (event) => this.showBulkGroupMenu(event), disabled);
+        this.createBulkActionButton(actions, "tag", t("批量编辑_添加标签"), (event) => this.showBulkTagMenu(event, "add"), disabled);
+        this.createBulkActionButton(actions, "tag-x", t("批量编辑_移除标签"), (event) => this.showBulkTagMenu(event, "remove"), disabled);
+        if (this.settings.DELAY) this.createBulkActionButton(actions, "timer", t("批量编辑_设置延迟"), (event) => this.showBulkDelayMenu(event), disabled);
+        this.createBulkActionButton(actions, "more-horizontal", t("管理器_更多操作_描述"), (event) => this.showBulkMoreMenu(event));
+        this.createBulkActionButton(actions, "x", t("通用_完成_文本"), () => this.setBulkEditMode(false));
+    }
+
+    private async applyBulkGroup(groupId: string) {
+        const plugins = this.getSelectedManagerPlugins();
+        plugins.forEach((plugin) => { plugin.group = groupId; });
+        await this.finishBulkMetadataEdit("批量编辑_已更新分组", plugins.length);
+    }
+
+    private async applyBulkAddTag(tagId: string) {
+        const plugins = this.getSelectedManagerPlugins();
+        plugins.forEach((plugin) => {
+            if (!plugin.tags.includes(tagId)) plugin.tags.push(tagId);
+        });
+        await this.finishBulkMetadataEdit("批量编辑_已添加标签", plugins.length);
+    }
+
+    private async applyBulkRemoveTag(tagId: string) {
+        const plugins = this.getSelectedManagerPlugins();
+        plugins.forEach((plugin) => {
+            plugin.tags = plugin.tags.filter((id) => id !== tagId);
+        });
+        await this.finishBulkMetadataEdit("批量编辑_已移除标签", plugins.length);
+    }
+
+    private async applyBulkClearTags() {
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const plugins = this.getSelectedManagerPlugins();
+        if (plugins.length === 0) return;
+        if (!window.confirm(t("批量编辑_清除全部标签确认", { count: plugins.length }))) return;
+        plugins.forEach((plugin) => {
+            plugin.tags = plugin.tags.filter((id) => id === BPM_TAG_ID);
+        });
+        await this.finishBulkMetadataEdit("批量编辑_已移除标签", plugins.length);
+    }
+
+    private async applyBulkDelay(delayId: string) {
+        const plugins = this.getSelectedManagerPlugins().filter((plugin) => !plugin.tags.includes(BPM_IGNORE_TAG));
+        if (plugins.length === 0) {
+            new Notice(this.manager.translator.t("批量编辑_无可操作插件"));
+            return;
+        }
+        plugins.forEach((plugin) => {
+            plugin.delay = delayId;
+        });
+        await this.finishBulkMetadataEdit("批量编辑_已更新延迟", plugins.length);
+    }
+
+    private async finishBulkMetadataEdit(messageKey: string, count: number) {
+        if (count === 0) return;
+        await this.manager.saveSettings();
+        Commands(this.app, this.manager);
+        await this.refreshFilterOptions(true);
+        new Notice(this.manager.translator.t(messageKey, { count }));
+    }
+
+    private async applyBulkEnabled(targetEnabled: boolean) {
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const plugins = this.getSelectedManagerPlugins()
+            .filter((plugin) => plugin.id !== this.manager.manifest.id && !plugin.tags.includes(BPM_IGNORE_TAG));
+        if (plugins.length === 0) {
+            new Notice(t("批量编辑_无可操作插件"));
+            return;
+        }
+        if (!window.confirm(t(targetEnabled ? "批量编辑_启用确认" : "批量编辑_禁用确认", { count: plugins.length }))) return;
+        const progress = this.showInlineProgress(t("管理器_应用更改中_提示"));
+        let processed = 0;
+        for (const plugin of plugins) {
+            const isEnabled = this.isManagedPluginEnabled(plugin.id);
+            if (isEnabled !== targetEnabled) {
+                plugin.enabled = targetEnabled;
+                if (this.settings.DELAY) {
+                    if (targetEnabled) await this.appPlugins.enablePlugin(plugin.id);
+                    else await this.appPlugins.disablePlugin(plugin.id);
+                } else {
+                    if (targetEnabled) await this.appPlugins.enablePluginAndSave(plugin.id);
+                    else await this.appPlugins.disablePluginAndSave(plugin.id);
+                }
+            }
+            processed++;
+            progress.update(processed, plugins.length, plugin.id);
+        }
+        progress.hide();
+        await this.manager.saveSettings();
+        Commands(this.app, this.manager);
+        await this.reloadShowData();
+        new Notice(t("批量编辑_已更新状态", { count: plugins.length }));
+    }
+
     private runDisplayedPluginsToggle() {
         const targetEnabled = this.getBulkToggleTarget();
         new DisableModal(this.app, this.manager, async () => {
@@ -752,6 +1051,7 @@ export class ManagerModal extends Modal {
     modalContainer?: HTMLElement;
     private desktopActionWrapper?: HTMLElement;
     private desktopFilterWrapper?: HTMLElement;
+    private bulkEditButtonEl?: HTMLButtonElement;
     private pluginTabEl?: HTMLButtonElement;
     private installTabEl?: HTMLButtonElement;
     private sourcesTabEl?: HTMLButtonElement;
@@ -936,19 +1236,32 @@ export class ManagerModal extends Modal {
 
         const tools = toolbar.createDiv("manager-toolbar__tools");
         const actionBar = new Setting(tools).setClass("manager-bar__action").setName("");
-        const markTool = (btn: ButtonComponent, scope: "plugin" | "install" | "global" | "ribbon" | "layout" | "transfer" | "resource") => {
+        const markTool = (btn: ButtonComponent, scope: "plugin" | "install" | "global" | "ribbon" | "layout" | "transfer" | "resource", order?: number) => {
             btn.buttonEl.addClass("manager-tool");
             btn.buttonEl.addClass(`manager-tool--${scope}`);
+            if (order !== undefined) btn.buttonEl.style.setProperty("--manager-tool-order", `${order}`);
         };
+
+        const bulkEditButton = new ButtonComponent(actionBar.controlEl);
+        markTool(bulkEditButton, "plugin", 20);
+        bulkEditButton.setIcon(this.bulkEditMode ? "square-check-big" : "list-plus");
+        bulkEditButton.setTooltip(t("批量编辑_入口"));
+        bulkEditButton.buttonEl.setAttribute("aria-label", t("批量编辑_入口"));
+        bulkEditButton.buttonEl.classList.toggle("is-active", this.bulkEditMode);
+        this.bulkEditButtonEl = bulkEditButton.buttonEl;
+        this.bindLongPressTooltip(bulkEditButton.buttonEl, t("批量编辑_入口"));
+        bulkEditButton.onClick(() => {
+            this.setBulkEditMode(!this.bulkEditMode);
+        });
 
         // [操作行] 检查更新
         const updateButton = new ButtonComponent(actionBar.controlEl);
-        markTool(updateButton, "plugin");
+        markTool(updateButton, "plugin", 10);
         this.preparePluginUpdateButton(updateButton);
 
         // [操作行] 全选/全部取消当前列表
         const toggleAllButton = new ButtonComponent(actionBar.controlEl);
-        markTool(toggleAllButton, "plugin");
+        markTool(toggleAllButton, "plugin", 30);
         toggleAllButton.setIcon("list-checks");
         toggleAllButton.setTooltip(this.manager.translator.t("管理器_全选取消_描述"));
         this.bindLongPressTooltip(toggleAllButton.buttonEl, this.manager.translator.t("管理器_全选取消_描述"));
@@ -958,7 +1271,7 @@ export class ManagerModal extends Modal {
 
         // [操作行] 重载插件
         const reloadButton = new ButtonComponent(actionBar.controlEl);
-        markTool(reloadButton, "plugin");
+        markTool(reloadButton, "plugin", 40);
         reloadButton.setIcon("refresh-ccw");
         reloadButton.setTooltip(this.manager.translator.t("管理器_重载插件_描述"));
         this.bindLongPressTooltip(reloadButton.buttonEl, this.manager.translator.t("管理器_重载插件_描述"));
@@ -990,12 +1303,16 @@ export class ManagerModal extends Modal {
 
         // [操作行] 编辑模式
         const editorButton = new ButtonComponent(actionBar.controlEl);
-        markTool(editorButton, "plugin");
+        markTool(editorButton, "plugin", 50);
         this.editorMode ? editorButton.setIcon("pen-off") : editorButton.setIcon("pen");
         editorButton.setTooltip(this.manager.translator.t("管理器_编辑模式_描述"));
         this.bindLongPressTooltip(editorButton.buttonEl, this.manager.translator.t("管理器_编辑模式_描述"));
         editorButton.onClick(async () => {
             this.editorMode = !this.editorMode;
+            if (this.editorMode && this.bulkEditMode) {
+                this.bulkEditMode = false;
+                this.bulkSelectedPluginIds.clear();
+            }
             this.editorMode ? editorButton.setIcon("pen-off") : editorButton.setIcon("pen");
             this.applyEditingStyle();
             if (!this.editorMode) {
@@ -1006,7 +1323,7 @@ export class ManagerModal extends Modal {
         });
 
         const ribbonResetButton = new ButtonComponent(actionBar.controlEl);
-        markTool(ribbonResetButton, "ribbon");
+        markTool(ribbonResetButton, "ribbon", 10);
         ribbonResetButton.setIcon("rotate-ccw");
         ribbonResetButton.setTooltip(t("Ribbon_重置_提示"));
         ribbonResetButton.buttonEl.setAttribute("aria-label", t("Ribbon_重置_提示"));
@@ -1020,7 +1337,7 @@ export class ManagerModal extends Modal {
         });
 
         const addSeparatorButton = new ButtonComponent(actionBar.controlEl);
-        markTool(addSeparatorButton, "layout");
+        markTool(addSeparatorButton, "layout", 60);
         addSeparatorButton.setIcon("separator-horizontal");
         addSeparatorButton.setTooltip(t("管理器_布局_添加分割线"));
         addSeparatorButton.buttonEl.setAttribute("aria-label", t("管理器_布局_添加分割线"));
@@ -1030,7 +1347,7 @@ export class ManagerModal extends Modal {
         });
 
         const hiddenResetButton = new ButtonComponent(actionBar.controlEl);
-        markTool(hiddenResetButton, "layout");
+        markTool(hiddenResetButton, "layout", 61);
         hiddenResetButton.setIcon("rotate-ccw");
         hiddenResetButton.setTooltip(t("管理器_布局_按名称重置"));
         hiddenResetButton.buttonEl.setAttribute("aria-label", t("管理器_布局_按名称重置"));
@@ -1041,21 +1358,21 @@ export class ManagerModal extends Modal {
         });
 
         const githubButton = new ButtonComponent(actionBar.controlEl);
-        markTool(githubButton, "resource");
+        markTool(githubButton, "resource", 120);
         githubButton.setIcon("github");
         githubButton.setTooltip(this.manager.translator.t("管理器_GITHUB_描述"));
         this.bindLongPressTooltip(githubButton.buttonEl, this.manager.translator.t("管理器_GITHUB_描述"));
         githubButton.onClick(() => { window.open("https://github.com/zenozero-dev/obsidian-manager"); });
 
         const tutorialButton = new ButtonComponent(actionBar.controlEl);
-        markTool(tutorialButton, "resource");
+        markTool(tutorialButton, "resource", 110);
         tutorialButton.setIcon("book-open");
         tutorialButton.setTooltip(this.manager.translator.t("管理器_视频教程_描述"));
         this.bindLongPressTooltip(tutorialButton.buttonEl, this.manager.translator.t("管理器_视频教程_描述"));
         tutorialButton.onClick(() => { window.open("https://www.bilibili.com/video/BV1WyrkYMEce/"); });
 
         const supportGroupButton = new ButtonComponent(actionBar.controlEl);
-        markTool(supportGroupButton, "resource");
+        markTool(supportGroupButton, "resource", 130);
         supportGroupButton.setIcon("message-circle");
         supportGroupButton.setTooltip(SUPPORT_QQ_GROUP_TOOLTIP);
         this.bindLongPressTooltip(supportGroupButton.buttonEl, SUPPORT_QQ_GROUP_TOOLTIP);
@@ -1063,7 +1380,7 @@ export class ManagerModal extends Modal {
 
         // [操作行] 插件市场
         const marketButton = new ButtonComponent(actionBar.controlEl);
-        markTool(marketButton, "global");
+        markTool(marketButton, "global", 70);
         marketButton.setIcon("store");
         marketButton.setTooltip(this.manager.translator.t("管理器_插件市场_描述"));
         this.bindLongPressTooltip(marketButton.buttonEl, this.manager.translator.t("管理器_插件市场_描述"));
@@ -1073,7 +1390,7 @@ export class ManagerModal extends Modal {
 
         // [操作行] 插件设置
         const settingsButton = new ButtonComponent(actionBar.controlEl);
-        markTool(settingsButton, "global");
+        markTool(settingsButton, "global", 80);
         settingsButton.setIcon("settings");
         settingsButton.setTooltip(this.manager.translator.t("管理器_插件设置_描述"));
         this.bindLongPressTooltip(settingsButton.buttonEl, this.manager.translator.t("管理器_插件设置_描述"));
@@ -1087,7 +1404,7 @@ export class ManagerModal extends Modal {
         // [测试行] 刷新插件
         if (this.developerMode) {
             const testButton = new ButtonComponent(actionBar.controlEl);
-            markTool(testButton, "plugin");
+            markTool(testButton, "plugin", 90);
             testButton.setIcon("refresh-ccw");
             testButton.setTooltip(t("开发_刷新插件_提示"));
             testButton.onClick(async () => {
@@ -1100,7 +1417,7 @@ export class ManagerModal extends Modal {
         // [测试行] 测试插件
         if (this.developerMode) {
             const testButton = new ButtonComponent(actionBar.controlEl);
-            markTool(testButton, "plugin");
+            markTool(testButton, "plugin", 91);
             testButton.setIcon("test-tube");
             testButton.setTooltip(t("开发_测试插件_提示"));
             testButton.onClick(async () => {
@@ -1246,6 +1563,10 @@ export class ManagerModal extends Modal {
 
         const topActions = topRow.createDiv("bpm-mobile-header__actions");
 
+        // 检查更新按钮
+        const updateBtn = new ButtonComponent(topActions);
+        this.preparePluginUpdateButton(updateBtn);
+
         // 编辑模式
         const editorBtn = new ButtonComponent(topActions);
         editorBtn.setIcon(this.editorMode ? "pen-off" : "pen");
@@ -1253,6 +1574,10 @@ export class ManagerModal extends Modal {
         this.bindLongPressTooltip(editorBtn.buttonEl, t("管理器_编辑模式_描述"));
         editorBtn.onClick(async () => {
             this.editorMode = !this.editorMode;
+            if (this.editorMode && this.bulkEditMode) {
+                this.bulkEditMode = false;
+                this.bulkSelectedPluginIds.clear();
+            }
             this.applyEditingStyle();
             if (!this.editorMode) {
                 await this.refreshFilterOptions(true);
@@ -1260,6 +1585,15 @@ export class ManagerModal extends Modal {
                 this.renderContent();
             }
             this.showHeadMobile();
+        });
+
+        const bulkBtn = new ButtonComponent(topActions);
+        bulkBtn.setIcon(this.bulkEditMode ? "square-check-big" : "list-plus");
+        bulkBtn.setTooltip(t("批量编辑_入口"));
+        bulkBtn.buttonEl.toggleClass("is-active", this.bulkEditMode);
+        this.bindLongPressTooltip(bulkBtn.buttonEl, t("批量编辑_入口"));
+        bulkBtn.onClick(() => {
+            this.setBulkEditMode(!this.bulkEditMode);
         });
 
         // 安装/返回
@@ -1275,10 +1609,6 @@ export class ManagerModal extends Modal {
             this.showHeadMobile();
         });
 
-        // 检查更新按钮
-        const updateBtn = new ButtonComponent(topActions);
-        this.preparePluginUpdateButton(updateBtn);
-
         // 更多操作菜单
         const moreBtn = new ButtonComponent(topActions);
         moreBtn.setIcon("more-vertical");
@@ -1286,6 +1616,9 @@ export class ManagerModal extends Modal {
         this.bindLongPressTooltip(moreBtn.buttonEl, t("管理器_更多操作_描述"));
         moreBtn.buttonEl.addEventListener("click", (ev) => {
             const menu = new Menu();
+            menu.addItem((item) => item.setTitle(t("批量编辑_入口")).setIcon("list-plus").onClick(() => {
+                this.setBulkEditMode(!this.bulkEditMode);
+            }));
             menu.addItem((item) => item.setTitle(t("管理器_全选取消_描述")).setIcon("list-checks").onClick(() => {
                 this.runDisplayedPluginsToggle();
             }));
@@ -1576,6 +1909,12 @@ export class ManagerModal extends Modal {
         });
         footer.appendChild(toggleAllBtn);
 
+        const bulkBtn = createFooterBtn(this.bulkEditMode ? "square-check-big" : "list-plus", t("批量编辑_入口"), () => {
+            this.setBulkEditMode(!this.bulkEditMode);
+        });
+        bulkBtn.toggleClass("is-active", this.bulkEditMode);
+        footer.appendChild(bulkBtn);
+
         // 检查更新按钮
         const updateBtn = createFooterBtn("rss", t("管理器_检查更新_描述"), () => {
             void this.runPluginUpdateCheck(updateBtn);
@@ -1630,6 +1969,7 @@ export class ManagerModal extends Modal {
 
     public async showData(renderGeneration = this.renderGeneration) {
         this.syncPluginOverviewLayoutClass();
+        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
         // 使用 manifests 按 id 去重，防止重复渲染
         const page: ManagerPage = "plugins";
         if (!this.isRenderCurrent(renderGeneration, page)) return;
@@ -1657,7 +1997,9 @@ export class ManagerModal extends Modal {
 
         if (this.settings.DEBUG) console.log("[BPM] render showData before loop, children:", this.contentEl.children.length);
         this.displayPlugins = [];
+        const bulkBarHost = this.bulkEditMode ? this.contentEl.createDiv("manager-bulk-bar-host") : null;
         const renderedIds = new Set<string>();
+        let renderedCount = 0;
         for (const [layoutIndex, layoutItem] of layoutItems.entries()) {
             if (!this.isRenderCurrent(renderGeneration, page)) return;
             if (layoutItem.type === "separator") {
@@ -1717,6 +2059,7 @@ export class ManagerModal extends Modal {
             itemEl.settingEl.toggleClass("has-update", Boolean(this.manager.updateStatus?.[plugin.id]?.hasUpdate));
             itemEl.settingEl.toggleClass("is-bpm-ignored", ManagerPlugin.tags.includes(BPM_IGNORE_TAG));
             itemEl.settingEl.toggleClass("is-hidden-layout", hiddenPluginIds.has(plugin.id));
+            itemEl.settingEl.toggleClass("is-bulk-selected", this.bulkSelectedPluginIds.has(plugin.id));
             itemEl.nameEl.addClass("manager-item__name-container");
             itemEl.nameEl.addClass("manager-plugin-card__header");
             itemEl.descEl.addClass("manager-item__description-container");
@@ -1729,9 +2072,26 @@ export class ManagerModal extends Modal {
                 itemEl.settingEl.addClass("manager-plugin-card--layout-editing");
                 this.bindPluginLayoutDragHandle(itemEl.settingEl, layoutIndex, ManagerPlugin.name || plugin.name || plugin.id);
             }
+            if (this.bulkEditMode) {
+                const selection = itemEl.settingEl.createDiv("manager-plugin-card__bulk-select");
+                const checkbox = selection.createEl("input", { type: "checkbox" });
+                checkbox.checked = this.bulkSelectedPluginIds.has(plugin.id);
+                checkbox.disabled = isSelf;
+                checkbox.setAttribute("aria-label", t("批量编辑_选择插件", { name: ManagerPlugin.name || plugin.name || plugin.id }));
+                checkbox.addEventListener("click", (event) => event.stopPropagation());
+                checkbox.addEventListener("change", () => {
+                    this.toggleBulkPluginSelection(plugin.id, checkbox.checked);
+                });
+                itemEl.settingEl.addEventListener("click", (event) => {
+                    const target = event.target;
+                    if (target instanceof HTMLElement && target.closest(".manager-plugin-card__actions, .manager-plugin-card__bulk-select, .manager-tag, .clickable-icon, button, input, select, textarea, a")) return;
+                    this.toggleBulkPluginSelection(plugin.id, !this.bulkSelectedPluginIds.has(plugin.id));
+                });
+            }
 
             // [右键操作]
             itemEl.settingEl.addEventListener("contextmenu", (event) => {
+                if (this.bulkEditMode) return;
                 event.preventDefault(); // 阻止默认的右键菜单
                 const menu = new Menu();
                 let hasContextMenuItems = false;
@@ -1916,9 +2276,10 @@ export class ManagerModal extends Modal {
 
             // [批量操作]
             this.displayPlugins.push(plugin);
+            renderedCount++;
 
             // [目录样式]
-            if (!this.editorMode) {
+            if (!this.editorMode && !this.bulkEditMode) {
                 switch (this.settings.ITEM_STYLE) {
                     case "alwaysExpand": itemEl.descEl.addClass("manager-display-block"); break;
                     case "neverExpand": itemEl.descEl.addClass("manager-display-none"); break;
@@ -1981,7 +2342,20 @@ export class ManagerModal extends Modal {
                 const item = groupSettingsById.get(ManagerPlugin.group);
                 if (item) {
                     const tag = this.manager.createTag(item.name, item.color, this.settings.GROUP_STYLE);
-                    if (this.editorMode) tag.onclick = () => { new GroupModal(this.app, this.manager, this, ManagerPlugin).open(); };
+                    tag.addClass("manager-item__group-chip");
+                    tag.setAttribute("role", "button");
+                    tag.setAttribute("tabindex", "0");
+                    tag.setAttribute("aria-label", this.manager.translator.t("分组编辑_打开切换", { name: ManagerPlugin.name || plugin.name || plugin.id }));
+                    const openGroupModal = (event?: Event) => {
+                        event?.preventDefault();
+                        event?.stopPropagation();
+                        new GroupModal(this.app, this.manager, this, ManagerPlugin).open();
+                    };
+                    tag.onclick = openGroupModal;
+                    tag.addEventListener("keydown", (event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        openGroupModal(event);
+                    });
                     group.appendChild(tag);
                 }
             }
@@ -2024,26 +2398,8 @@ export class ManagerModal extends Modal {
             versionWrap.appendChild(version);
             if (!this.editorMode) {
                 versionWrap.addClass("manager-item__versions--clickable");
-                versionWrap.addEventListener("click", async () => {
-                    const progress = this.showInlineProgress(this.manager.translator.t("通知_获取版本中文案"), plugin.id);
-                    progress.update(0, 1, plugin.id);
-                    try {
-                        const st = await this.manager.checkUpdateForPlugin(plugin.id);
-                        progress.update(1, 1, plugin.id);
-                        this.refreshSinglePluginUpdateUi(plugin.id);
-                        this.updateStats();
-                        const versions = st?.versions && st.versions.length > 0
-                            ? st.versions
-                            : st?.remoteVersion
-                                ? [{ version: st.remoteVersion, prerelease: /-/.test(st.remoteVersion) }]
-                                : [];
-                        new UpdateModal(this.app, this.manager, plugin.id, versions, st?.remoteVersion ?? null, st?.repo || undefined).open();
-                    } catch (e) {
-                        console.error("[BPM] fetch remote versions failed", e);
-                        new Notice(this.manager.translator.t("管理器_选择版本_获取失败提示"), 4000);
-                    } finally {
-                        progress.hide();
-                    }
+                versionWrap.addEventListener("click", () => {
+                    void this.openPluginVersionList(plugin.id, this.manager.updateStatus?.[plugin.id] as PluginUpdateViewStatus | undefined);
                 });
             }
             const updateInfo = this.manager.updateStatus?.[plugin.id];
@@ -2561,6 +2917,13 @@ export class ManagerModal extends Modal {
                 console.log("[BPM] render showData after loop, cards:", cards.length, "ids:", cards.map(el => el.getAttribute("data-plugin-id")).filter(Boolean).join(","));
             }
         }
+        if (bulkBarHost) this.renderBulkBar(bulkBarHost);
+        if (renderedCount === 0) {
+            const empty = this.contentEl.createDiv("bpm-empty-state manager-plugin-page__empty");
+            const icon = empty.createDiv();
+            setIcon(icon, "search-x");
+            empty.createDiv({ cls: "bpm-empty-state__text", text: t("管理器_暂无匹配插件") });
+        }
         // 计算页尾
         this.updateStats();
     }
@@ -2678,6 +3041,8 @@ export class ManagerModal extends Modal {
         this.desktopActionWrapper?.classList.toggle("is-ribbon-page", isRibbon);
         this.desktopActionWrapper?.classList.toggle("is-troubleshoot-page", isTroubleshoot);
         this.desktopActionWrapper?.classList.toggle("is-layout-editing", showLayoutTools);
+        this.desktopActionWrapper?.classList.toggle("is-bulk-editing", isPlugins && this.bulkEditMode);
+        this.bulkEditButtonEl?.classList.toggle("is-active", this.bulkEditMode);
         if (this.desktopFilterWrapper) {
             this.desktopFilterWrapper.classList.toggle("manager-display-none", !isPlugins);
             this.desktopFilterWrapper.style.display = isPlugins ? "" : "none";
@@ -2694,6 +3059,11 @@ export class ManagerModal extends Modal {
             return;
         }
         this.activePage = page;
+        if (page !== "plugins" && this.bulkEditMode) {
+            this.bulkEditMode = false;
+            this.bulkSelectedPluginIds.clear();
+            this.applyEditingStyle();
+        }
         this.syncPageChrome();
         this.renderContent();
     }
@@ -5351,14 +5721,20 @@ export class ManagerModal extends Modal {
         this.contentEl.empty();
         if (this.manager.ribbonModal === this.ribbonPage) this.manager.ribbonModal = null;
         if (this.modalContainer) this.modalContainer.removeClass("manager-container--editing");
+        if (this.modalContainer) this.modalContainer.removeClass("manager-container--bulk-editing"); 
     }
 
     private applyEditingStyle() {
         if (!this.modalContainer) return;
         if (this.editorMode) {
-            this.modalContainer.addClass("manager-container--editing");
+            this.modalContainer.addClass("manager-container--editing"); 
         } else {
             this.modalContainer.removeClass("manager-container--editing");
+        }
+        if (this.bulkEditMode) {
+            this.modalContainer.addClass("manager-container--bulk-editing");
+        } else {
+            this.modalContainer.removeClass("manager-container--bulk-editing");
         }
         if (this.desktopActionWrapper) this.syncPageChrome();
     }

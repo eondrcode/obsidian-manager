@@ -62,7 +62,7 @@ export interface ReleaseVersion {
 }
 
 const API_BASE = "https://api.github.com";
-const RELEASES_PER_PAGE = 50;
+const RELEASES_PER_PAGE = 100;
 const RELEASE_VERSION_CACHE_TTL_MS = 5 * 60 * 1000;
 
 /**
@@ -292,9 +292,14 @@ export const fetchReleaseVersions = async (manager: Manager, repoInput: string):
 		return cloneReleaseVersions(cached.versions);
 	}
 
-	const url = `${API_BASE}/repos/${repo}/releases?per_page=${RELEASES_PER_PAGE}`;
-	const releases = await fetchJson<ReleaseResponse[]>(url, token);
-	if (!Array.isArray(releases)) return [];
+	const releases: ReleaseResponse[] = [];
+	for (let page = 1; ; page++) {
+		const url = `${API_BASE}/repos/${repo}/releases?per_page=${RELEASES_PER_PAGE}&page=${page}`;
+		const pageReleases = await fetchJson<ReleaseResponse[]>(url, token);
+		if (!Array.isArray(pageReleases) || pageReleases.length === 0) break;
+		releases.push(...pageReleases);
+		if (pageReleases.length < RELEASES_PER_PAGE) break;
+	}
 
 	const versions = releases
 		.map((release) => ({
