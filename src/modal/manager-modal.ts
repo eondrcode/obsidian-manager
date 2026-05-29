@@ -88,6 +88,11 @@ type PluginRepoActionState = {
     disabled: boolean;
 };
 
+type PluginSearchIndexEntry = {
+    key: string;
+    text: string;
+};
+
 type StatusFilterValue = "all" | "enabled" | "disabled" | "grouped" | "ungrouped" | "tagged" | "untagged" | "noted" | "has-update" | "hidden";
 
 
@@ -146,12 +151,56 @@ export class ManagerModal extends Modal {
     private mobileFiltersCollapsed = true;
     private isCheckingPluginUpdates = false;
     private renderGeneration = 0;
+    private searchRenderTimer?: number;
+    private searchSaveTimer?: number;
+    private searchIndex = new Map<string, PluginSearchIndexEntry>();
+    private pluginManifestCache?: { source: Record<string, PluginManifest>; plugins: PluginManifest[] };
+    private readonly renderBatchSize = 80;
     private readonly desktopPages: ManagerPage[] = SHARED_VAULTS_ENABLED
         ? ["plugins", "install", "sources", "transfer", "vaults", "ribbon", "troubleshoot"]
         : ["plugins", "install", "sources", "transfer", "ribbon", "troubleshoot"];
 
     private nextRenderGeneration(): number {
         return ++this.renderGeneration;
+    }
+
+    private clearScheduledSearchRender() {
+        if (this.searchRenderTimer !== undefined) {
+            window.clearTimeout(this.searchRenderTimer);
+            this.searchRenderTimer = undefined;
+        }
+    }
+
+    private clearScheduledSearchWork() {
+        this.clearScheduledSearchRender();
+        if (this.searchSaveTimer !== undefined) {
+            window.clearTimeout(this.searchSaveTimer);
+            this.searchSaveTimer = undefined;
+        }
+    }
+
+    private scheduleSearchReload() {
+        this.clearScheduledSearchRender();
+        this.searchRenderTimer = window.setTimeout(() => {
+            this.searchRenderTimer = undefined;
+            void this.reloadShowData();
+        }, 120);
+    }
+
+    private scheduleSearchPersistence() {
+        if (!this.settings.PERSISTENCE) return;
+        if (this.searchSaveTimer !== undefined) window.clearTimeout(this.searchSaveTimer);
+        this.searchSaveTimer = window.setTimeout(() => {
+            this.searchSaveTimer = undefined;
+            void this.manager.saveSettings();
+        }, 350);
+    }
+
+    private handleSearchChange(value: string) {
+        this.searchText = value;
+        if (this.settings.PERSISTENCE) this.settings.FILTER_SEARCH = value;
+        this.scheduleSearchPersistence();
+        this.scheduleSearchReload();
     }
 
     private isRenderCurrent(renderGeneration: number, page: ManagerPage): boolean {
@@ -396,8 +445,14 @@ export class ManagerModal extends Modal {
         return this.matchesOperator(pluginTags.includes(tagId), operator);
     }
 
-    private matchesStatusFilter(plugin: ManagerPlugin, manifest: PluginManifest, isEnabled: boolean): boolean {
-        const filter = this.getStatusFilterValue();
+    private matchesStatusFilter(
+        plugin: ManagerPlugin,
+        manifest: PluginManifest,
+        isEnabled: boolean,
+        filter = this.getStatusFilterValue(),
+        operator = this.getStatusFilterOperator(),
+        hiddenPluginIds?: Set<string>
+    ): boolean {
         if (!filter || filter === "all") return true;
 
         const matched = (() => {
@@ -419,13 +474,13 @@ export class ManagerModal extends Modal {
                 case "has-update":
                     return Boolean(this.manager.updateStatus[manifest.id]?.hasUpdate);
                 case "hidden":
-                    return this.isPluginHidden(manifest.id);
+                    return hiddenPluginIds ? hiddenPluginIds.has(manifest.id) : this.isPluginHidden(manifest.id);
                 default:
                     return true;
             }
         })();
 
-        return this.matchesOperator(matched, this.getStatusFilterOperator());
+        return this.matchesOperator(matched, operator);
     }
 
     private openSupportQQGroup() {
@@ -648,6 +703,7 @@ export class ManagerModal extends Modal {
         new DeleteModal(this.app, this.manager, async () => {
             await this.appPlugins.uninstallPlugin(plugin.id);
             await this.appPlugins.loadManifests();
+            this.invalidatePluginCaches();
             this.reloadShowData();
             Commands(this.app, this.manager);
             this.manager.synchronizePlugins(Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manager.manifest.id) as PluginManifest[]);
@@ -1284,6 +1340,7 @@ export class ManagerModal extends Modal {
             await new Promise((r) => window.setTimeout(r, 50));
             try {
                 await this.appPlugins.loadManifests();
+                this.invalidatePluginCaches();
                 // 同步新发现的插件到 BPM 管理列表
                 this.manager.synchronizePlugins(
                     Object.values(this.appPlugins.manifests).filter(
@@ -1475,12 +1532,7 @@ export class ManagerModal extends Modal {
             this.searchEl.inputEl.value = this.searchText;
         }
         this.searchEl.onChange((value: string) => {
-            this.searchText = value;
-            if (this.settings.PERSISTENCE) {
-                this.settings.FILTER_SEARCH = value;
-                this.manager.saveSettings();
-            }
-            this.reloadShowData();
+            this.handleSearchChange(value);
         });
         searchBar.controlEl.appendChild(filterControlGroup);
 
@@ -1649,6 +1701,7 @@ export class ManagerModal extends Modal {
             // 重载插件
             menu.addItem((item) => item.setTitle(t("管理器_重载插件_描述")).setIcon("refresh-ccw").onClick(async () => {
                 await this.appPlugins.loadManifests();
+                this.invalidatePluginCaches();
                 // 同步新发现的插件到 BPM 管理列表
                 this.manager.synchronizePlugins(
                     Object.values(this.appPlugins.manifests).filter(
@@ -1706,12 +1759,7 @@ export class ManagerModal extends Modal {
             this.searchEl.inputEl.value = this.searchText;
         }
         this.searchEl.onChange((value: string) => {
-            this.searchText = value;
-            if (this.settings.PERSISTENCE) {
-                this.settings.FILTER_SEARCH = value;
-                this.manager.saveSettings();
-            }
-            this.reloadShowData();
+            this.handleSearchChange(value);
         });
 
         const filterHeader = header.createDiv("bpm-mobile-header__filters-toggle");
@@ -1935,6 +1983,7 @@ export class ManagerModal extends Modal {
             const menu = new Menu();
             menu.addItem((item) => item.setTitle(t("管理器_重载插件_描述")).setIcon("refresh-ccw").onClick(async () => {
                 await this.appPlugins.loadManifests();
+                this.invalidatePluginCaches();
                 await this.reloadShowData();
             }));
             menu.addItem((item) => item.setTitle(t("菜单_隐藏插件_标题")).setIcon("eye-off").onClick(async () => {
@@ -1970,16 +2019,10 @@ export class ManagerModal extends Modal {
     public async showData(renderGeneration = this.renderGeneration) {
         this.syncPluginOverviewLayoutClass();
         const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
-        // 使用 manifests 按 id 去重，防止重复渲染
         const page: ManagerPage = "plugins";
         if (!this.isRenderCurrent(renderGeneration, page)) return;
-        const manifestMap = this.appPlugins.manifests;
-        if (this.settings.DEBUG) console.log("[BPM] render showData manifests size:", Object.keys(manifestMap).length);
-        const uniqMap = new Map<string, PluginManifest>();
-        Object.values(manifestMap).forEach((mf: PluginManifest) => {
-            uniqMap.set(mf.id, mf);
-        });
-        const uniquePlugins = Array.from(uniqMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+        if (this.settings.DEBUG) console.log("[BPM] render showData manifests size:", Object.keys(this.appPlugins.manifests).length);
+        const uniquePlugins = this.getUniquePluginManifests();
         const manifestById = new Map(uniquePlugins.map((plugin) => [plugin.id, plugin]));
         const layoutItems = this.getPluginLayout(uniquePlugins);
         const pluginSettingsById = new Map(this.manager.settings.Plugins.map((plugin) => [plugin.id, plugin]));
@@ -1987,9 +2030,18 @@ export class ManagerModal extends Modal {
         const tagSettingsById = new Map(this.settings.TAGS.map((tag) => [tag.id, tag]));
         const delaySettingsById = new Map(this.settings.DELAYS.map((delay) => [delay.id, delay]));
         const hiddenPluginIds = new Set(this.settings.HIDES || []);
-        const lowerSearchText = this.searchText.toLowerCase();
+        const lowerSearchText = this.searchText.trim().toLowerCase();
+        const statusFilter = this.getStatusFilterValue();
+        const statusOperator = this.getStatusFilterOperator();
+        const groupFilter = this.getGroupFilterValue();
+        const groupOperator = this.getGroupFilterOperator();
+        const tagFilter = this.getTagFilterValue();
+        const tagOperator = this.getTagFilterOperator();
+        const delayFilter = this.getDelayFilterValue();
+        const delayOperator = this.getDelayFilterOperator();
         const getBasePath = (this.app.vault.adapter as any)?.getBasePath?.() as string | undefined;
         const basePath = getBasePath ? normalizePath(getBasePath) : "";
+        const cfgDir = this.app.vault.configDir;
         const showSeparators = this.shouldRenderPluginLayoutSeparators();
         const canEditLayout = this.editorMode && showSeparators;
         let pendingSeparator: string | null = null;
@@ -2000,11 +2052,18 @@ export class ManagerModal extends Modal {
         const bulkBarHost = this.bulkEditMode ? this.contentEl.createDiv("manager-bulk-bar-host") : null;
         const renderedIds = new Set<string>();
         let renderedCount = 0;
+        let renderedInBatch = 0;
         for (const [layoutIndex, layoutItem] of layoutItems.entries()) {
             if (!this.isRenderCurrent(renderGeneration, page)) return;
+            if (renderedInBatch >= this.renderBatchSize) {
+                renderedInBatch = 0;
+                await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+                if (!this.isRenderCurrent(renderGeneration, page)) return;
+            }
             if (layoutItem.type === "separator") {
                 if (canEditLayout) {
                     this.renderPluginLayoutSeparatorEditor(layoutItem, layoutIndex, layoutItems.length);
+                    renderedInBatch++;
                 } else if (showSeparators) {
                     pendingSeparator = layoutItem.title || this.manager.translator.t("管理器_布局_分割线");
                 }
@@ -2015,41 +2074,35 @@ export class ManagerModal extends Modal {
             if (renderedIds.has(plugin.id)) continue;
             renderedIds.add(plugin.id);
             const ManagerPlugin = pluginSettingsById.get(plugin.id);
-            // 计算插件目录的绝对路径：基于 vault 根路径 + configDir + plugin.dir
-            const cfgDir = this.app.vault.configDir; // 默认 .obsidian
+            if (!ManagerPlugin) continue;
+            const isSelf = plugin.id === this.manager.manifest.id;
+            const isEnabled = this.settings.DELAY ? ManagerPlugin.enabled : this.appPlugins.enabledPlugins.has(plugin.id);
+            if (!this.matchesStatusFilter(ManagerPlugin, plugin, isEnabled, statusFilter, statusOperator, hiddenPluginIds)) continue;
+            if (!this.matchesSingleValueFilter(ManagerPlugin.group, groupFilter, groupOperator)) continue;
+            if (!this.matchesTagFilter(ManagerPlugin.tags, tagFilter, tagOperator)) continue;
+            if (!this.matchesSingleValueFilter(ManagerPlugin.delay, delayFilter, delayOperator)) continue;
+            if (lowerSearchText !== "" && !this.getPluginSearchText(ManagerPlugin, plugin).includes(lowerSearchText)) continue;
+            if (!this.editorMode && !isSelf && hiddenPluginIds.has(plugin.id) && statusFilter !== "hidden") continue;
             const rawDir = plugin.dir || `plugins/${plugin.id}`;
             const isAbsolute = new RegExp("^(?:[a-zA-Z]:[\\\\/]|[\\\\/])").test(rawDir);
             let pluginDir: string;
             if (isAbsolute) {
                 pluginDir = normalizePath(rawDir);
             } else if (rawDir.startsWith(cfgDir) || rawDir.startsWith(".") || rawDir.startsWith("/")) {
-                // 已包含 .obsidian 或以相对根路径开头，直接拼 vault 根路径
                 pluginDir = normalizePath(`${basePath}/${rawDir}`);
             } else {
-                // 仅给出 plugins/<id> 相对路径，补上 configDir
                 pluginDir = normalizePath(`${basePath}/${cfgDir}/${rawDir}`);
             }
             if (this.settings.DEBUG) console.log("[BPM] render item", plugin.id, "children before add:", this.contentEl.children.length);
-            if (!ManagerPlugin) continue;
-            const isSelf = plugin.id === this.manager.manifest.id;
-            // 插件是否开启
-            const isEnabled = this.settings.DELAY ? ManagerPlugin.enabled : this.appPlugins.enabledPlugins.has(plugin.id);
-            // [过滤] 筛选
-            if (!this.matchesStatusFilter(ManagerPlugin, plugin, isEnabled)) continue;
-            if (!this.matchesSingleValueFilter(ManagerPlugin.group, this.getGroupFilterValue(), this.getGroupFilterOperator())) continue;
-            if (!this.matchesTagFilter(ManagerPlugin.tags, this.getTagFilterValue(), this.getTagFilterOperator())) continue;
-            if (!this.matchesSingleValueFilter(ManagerPlugin.delay, this.getDelayFilterValue(), this.getDelayFilterOperator())) continue;
-            // [过滤] 搜索
-            if (lowerSearchText !== "" && ManagerPlugin.name.toLowerCase().indexOf(lowerSearchText) == -1 && ManagerPlugin.desc.toLowerCase().indexOf(lowerSearchText) == -1 && (plugin.author || "").toLowerCase().indexOf(lowerSearchText) == -1) continue;
-            // [过滤] 隐藏
-            if (!this.editorMode && !isSelf && hiddenPluginIds.has(plugin.id) && this.getStatusFilterValue() !== "hidden") continue;
 
             if (pendingSeparator && this.displayPlugins.length > 0) {
                 this.renderPluginLayoutSeparator(pendingSeparator);
+                renderedInBatch++;
             }
             pendingSeparator = null;
 
             const itemEl = new Setting(this.contentEl);
+            renderedInBatch++;
             itemEl.settingEl.setAttr("data-plugin-id", plugin.id);
             itemEl.setClass("manager-item");
             itemEl.settingEl.addClass("manager-plugin-card");
@@ -3080,11 +3133,29 @@ export class ManagerModal extends Modal {
     }
 
     private getUniquePluginManifests(): PluginManifest[] {
+        const manifestMap = this.appPlugins.manifests as Record<string, PluginManifest>;
+        if (this.pluginManifestCache?.source === manifestMap) return this.pluginManifestCache.plugins;
         const uniqMap = new Map<string, PluginManifest>();
-        Object.values(this.appPlugins.manifests).forEach((mf: PluginManifest) => {
+        Object.values(manifestMap).forEach((mf: PluginManifest) => {
             uniqMap.set(mf.id, mf);
         });
-        return Array.from(uniqMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+        const plugins = Array.from(uniqMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+        this.pluginManifestCache = { source: manifestMap, plugins };
+        return plugins;
+    }
+
+    private invalidatePluginCaches() {
+        this.pluginManifestCache = undefined;
+        this.searchIndex.clear();
+    }
+
+    private getPluginSearchText(plugin: ManagerPlugin, manifest: PluginManifest): string {
+        const key = `${plugin.name}\n${plugin.desc}\n${manifest.author || ""}`;
+        const cached = this.searchIndex.get(plugin.id);
+        if (cached?.key === key) return cached.text;
+        const text = key.toLowerCase();
+        this.searchIndex.set(plugin.id, { key, text });
+        return text;
     }
 
     private getPluginLayout(manifests: PluginManifest[] = this.getUniquePluginManifests()): PluginLayoutItem[] {
@@ -3542,6 +3613,8 @@ export class ManagerModal extends Modal {
         const page = this.contentEl.createDiv("manager-hidden-page");
         const manifests = this.getUniquePluginManifests();
         const manifestById = new Map(manifests.map((plugin) => [plugin.id, plugin]));
+        const managerPluginById = new Map(this.manager.settings.Plugins.map((plugin) => [plugin.id, plugin]));
+        const hiddenPluginIds = new Set(this.settings.HIDES || []);
         const layout = this.getPluginLayout(manifests);
 
         const createOrderButton = (
@@ -3607,11 +3680,11 @@ export class ManagerModal extends Modal {
 
             const plugin = manifestById.get(layoutItem.id);
             if (!plugin) continue;
-            const managerPlugin = this.manager.settings.Plugins.find((mp) => mp.id === plugin.id);
+            const managerPlugin = managerPluginById.get(plugin.id);
             if (!managerPlugin) continue;
             const isSelf = plugin.id === this.manager.manifest.id;
             const isEnabled = this.settings.DELAY ? managerPlugin.enabled : this.appPlugins.enabledPlugins.has(plugin.id);
-            const isHidden = this.settings.HIDES.includes(plugin.id);
+            const isHidden = hiddenPluginIds.has(plugin.id);
 
             const card = page.createDiv("manager-hidden-card");
             card.setAttr("data-plugin-id", plugin.id);
@@ -4678,6 +4751,7 @@ export class ManagerModal extends Modal {
         const wasInstalled = Boolean(this.appPlugins.manifests?.[plugin.id]);
         const ok = await installPluginFromGithub(this.manager, repo, undefined, false);
         await this.appPlugins.loadManifests();
+        this.invalidatePluginCaches();
         if (ok && this.appPlugins.manifests?.[plugin.id]) {
             if (wasInstalled) {
                 result.updatedPlugins++;
@@ -5640,6 +5714,7 @@ export class ManagerModal extends Modal {
     public async reloadShowData() {
         this.ensureAllowedActivePage();
         if (this.settings.DEBUG) console.log("[BPM] reloadShowData start, children before empty:", this.contentEl.children.length);
+        this.clearScheduledSearchRender();
         const renderGeneration = this.nextRenderGeneration();
         const modalElement: HTMLElement = this.contentEl;
         const scrollTop = modalElement.scrollTop;
@@ -5718,6 +5793,11 @@ export class ManagerModal extends Modal {
     }
 
     public async onClose() {
+        this.clearScheduledSearchWork();
+        if (this.settings.PERSISTENCE && this.settings.FILTER_SEARCH !== this.searchText) {
+            this.settings.FILTER_SEARCH = this.searchText;
+            void this.manager.saveSettings();
+        }
         this.contentEl.empty();
         if (this.manager.ribbonModal === this.ribbonPage) this.manager.ribbonModal = null;
         if (this.modalContainer) this.modalContainer.removeClass("manager-container--editing");

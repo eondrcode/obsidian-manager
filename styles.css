@@ -168,6 +168,8 @@ body.theme-dark {
     padding: 12px 14px;
     margin-bottom: 8px;
     background: var(--background-secondary);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 96px;
 }
 
 .manager-bar__action {
