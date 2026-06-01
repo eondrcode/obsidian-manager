@@ -18,7 +18,7 @@ export class DisableModal extends Modal {
         //@ts-ignore
         const modalEl: HTMLElement = this.contentEl.parentElement;
         modalEl.addClass('manager-editor__container');
-        modalEl.removeChild(modalEl.getElementsByClassName('modal-close-button')[0]);
+        modalEl.getElementsByClassName('modal-close-button')[0]?.remove();
         this.titleEl.parentElement?.addClass('manager-container__header');
         this.contentEl.addClass('manager-item-container');
 

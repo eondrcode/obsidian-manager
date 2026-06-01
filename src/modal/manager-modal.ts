@@ -1221,7 +1221,7 @@ export class ManagerModal extends Modal {
         if (!this.settings.CENTER && !Platform.isMobileApp) modalEl.addClass("manager-container__top");
         if (this.editorMode) modalEl.addClass("manager-container--editing");
 
-        modalEl.removeChild(modalEl.getElementsByClassName("modal-close-button")[0]);
+        modalEl.getElementsByClassName("modal-close-button")[0]?.remove();
         this.titleEl.empty();
         this.titleEl.parentElement?.addClass("manager-container__header");
         this.contentEl.addClass("manager-item-container");

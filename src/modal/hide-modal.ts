@@ -97,7 +97,7 @@ export class HideModal extends Modal {
         modalEl.addClass("manager-container");
         // 靠上
         if (!this.settings.CENTER) modalEl.addClass("manager-container__top");
-        modalEl.removeChild(modalEl.getElementsByClassName("modal-close-button")[0]);
+        modalEl.getElementsByClassName("modal-close-button")[0]?.remove();
         this.titleEl.parentElement?.addClass("manager-container__header");
         this.contentEl.addClass("manager-item-container");
 
