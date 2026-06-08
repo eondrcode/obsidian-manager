@@ -216,6 +216,8 @@ export default {
     设置_基础设置_淡化插件_描述: 'Provide a visual fade effect for disabled plugins to clearly distinguish between enabled and disabled plugins.',
     设置_基础设置_隐藏BPM标签_标题: 'Hide Preset Tags (Install/Ignore)',
     设置_基础设置_隐藏BPM标签_描述: 'Hides automatically added bpm-install and bpm-ignore tags from the list.',
+    设置_基础设置_边栏编排_标题: 'Enable ribbon order',
+    设置_基础设置_边栏编排_描述: 'When enabled, BPM controls Ribbon icon order and visibility. When disabled, BPM removes its overrides and uses Obsidian native order.',
     设置_基础设置_启动检查更新_标题: 'Check updates on startup',
     设置_基础设置_启动检查更新_描述: 'When BPM opens, automatically check for plugin updates and briefly show the count.',
     设置_基础设置_来源启动检查更新_标题: 'Check source updates on startup',
@@ -274,6 +276,7 @@ export default {
 
     命令_管理面板_描述: 'Open the plugin manager',
     标签_BPM安装_名称: 'bpm install',
+    标签_Eondr插件_名称: 'Eondr plugin',
     管理器_下载更新_描述: 'Download an update (choose version, incl. pre-release)',
     安装_成功_提示: 'Installed/updated: {name}',
     安装_错误_限速: 'GitHub rate-limited (403). Please set a GitHub token and retry.',

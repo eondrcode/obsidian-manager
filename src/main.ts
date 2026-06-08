@@ -7,7 +7,7 @@ import Commands from './command';
 import Agreement from 'src/agreement';
 import { RepoResolver, ensureBpmTagExists, BPM_TAG_ID } from './repo-resolver';
 import { Notice, Platform, requestUrl } from 'obsidian';
-import { BetaSource, ManagerPlugin, BPM_IGNORE_TAG } from './data/types';
+import { BetaSource, ManagerPlugin, BPM_IGNORE_TAG, EONDR_PLUGIN_TAG_ID } from './data/types';
 import { runMigrations } from './migrations';
 import { fetchReleaseVersions, installPluginFromGithub, installThemeFromGithub, ReleaseVersion, sanitizeRepo } from './github-install';
 import { performSelfCheck } from './self-check';
@@ -27,6 +27,11 @@ interface UpdateStatus {
     versions?: ReleaseVersion[];
 }
 
+const EONDR_PLUGIN_RULES = [
+    { id: "i18n", repo: "eondrcode/obsidian-i18n" },
+];
+const EONDR_REPO_OWNER = "eondrcode";
+
 export default class Manager extends Plugin {
     public settings: ManagerSettings;
     public managerModal: ManagerModal;
@@ -38,7 +43,7 @@ export default class Manager extends Plugin {
 
     public agreement: Agreement;
     public repoResolver: RepoResolver;
-    public systemRibbonManager: SystemRibbonManager;
+    public systemRibbonManager?: SystemRibbonManager;
     public updateStatus: Record<string, UpdateStatus> = {};
     private updateProgressNotice: Notice | null = null;
 
@@ -68,8 +73,6 @@ export default class Manager extends Plugin {
         const tagCountBeforeBpmEnsure = this.settings.TAGS.length;
         ensureBpmTagExists(this);
         builtinTagsChanged = this.settings.TAGS.length !== tagCountBeforeBpmEnsure;
-        this.ensureBpmTagAndRecords();
-        this.ensureSelfPluginRecord();
 
         // 确保 BPM Ignore 标签存在
         if (!this.settings.TAGS.some(t => t.id === BPM_IGNORE_TAG)) {
@@ -80,18 +83,25 @@ export default class Manager extends Plugin {
             });
             builtinTagsChanged = true;
         }
+        if (!this.settings.TAGS.some(t => t.id === EONDR_PLUGIN_TAG_ID)) {
+            this.settings.TAGS.push({
+                id: EONDR_PLUGIN_TAG_ID,
+                name: this.translator.t("标签_Eondr插件_名称") || "Eondr Plugin",
+                color: "#B36BFF",
+            });
+            builtinTagsChanged = true;
+        }
+        this.ensureBpmTagAndRecords();
+        this.ensureSelfPluginRecord();
         if (this.normalizeBuiltinTagNames() || builtinTagsChanged) await this.saveSettings();
 
         this.repoResolver = new RepoResolver(this);
 
-        // 初始化 Ribbon 管理器。功能编排不写入 Obsidian workspace 配置，只用 BPM 数据驱动运行时样式。
-        this.systemRibbonManager = new SystemRibbonManager(this.app, this);
-        const savedRibbonItems = [...(this.settings.RIBBON_SETTINGS || [])]
-            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-        const orderedRibbonIds = savedRibbonItems.map((item) => item.id);
-        const hiddenRibbonStatus: Record<string, boolean> = {};
-        savedRibbonItems.forEach((item) => hiddenRibbonStatus[item.id] = !item.visible);
-        await this.syncRibbonConfig(orderedRibbonIds, hiddenRibbonStatus);
+        if (this.isRibbonManagerEnabled()) {
+            await this.syncStoredRibbonConfig();
+        } else {
+            this.clearRibbonStyleOverrides();
+        }
 
         // 初始化侧边栏图标
         this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), () => { this.managerModal = new ManagerModal(this.app, this); this.managerModal.open(); });
@@ -112,40 +122,32 @@ export default class Manager extends Plugin {
         });
 
         this.app.workspace.onLayoutReady(() => {
-            this.updateRibbonStyles();
-            if (Platform.isMobile) {
-                this.setupMenuObserver();
-            } else {
-                // 仅桌面端启用“拖出即隐藏”功能
-                this.setupDragToHideObserver();
-            }
+            this.startRibbonRuntimeFeatures();
             // 延迟启动自检，确保 Obsidian 初始化完成，避免自动接管被覆盖
             setTimeout(() => {
-                this.cleanRibbonItems(); // 启动后清理一次
+                if (this.isRibbonManagerEnabled()) this.cleanRibbonItems(); // 启动后清理一次
                 if (this.settings.DELAY) performSelfCheck(this);
             }, 2000);
         });
     }
 
     public async onunload() {
-        if (this.dragObserverCleanup) {
-            this.dragObserverCleanup();
-            this.dragObserverCleanup = null;
-        }
+        this.stopRibbonRuntimeFeatures();
 
         if (this.settings.DELAY) this.disableDelaysForAllPlugins();
-        if (this.menuObserver) {
-            this.menuObserver.disconnect();
-        }
 
         // 临走前再清理一次
-        this.cleanRibbonItems();
+        if (this.isRibbonManagerEnabled()) this.cleanRibbonItems();
 
         this.systemRibbonManager?.stopWatch();
+        this.clearRibbonStyleOverrides();
     }
 
     private setupDragToHideObserver() {
+        if (!this.isRibbonManagerEnabled() || this.dragObserverCleanup) return;
+
         const handlePointerDown = (e: PointerEvent) => {
+            if (!this.isRibbonManagerEnabled()) return;
             const target = e.target as HTMLElement;
             // 检查是否是 Ribbon Icon
             if (target && target.closest && target.closest('.side-dock-ribbon-action')) {
@@ -155,6 +157,11 @@ export default class Manager extends Plugin {
         };
 
         const handlePointerUp = async (e: PointerEvent) => {
+            if (!this.isRibbonManagerEnabled()) {
+                this.isRibbonDragging = false;
+                this.draggedRibbonItem = null;
+                return;
+            }
             if (!this.isRibbonDragging || !this.draggedRibbonItem) {
                 this.isRibbonDragging = false;
                 this.draggedRibbonItem = null;
@@ -204,6 +211,8 @@ export default class Manager extends Plugin {
     }
 
     private async hideRibbonItemByLabel(label: string) {
+        if (!this.isRibbonManagerEnabled()) return;
+
         // 查找对应的 Item ID
         const items = this.settings.RIBBON_SETTINGS;
         const targetItem = items.find(i => i.name === label); // name 通常就是 label
@@ -250,6 +259,84 @@ export default class Manager extends Plugin {
             this.updateRibbonStyles();
 
             new Notice(this.translator.t("Ribbon_已隐藏_通知", { name: label }));
+        }
+    }
+
+    public isRibbonManagerEnabled(): boolean {
+        return this.settings?.RIBBON_MANAGER_ENABLED !== false;
+    }
+
+    private ensureSystemRibbonManager() {
+        if (!this.systemRibbonManager) this.systemRibbonManager = new SystemRibbonManager(this.app, this);
+    }
+
+    private clearRibbonStyleOverrides() {
+        document.getElementById("bpm-ribbon-manager-style")?.remove();
+    }
+
+    private stopRibbonRuntimeFeatures() {
+        if (this.dragObserverCleanup) {
+            this.dragObserverCleanup();
+            this.dragObserverCleanup = null;
+        }
+        this.isRibbonDragging = false;
+        this.draggedRibbonItem = null;
+
+        if (this.menuObserver) {
+            this.menuObserver.disconnect();
+            this.menuObserver = null;
+        }
+    }
+
+    private async syncStoredRibbonConfig() {
+        if (!this.isRibbonManagerEnabled()) return;
+        this.ensureSystemRibbonManager();
+        const savedRibbonItems = [...(this.settings.RIBBON_SETTINGS || [])]
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const orderedRibbonIds = savedRibbonItems.map((item) => item.id);
+        const hiddenRibbonStatus: Record<string, boolean> = {};
+        savedRibbonItems.forEach((item) => hiddenRibbonStatus[item.id] = !item.visible);
+        await this.syncRibbonConfig(orderedRibbonIds, hiddenRibbonStatus);
+    }
+
+    private startRibbonRuntimeFeatures() {
+        if (!this.isRibbonManagerEnabled()) {
+            this.stopRibbonRuntimeFeatures();
+            this.clearRibbonStyleOverrides();
+            return;
+        }
+
+        this.ensureSystemRibbonManager();
+        this.updateRibbonStyles();
+        if (Platform.isMobile) {
+            this.setupMenuObserver();
+        } else {
+            // 仅桌面端启用“拖出即隐藏”功能
+            this.setupDragToHideObserver();
+        }
+    }
+
+    public async refreshRibbonManagerFeature() {
+        if (this.isRibbonManagerEnabled()) {
+            await this.syncStoredRibbonConfig();
+            this.startRibbonRuntimeFeatures();
+        } else {
+            this.stopRibbonRuntimeFeatures();
+            this.systemRibbonManager?.stopWatch();
+            this.systemRibbonManager = undefined;
+            this.clearRibbonStyleOverrides();
+            try {
+                this.ribbonModal?.close?.();
+            } catch {
+                // ignore
+            }
+            this.ribbonModal = null;
+        }
+
+        try {
+            await this.managerModal?.refreshRibbonFeatureAvailability?.();
+        } catch {
+            // ignore
         }
     }
 
@@ -441,6 +528,24 @@ export default class Manager extends Plugin {
             const mp = this.settings.Plugins.find(p => p.id === id);
             if (mp && !mp.tags.includes(BPM_TAG_ID)) mp.tags.push(BPM_TAG_ID);
         });
+        this.settings.Plugins.forEach((plugin) => this.applySpecialPluginTags(plugin));
+    }
+
+    private isEondrPlugin(pluginId: string): boolean {
+        const normalizedId = pluginId.trim().toLowerCase();
+        if (EONDR_PLUGIN_RULES.some((rule) => rule.id.toLowerCase() === normalizedId)) return true;
+
+        const mappedRepo = sanitizeRepo(this.settings.REPO_MAP?.[pluginId] || "").toLowerCase();
+        return Boolean(mappedRepo && (
+            mappedRepo.startsWith(`${EONDR_REPO_OWNER}/`)
+            || EONDR_PLUGIN_RULES.some((rule) => rule.repo.toLowerCase() === mappedRepo)
+        ));
+    }
+
+    public applySpecialPluginTags(plugin: ManagerPlugin) {
+        if (this.isEondrPlugin(plugin.id) && !plugin.tags.includes(EONDR_PLUGIN_TAG_ID)) {
+            plugin.tags.push(EONDR_PLUGIN_TAG_ID);
+        }
     }
 
     private normalizeBuiltinTagNames(): boolean {
@@ -468,6 +573,11 @@ export default class Manager extends Plugin {
             "BPM Ignore",
             "BPM Ignored",
         ], "#6c757d");
+        normalize(EONDR_PLUGIN_TAG_ID, this.translator.t("标签_Eondr插件_名称") || "Eondr 出品", [
+            "Eondr Plugin",
+            "Eondr Plugins",
+            "Eondr",
+        ], "#B36BFF");
         return changed;
     }
 
@@ -635,6 +745,7 @@ export default class Manager extends Plugin {
             if (bpmInstalledIds.has(p1Item.id) && !mp.tags.includes(BPM_TAG_ID)) {
                 mp.tags.push(BPM_TAG_ID);
             }
+            this.applySpecialPluginTags(mp);
         });
         this.settings.Plugins = nextPlugins;
         // BPM 自身保持启用且不允许延迟
@@ -982,6 +1093,10 @@ export default class Manager extends Plugin {
 
     public updateRibbonStyles() {
         if (!this.settings) return;
+        if (!this.isRibbonManagerEnabled()) {
+            this.clearRibbonStyleOverrides();
+            return;
+        }
 
         let styleEl = document.getElementById("bpm-ribbon-manager-style");
         if (!styleEl) {
@@ -1038,7 +1153,10 @@ export default class Manager extends Plugin {
     private menuObserver: MutationObserver | null = null;
 
     setupMenuObserver() {
+        if (!this.isRibbonManagerEnabled() || this.menuObserver) return;
+
         this.menuObserver = new MutationObserver((mutations) => {
+            if (!this.isRibbonManagerEnabled()) return;
             let shouldProcess = false;
             let targetNode: HTMLElement | null = null;
 
@@ -1075,6 +1193,8 @@ export default class Manager extends Plugin {
     }
 
     processMenuItems(menuScrollElement: HTMLElement) {
+        if (!this.isRibbonManagerEnabled()) return;
+
         // [修复] 移动端 Obsidian 菜单项包裹在 .menu-group 中
         // 必须在 .menu-group 内排序，否则会破坏样式布局
         let containerElement: HTMLElement = menuScrollElement;
@@ -1159,10 +1279,19 @@ export default class Manager extends Plugin {
 
     // 功能编排只应用运行时样式，不写入 Obsidian workspace 配置或 Ribbon 内存状态。
     applyRibbonConfigToMemory(orderedIds: string[], hiddenStatus: Record<string, boolean>) {
+        if (!this.isRibbonManagerEnabled()) {
+            this.clearRibbonStyleOverrides();
+            return;
+        }
         this.updateRibbonStyles();
     }
 
     public async syncRibbonConfig(orderedIds: string[], hiddenStatus: Record<string, boolean>) {
+        if (!this.isRibbonManagerEnabled()) {
+            this.clearRibbonStyleOverrides();
+            return;
+        }
+
         // 更新本地设置以匹配原生配置
         const currentItems = this.settings.RIBBON_SETTINGS || [];
         const itemMap = new Map(currentItems.map(i => [i.id, i]));

@@ -24,6 +24,7 @@ export interface Tag {
 // 已知的特殊 Tag
 export const BPM_TAG_ID = "bpm-install"; // BPM 安装标识
 export const BPM_IGNORE_TAG = "bpm-ignore"; // BPM 忽略标识
+export const EONDR_PLUGIN_TAG_ID = "bpm-eondr-plugin"; // Eondr 自有插件标识
 
 export interface Delay {
 

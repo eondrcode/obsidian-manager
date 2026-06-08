@@ -24,6 +24,11 @@ export class RibbonModal extends Modal {
     }
 
     async onOpen() {
+        if (!this.manager.isRibbonManagerEnabled()) {
+            this.close();
+            return;
+        }
+
         this.manager.ribbonModal = this;
         this.modalEl.addClass("ribbon-manager-modal");
         this.titleEl.setText(this.manager.translator.t("Ribbon_标题"));
@@ -33,6 +38,8 @@ export class RibbonModal extends Modal {
 
     // 同步 Ribbon 项：读取当前工作区的 Ribbon，合并到设置中
     async syncRibbonItems() {
+        if (!this.manager.isRibbonManagerEnabled()) return;
+
         // 以 BPM 自己的 data.json 为源头，只从运行时内存补齐新出现的 Ribbon 项。
         const savedItems = [...(this.manager.settings.RIBBON_SETTINGS || [])]
             .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -76,6 +83,7 @@ export class RibbonModal extends Modal {
         this.renderRootEl = contentEl;
         this.renderToolbarInRoot = showToolbar;
         contentEl.empty();
+        if (!this.manager.isRibbonManagerEnabled()) return;
 
         if (showToolbar) this.renderToolbar(contentEl);
         this.renderDraggableList(contentEl);
@@ -283,6 +291,8 @@ export class RibbonModal extends Modal {
     }
 
     async moveItem(oldIndex: number, newIndex: number) {
+        if (!this.manager.isRibbonManagerEnabled()) return;
+
         const items = this.manager.settings.RIBBON_SETTINGS;
         if (oldIndex < 0 || oldIndex >= items.length || newIndex < 0 || newIndex > items.length) {
             this.display();
@@ -297,6 +307,8 @@ export class RibbonModal extends Modal {
     }
 
     private async persistRibbonConfig() {
+        if (!this.manager.isRibbonManagerEnabled()) return;
+
         const items = this.manager.settings.RIBBON_SETTINGS;
         items.forEach((item, idx) => item.order = idx);
         await this.manager.saveSettings();
@@ -311,6 +323,8 @@ export class RibbonModal extends Modal {
     }
 
     async resetRibbonLayout() {
+        if (!this.manager.isRibbonManagerEnabled()) return;
+
         const items = this.manager.settings.RIBBON_SETTINGS;
         items.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
         items.forEach((item, idx) => {

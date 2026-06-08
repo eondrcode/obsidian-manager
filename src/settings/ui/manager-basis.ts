@@ -35,7 +35,14 @@ export default class ManagerBasis extends BaseSetting {
         const persistenceToggle = new ToggleComponent(persistenceBar.controlEl);
         persistenceToggle.setValue(this.settings.PERSISTENCE);
         persistenceToggle.onChange((value) => {
+            const managerModal = this.manager.managerModal;
+            if (value) {
+                managerModal?.persistCurrentFilters();
+            }
             this.settings.PERSISTENCE = value;
+            if (!value && managerModal) {
+                managerModal.usePersistedFiltersAsSessionFilters();
+            }
             this.manager.saveSettings();
         });
 
@@ -109,6 +116,17 @@ export default class ManagerBasis extends BaseSetting {
             this.settings.HIDE_BPM_TAG = value;
             this.manager.saveSettings();
             this.manager.managerModal?.reloadShowData();
+        });
+
+        const ribbonManagerBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t('设置_基础设置_边栏编排_标题'))
+            .setDesc(this.manager.translator.t('设置_基础设置_边栏编排_描述'));
+        const ribbonManagerToggle = new ToggleComponent(ribbonManagerBar.controlEl);
+        ribbonManagerToggle.setValue(this.settings.RIBBON_MANAGER_ENABLED !== false);
+        ribbonManagerToggle.onChange(async (value) => {
+            this.settings.RIBBON_MANAGER_ENABLED = value;
+            await this.manager.saveSettings();
+            await this.manager.refreshRibbonManagerFeature();
         });
 
         heading('设置_基础设置_分组_命令');

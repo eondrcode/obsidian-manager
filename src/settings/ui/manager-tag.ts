@@ -1,7 +1,7 @@
 import BaseSetting from "../base-setting";
 import { Notice, setIcon, Setting } from "obsidian";
 import { BPM_TAG_ID } from "src/repo-resolver";
-import { BPM_IGNORE_TAG } from "src/data/types";
+import { BPM_IGNORE_TAG, EONDR_PLUGIN_TAG_ID } from "src/data/types";
 import Commands from "src/command";
 
 export default class ManagerTag extends BaseSetting {
@@ -10,7 +10,7 @@ export default class ManagerTag extends BaseSetting {
     }
 
     private isPresetTag(tagId: string): boolean {
-        return tagId === BPM_TAG_ID || tagId === BPM_IGNORE_TAG;
+        return tagId === BPM_TAG_ID || tagId === BPM_IGNORE_TAG || tagId === EONDR_PLUGIN_TAG_ID;
     }
 
     main(): void {
@@ -77,7 +77,7 @@ export default class ManagerTag extends BaseSetting {
                     const nextId = id.trim();
                     const nextName = name.trim() || nextId;
                     const containsId = this.manager.settings.TAGS.some(tag => tag.id === nextId);
-                    if (!containsId && nextId !== '' && nextId !== BPM_TAG_ID && nextId !== BPM_IGNORE_TAG) {
+                    if (!containsId && nextId !== '' && !this.isPresetTag(nextId)) {
                         if (color === '') color = this.manager.generateAutoColor(this.manager.settings.TAGS.map(t => t.color));
                         this.manager.settings.TAGS.push({ id: nextId, name: nextName, color });
                         this.manager.saveSettings();

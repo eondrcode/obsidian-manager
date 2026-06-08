@@ -110,7 +110,7 @@ export class TroubleshootPanel {
         startBtn.setButtonText(this.t("排查_开始_按钮"));
         startBtn.setCta();
         startBtn.setDisabled(enabledPlugins.length === 0);
-        startBtn.onClick(async () => {
+        startBtn.onClick(async () => { 
             await this.startTroubleshoot();
         });
 

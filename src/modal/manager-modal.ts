@@ -16,7 +16,7 @@ import {
     Platform,
 } from "obsidian";
 
-import { BetaSource, BPM_IGNORE_TAG, InstallHistoryItem, ManagerPlugin, PluginLayoutItem } from "../data/types";
+import { BetaSource, BPM_IGNORE_TAG, EONDR_PLUGIN_TAG_ID, InstallHistoryItem, ManagerPlugin, PluginLayoutItem } from "../data/types";
 import { DEFAULT_MAIN_PAGE_ACTION_PLACEMENT, FilterOperator, MainPageActionId, ManagerSettings } from "../settings/data";
 import { managerOpen } from "../utils";
 
@@ -95,6 +95,15 @@ type PluginSearchIndexEntry = {
 
 type StatusFilterValue = "all" | "enabled" | "disabled" | "grouped" | "ungrouped" | "tagged" | "untagged" | "noted" | "has-update" | "hidden";
 
+type MultiSelectFilterControl = {
+    rootEl: HTMLElement;
+    buttonEl: HTMLButtonElement;
+    menuEl: HTMLElement;
+    setValues: (values: string[]) => void;
+    refreshOptions: (options: Array<[string, string]>, values?: string[]) => void;
+    close: () => void;
+};
+
 
 
 // ==============================
@@ -116,15 +125,19 @@ export class ManagerModal extends Modal {
 
     // 过滤器
     filter = "";
+    statusFilters: string[] = [];
     statusOperator: FilterOperator = "contains";
     // 分组内容
     group = "";
+    groups: string[] = [];
     groupOperator: FilterOperator = "contains";
     // 标签内容
     tag = "";
+    tags: string[] = [];
     tagOperator: FilterOperator = "contains";
     // 标签内容
     delay = "";
+    delays: string[] = [];
     delayOperator: FilterOperator = "contains";
     // 搜索内容
     searchText = "";
@@ -138,11 +151,11 @@ export class ManagerModal extends Modal {
     installVersions: ReleaseVersion[] = [];
     installTrackSource = true;
     searchBarEl?: HTMLElement;
-    statusDropdown?: DropdownComponent;
+    statusMultiSelect?: MultiSelectFilterControl;
     statusOperatorDropdown?: DropdownComponent;
-    groupDropdown?: DropdownComponent;
-    tagDropdown?: DropdownComponent;
-    delayDropdown?: DropdownComponent;
+    groupMultiSelect?: MultiSelectFilterControl;
+    tagMultiSelect?: MultiSelectFilterControl;
+    delayMultiSelect?: MultiSelectFilterControl;
     private bulkEditMode = false;
     private bulkSelectedPluginIds = new Set<string>();
     actionCollapsed = false;
@@ -207,9 +220,17 @@ export class ManagerModal extends Modal {
         return renderGeneration === this.renderGeneration && this.activePage === page;
     }
 
+    private isRibbonManagerEnabled(): boolean {
+        return this.settings.RIBBON_MANAGER_ENABLED !== false;
+    }
+
+    private getAvailableDesktopPages(): ManagerPage[] {
+        return this.desktopPages.filter((page) => page !== "ribbon" || this.isRibbonManagerEnabled());
+    }
+
     private normalizeManagerPage(page: ManagerPage): ManagerPage {
         if (!SHARED_VAULTS_ENABLED && page === "vaults") return "plugins";
-        return this.desktopPages.includes(page) ? page : "plugins";
+        return this.getAvailableDesktopPages().includes(page) ? page : "plugins";
     }
 
     private ensureAllowedActivePage() {
@@ -306,32 +327,92 @@ export class ManagerModal extends Modal {
         return value === "not-contains" ? "not-contains" : "contains";
     }
 
+    private normalizeFilterValues(values: unknown, allValue: string): string[] {
+        const normalized: string[] = [];
+        const source = Array.isArray(values) ? values : [];
+        for (const value of source) {
+            const next = `${value || ""}`.trim();
+            if (!next || next === allValue || normalized.includes(next)) continue;
+            normalized.push(next);
+        }
+        return normalized;
+    }
+
+    private filterValuesByAvailable(values: unknown, availableValues: string[], allValue: string): string[] {
+        const available = new Set(availableValues.filter((value) => value && value !== allValue));
+        return this.normalizeFilterValues(values, allValue).filter((value) => available.has(value));
+    }
+
+    private valuesFromSingleFilter(value: string | undefined, allValue: string): string[] {
+        return this.normalizeFilterValues(value ? [value] : [], allValue);
+    }
+
+    private getStatusFilterValues(): string[] {
+        const availableValues = Object.keys(this.getStatusFilterOptions());
+        const values = this.settings.PERSISTENCE
+            ? this.filterValuesByAvailable(this.settings.FILTER_STATUS_VALUES, availableValues, "all")
+            : this.filterValuesByAvailable(this.statusFilters, availableValues, "all");
+        if (values.length > 0) return values;
+        const fallback = this.settings.PERSISTENCE ? this.settings.FILTER_STATUS : this.filter;
+        return this.filterValuesByAvailable([fallback || "all"], availableValues, "all");
+    }
+
     private getStatusFilterValue(): string {
-        return this.settings.PERSISTENCE ? (this.settings.FILTER_STATUS || "all") : (this.filter || "all");
+        return this.getStatusFilterValues()[0] || "all";
     }
 
     private getStatusFilterOperator(): FilterOperator {
         return this.normalizeFilterOperator(this.settings.PERSISTENCE ? this.settings.FILTER_STATUS_OPERATOR : this.statusOperator);
     }
 
+    private getGroupFilterValues(): string[] {
+        const availableValues = this.settings.GROUPS.map((group) => group.id);
+        const values = this.settings.PERSISTENCE
+            ? this.filterValuesByAvailable(this.settings.FILTER_GROUP_VALUES, availableValues, "")
+            : this.filterValuesByAvailable(this.groups, availableValues, "");
+        if (values.length > 0) return values;
+        const fallback = this.settings.PERSISTENCE ? this.settings.FILTER_GROUP : this.group;
+        return this.filterValuesByAvailable([fallback], availableValues, "");
+    }
+
     private getGroupFilterValue(): string {
-        return this.settings.PERSISTENCE ? this.settings.FILTER_GROUP : this.group;
+        return this.getGroupFilterValues()[0] || "";
     }
 
     private getGroupFilterOperator(): FilterOperator {
         return this.normalizeFilterOperator(this.settings.PERSISTENCE ? this.settings.FILTER_GROUP_OPERATOR : this.groupOperator);
     }
 
+    private getTagFilterValues(): string[] {
+        const availableValues = this.settings.TAGS.map((tag) => tag.id);
+        const values = this.settings.PERSISTENCE
+            ? this.filterValuesByAvailable(this.settings.FILTER_TAG_VALUES, availableValues, "")
+            : this.filterValuesByAvailable(this.tags, availableValues, "");
+        if (values.length > 0) return values;
+        const fallback = this.settings.PERSISTENCE ? this.settings.FILTER_TAG : this.tag;
+        return this.filterValuesByAvailable([fallback], availableValues, "");
+    }
+
     private getTagFilterValue(): string {
-        return this.settings.PERSISTENCE ? this.settings.FILTER_TAG : this.tag;
+        return this.getTagFilterValues()[0] || "";
     }
 
     private getTagFilterOperator(): FilterOperator {
         return this.normalizeFilterOperator(this.settings.PERSISTENCE ? this.settings.FILTER_TAG_OPERATOR : this.tagOperator);
     }
 
+    private getDelayFilterValues(): string[] {
+        const availableValues = this.settings.DELAYS.map((delay) => delay.id);
+        const values = this.settings.PERSISTENCE
+            ? this.filterValuesByAvailable(this.settings.FILTER_DELAY_VALUES, availableValues, "")
+            : this.filterValuesByAvailable(this.delays, availableValues, "");
+        if (values.length > 0) return values;
+        const fallback = this.settings.PERSISTENCE ? this.settings.FILTER_DELAY : this.delay;
+        return this.filterValuesByAvailable([fallback], availableValues, "");
+    }
+
     private getDelayFilterValue(): string {
-        return this.settings.PERSISTENCE ? this.settings.FILTER_DELAY : this.delay;
+        return this.getDelayFilterValues()[0] || "";
     }
 
     private getDelayFilterOperator(): FilterOperator {
@@ -339,18 +420,89 @@ export class ManagerModal extends Modal {
     }
 
     private hasActiveStatusFilter(): boolean {
-        const filter = this.getStatusFilterValue();
-        return Boolean(filter && filter !== "all");
+        return this.getStatusFilterValues().length > 0;
+    }
+
+    public persistCurrentFilters() {
+        const statusValues = this.getStatusFilterValues();
+        const groupValues = this.getGroupFilterValues();
+        const tagValues = this.getTagFilterValues();
+        const delayValues = this.getDelayFilterValues();
+        this.settings.FILTER_SEARCH = this.searchText || "";
+        this.settings.FILTER_STATUS_VALUES = statusValues;
+        this.settings.FILTER_STATUS = statusValues[0] || "all";
+        this.settings.FILTER_STATUS_OPERATOR = this.getStatusFilterOperator();
+        this.settings.FILTER_GROUP_VALUES = groupValues;
+        this.settings.FILTER_GROUP = groupValues[0] || "";
+        this.settings.FILTER_GROUP_OPERATOR = this.getGroupFilterOperator();
+        this.settings.FILTER_TAG_VALUES = tagValues;
+        this.settings.FILTER_TAG = tagValues[0] || "";
+        this.settings.FILTER_TAG_OPERATOR = this.getTagFilterOperator();
+        this.settings.FILTER_DELAY_VALUES = delayValues;
+        this.settings.FILTER_DELAY = delayValues[0] || "";
+        this.settings.FILTER_DELAY_OPERATOR = this.getDelayFilterOperator();
+    }
+
+    public usePersistedFiltersAsSessionFilters() {
+        const statusValues = this.normalizeFilterValues(this.settings.FILTER_STATUS_VALUES, "all");
+        const groupValues = this.normalizeFilterValues(this.settings.FILTER_GROUP_VALUES, "");
+        const tagValues = this.normalizeFilterValues(this.settings.FILTER_TAG_VALUES, "");
+        const delayValues = this.normalizeFilterValues(this.settings.FILTER_DELAY_VALUES, "");
+        this.statusFilters = statusValues.length > 0 ? statusValues : this.valuesFromSingleFilter(this.settings.FILTER_STATUS, "all");
+        this.filter = this.statusFilters[0] || "all";
+        this.groups = groupValues.length > 0 ? groupValues : this.valuesFromSingleFilter(this.settings.FILTER_GROUP, "");
+        this.group = this.groups[0] || "";
+        this.tags = tagValues.length > 0 ? tagValues : this.valuesFromSingleFilter(this.settings.FILTER_TAG, "");
+        this.tag = this.tags[0] || "";
+        this.delays = delayValues.length > 0 ? delayValues : this.valuesFromSingleFilter(this.settings.FILTER_DELAY, "");
+        this.delay = this.delays[0] || "";
+        this.statusOperator = this.normalizeFilterOperator(this.settings.FILTER_STATUS_OPERATOR);
+        this.groupOperator = this.normalizeFilterOperator(this.settings.FILTER_GROUP_OPERATOR);
+        this.tagOperator = this.normalizeFilterOperator(this.settings.FILTER_TAG_OPERATOR);
+        this.delayOperator = this.normalizeFilterOperator(this.settings.FILTER_DELAY_OPERATOR);
+        this.searchText = this.settings.FILTER_SEARCH || this.searchText || "";
+    }
+
+    private migratePersistedFilterValues() {
+        if (!this.settings.PERSISTENCE) return;
+        const statusValues = this.getStatusFilterValues();
+        const groupValues = this.getGroupFilterValues();
+        const tagValues = this.getTagFilterValues();
+        const delayValues = this.getDelayFilterValues();
+        const changed = JSON.stringify(this.settings.FILTER_STATUS_VALUES || []) !== JSON.stringify(statusValues)
+            || JSON.stringify(this.settings.FILTER_GROUP_VALUES || []) !== JSON.stringify(groupValues)
+            || JSON.stringify(this.settings.FILTER_TAG_VALUES || []) !== JSON.stringify(tagValues)
+            || JSON.stringify(this.settings.FILTER_DELAY_VALUES || []) !== JSON.stringify(delayValues)
+            || this.settings.FILTER_STATUS !== (statusValues[0] || "all")
+            || this.settings.FILTER_GROUP !== (groupValues[0] || "")
+            || this.settings.FILTER_TAG !== (tagValues[0] || "")
+            || this.settings.FILTER_DELAY !== (delayValues[0] || "");
+        if (!changed) return;
+        this.settings.FILTER_STATUS_VALUES = statusValues;
+        this.settings.FILTER_STATUS = statusValues[0] || "all";
+        this.settings.FILTER_GROUP_VALUES = groupValues;
+        this.settings.FILTER_GROUP = groupValues[0] || "";
+        this.settings.FILTER_TAG_VALUES = tagValues;
+        this.settings.FILTER_TAG = tagValues[0] || "";
+        this.settings.FILTER_DELAY_VALUES = delayValues;
+        this.settings.FILTER_DELAY = delayValues[0] || "";
+        void this.manager.saveSettings();
+    }
+
+    private setStatusFilterValues(values: string[]) {
+        const next = this.normalizeFilterValues(values, "all");
+        if (this.settings.PERSISTENCE) {
+            this.settings.FILTER_STATUS_VALUES = next;
+            this.settings.FILTER_STATUS = next[0] || "all";
+            this.manager.saveSettings();
+        } else {
+            this.statusFilters = next;
+            this.filter = next[0] || "all";
+        }
     }
 
     private setStatusFilterValue(value: string) {
-        const next = value || "all";
-        if (this.settings.PERSISTENCE) {
-            this.settings.FILTER_STATUS = next;
-            this.manager.saveSettings();
-        } else {
-            this.filter = next;
-        }
+        this.setStatusFilterValues(value && value !== "all" ? [value] : []);
     }
 
     private setStatusFilterOperator(value: string) {
@@ -368,19 +520,26 @@ export class ManagerModal extends Modal {
         this.installMode = false;
         this.setStatusFilterOperator("contains");
         this.setStatusFilterValue(value);
-        this.statusDropdown?.setValue(value);
+        this.statusMultiSelect?.setValues(value === "all" ? [] : [value]);
         this.statusOperatorDropdown?.setValue("contains");
         this.syncPageChrome();
         void this.reloadShowData();
     }
 
-    private setGroupFilterValue(value: string) {
+    private setGroupFilterValues(values: string[]) {
+        const next = this.normalizeFilterValues(values, "");
         if (this.settings.PERSISTENCE) {
-            this.settings.FILTER_GROUP = value;
+            this.settings.FILTER_GROUP_VALUES = next;
+            this.settings.FILTER_GROUP = next[0] || "";
             this.manager.saveSettings();
         } else {
-            this.group = value;
+            this.groups = next;
+            this.group = next[0] || "";
         }
+    }
+
+    private setGroupFilterValue(value: string) {
+        this.setGroupFilterValues(value ? [value] : []);
     }
 
     private setGroupFilterOperator(value: string) {
@@ -393,13 +552,20 @@ export class ManagerModal extends Modal {
         }
     }
 
-    private setTagFilterValue(value: string) {
+    private setTagFilterValues(values: string[]) {
+        const next = this.normalizeFilterValues(values, "");
         if (this.settings.PERSISTENCE) {
-            this.settings.FILTER_TAG = value;
+            this.settings.FILTER_TAG_VALUES = next;
+            this.settings.FILTER_TAG = next[0] || "";
             this.manager.saveSettings();
         } else {
-            this.tag = value;
+            this.tags = next;
+            this.tag = next[0] || "";
         }
+    }
+
+    private setTagFilterValue(value: string) {
+        this.setTagFilterValues(value ? [value] : []);
     }
 
     private setTagFilterOperator(value: string) {
@@ -412,13 +578,20 @@ export class ManagerModal extends Modal {
         }
     }
 
-    private setDelayFilterValue(value: string) {
+    private setDelayFilterValues(values: string[]) {
+        const next = this.normalizeFilterValues(values, "");
         if (this.settings.PERSISTENCE) {
-            this.settings.FILTER_DELAY = value;
+            this.settings.FILTER_DELAY_VALUES = next;
+            this.settings.FILTER_DELAY = next[0] || "";
             this.manager.saveSettings();
         } else {
-            this.delay = value;
+            this.delays = next;
+            this.delay = next[0] || "";
         }
+    }
+
+    private setDelayFilterValue(value: string) {
+        this.setDelayFilterValues(value ? [value] : []);
     }
 
     private setDelayFilterOperator(value: string) {
@@ -435,28 +608,31 @@ export class ManagerModal extends Modal {
         return operator === "contains" ? matched : !matched;
     }
 
-    private matchesSingleValueFilter(value: string, filterValue: string, operator: FilterOperator): boolean {
-        if (!filterValue) return true;
-        return this.matchesOperator(value === filterValue, operator);
+    private matchesSingleValueFilter(value: string, filterValue: string | string[], operator: FilterOperator): boolean {
+        const values = this.normalizeFilterValues(Array.isArray(filterValue) ? filterValue : [filterValue], "");
+        if (values.length === 0) return true;
+        return this.matchesOperator(values.includes(value), operator);
     }
 
-    private matchesTagFilter(pluginTags: string[] = [], tagId: string, operator: FilterOperator): boolean {
-        if (!tagId) return true;
-        return this.matchesOperator(pluginTags.includes(tagId), operator);
+    private matchesTagFilter(pluginTags: string[] = [], tagId: string | string[], operator: FilterOperator): boolean {
+        const values = this.normalizeFilterValues(Array.isArray(tagId) ? tagId : [tagId], "");
+        if (values.length === 0) return true;
+        return this.matchesOperator(values.some((value) => pluginTags.includes(value)), operator);
     }
 
     private matchesStatusFilter(
         plugin: ManagerPlugin,
         manifest: PluginManifest,
         isEnabled: boolean,
-        filter = this.getStatusFilterValue(),
+        filter: string | string[] = this.getStatusFilterValues(),
         operator = this.getStatusFilterOperator(),
         hiddenPluginIds?: Set<string>
     ): boolean {
-        if (!filter || filter === "all") return true;
+        const values = this.normalizeFilterValues(Array.isArray(filter) ? filter : [filter], "all");
+        if (values.length === 0) return true;
 
-        const matched = (() => {
-            switch (filter) {
+        const matchesStatus = (status: string) => {
+            switch (status) {
                 case "enabled":
                     return isEnabled;
                 case "disabled":
@@ -478,9 +654,154 @@ export class ManagerModal extends Modal {
                 default:
                     return true;
             }
-        })();
+        };
+        const matched = values.some(matchesStatus);
 
         return this.matchesOperator(matched, operator);
+    }
+
+    private formatMultiSelectSummary(values: string[], options: Array<[string, string]>, allLabel: string): string {
+        if (values.length === 0) return allLabel;
+        const labelsByValue = new Map(options.map(([value, label]) => [value, label]));
+        if (values.length === 1) return labelsByValue.get(values[0]) || values[0];
+        const firstLabel = labelsByValue.get(values[0]) || values[0];
+        return `${firstLabel} +${values.length - 1}`;
+    }
+
+    private createMultiSelectFilter(
+        container: HTMLElement,
+        options: Array<[string, string]>,
+        values: string[],
+        allValue: string,
+        allLabel: string,
+        ariaLabel: string,
+        onChange: (values: string[]) => void
+    ): MultiSelectFilterControl {
+        const rootEl = container.createDiv("manager-multiselect-filter");
+        const buttonEl = rootEl.createEl("button", { cls: "manager-multiselect-filter__trigger" });
+        buttonEl.type = "button";
+        buttonEl.setAttribute("aria-label", ariaLabel);
+        buttonEl.setAttribute("aria-haspopup", "listbox");
+        buttonEl.setAttribute("aria-expanded", "false");
+        const summaryEl = buttonEl.createSpan({ cls: "manager-multiselect-filter__summary" });
+        const countEl = buttonEl.createSpan({ cls: "manager-multiselect-filter__count" });
+        const chevronEl = buttonEl.createSpan({ cls: "manager-multiselect-filter__chevron" });
+        setIcon(chevronEl, "chevron-down");
+        const menuEl = rootEl.createDiv("manager-multiselect-filter__menu");
+        menuEl.setAttribute("role", "listbox");
+        menuEl.setAttribute("aria-multiselectable", "true");
+        menuEl.setAttribute("aria-label", ariaLabel);
+
+        let currentOptions = options;
+        let selectedValues = this.normalizeFilterValues(values, allValue);
+        let isOpen = false;
+
+        const updateButton = () => {
+            summaryEl.setText(this.formatMultiSelectSummary(selectedValues, currentOptions, allLabel));
+            countEl.setText(selectedValues.length > 0 ? `${selectedValues.length}` : "");
+            countEl.toggleClass("is-empty", selectedValues.length === 0);
+            buttonEl.toggleClass("has-selection", selectedValues.length > 0);
+        };
+
+        function handleDocumentClick() {
+            close();
+        }
+
+        function close() {
+            isOpen = false;
+            rootEl.removeClass("is-open");
+            buttonEl.setAttribute("aria-expanded", "false");
+            document.removeEventListener("click", handleDocumentClick);
+        }
+
+        const toggleOpen = () => {
+            if (isOpen) {
+                close();
+                return;
+            }
+            isOpen = true;
+            rootEl.addClass("is-open");
+            buttonEl.setAttribute("aria-expanded", "true");
+            window.setTimeout(() => document.addEventListener("click", handleDocumentClick), 0);
+        };
+
+        const emitChange = () => {
+            updateButton();
+            onChange([...selectedValues]);
+        };
+
+        const renderOptions = () => {
+            menuEl.empty();
+            const allOption = menuEl.createEl("button", { cls: "manager-multiselect-filter__option" });
+            allOption.type = "button";
+            allOption.setAttribute("role", "option");
+            allOption.setAttribute("aria-selected", `${selectedValues.length === 0}`);
+            allOption.toggleClass("is-selected", selectedValues.length === 0);
+            const allCheck = allOption.createSpan({ cls: "manager-multiselect-filter__check" });
+            setIcon(allCheck, selectedValues.length === 0 ? "check" : "circle");
+            allOption.createSpan({ cls: "manager-multiselect-filter__option-label", text: allLabel });
+            allOption.addEventListener("click", () => {
+                selectedValues = [];
+                renderOptions();
+                emitChange();
+            });
+
+            for (const [value, label] of currentOptions) {
+                if (value === allValue) continue;
+                const selected = selectedValues.includes(value);
+                const optionEl = menuEl.createEl("button", { cls: "manager-multiselect-filter__option" });
+                optionEl.type = "button";
+                optionEl.setAttribute("role", "option");
+                optionEl.setAttribute("aria-selected", `${selected}`);
+                optionEl.toggleClass("is-selected", selected);
+                const check = optionEl.createSpan({ cls: "manager-multiselect-filter__check" });
+                setIcon(check, selected ? "square-check-big" : "square");
+                optionEl.createSpan({ cls: "manager-multiselect-filter__option-label", text: label });
+                optionEl.addEventListener("click", () => {
+                    selectedValues = selected
+                        ? selectedValues.filter((item) => item !== value)
+                        : [...selectedValues, value];
+                    renderOptions();
+                    emitChange();
+                });
+            }
+        };
+
+        buttonEl.addEventListener("click", (event) => {
+            event.stopPropagation();
+            toggleOpen();
+        });
+        rootEl.addEventListener("click", (event) => event.stopPropagation());
+        rootEl.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                close();
+            }
+        });
+
+        const control: MultiSelectFilterControl = {
+            rootEl,
+            buttonEl,
+            menuEl,
+            setValues: (nextValues: string[]) => {
+                selectedValues = this.normalizeFilterValues(nextValues, allValue);
+                renderOptions();
+                updateButton();
+            },
+            refreshOptions: (nextOptions: Array<[string, string]>, nextValues?: string[]) => {
+                currentOptions = nextOptions;
+                const availableValues = new Set(nextOptions.map(([value]) => value).filter((value) => value !== allValue));
+                selectedValues = this.normalizeFilterValues(nextValues || selectedValues, allValue)
+                    .filter((value) => availableValues.has(value));
+                renderOptions();
+                updateButton();
+            },
+            close,
+        };
+
+        renderOptions();
+        updateButton();
+        return control;
     }
 
     private openSupportQQGroup() {
@@ -639,9 +960,15 @@ export class ManagerModal extends Modal {
             this.addPluginDownloadButton(controlEl, pluginId, updateInfo, true);
         }
 
-        if (this.getStatusFilterValue() === "has-update" && this.getStatusFilterOperator() === "contains" && !hasUpdate) {
-            card.remove();
-            this.displayPlugins = this.displayPlugins.filter((plugin) => plugin.id !== pluginId);
+        const manifest = this.getUniquePluginManifests().find((plugin) => plugin.id === pluginId);
+        const managerPlugin = this.manager.settings.Plugins.find((plugin) => plugin.id === pluginId);
+        if (manifest && managerPlugin) {
+            const isEnabled = this.settings.DELAY ? managerPlugin.enabled : this.appPlugins.enabledPlugins.has(pluginId);
+            const hiddenPluginIds = new Set(this.settings.HIDES || []);
+            if (!this.matchesStatusFilter(managerPlugin, manifest, isEnabled, this.getStatusFilterValues(), this.getStatusFilterOperator(), hiddenPluginIds)) {
+                card.remove();
+                this.displayPlugins = this.displayPlugins.filter((plugin) => plugin.id !== pluginId);
+            }
         }
     }
 
@@ -1019,8 +1346,10 @@ export class ManagerModal extends Modal {
         const plugins = this.getSelectedManagerPlugins();
         if (plugins.length === 0) return;
         if (!window.confirm(t("批量编辑_清除全部标签确认", { count: plugins.length }))) return;
+        const protectedTagIds = new Set([BPM_TAG_ID, BPM_IGNORE_TAG, EONDR_PLUGIN_TAG_ID]);
         plugins.forEach((plugin) => {
-            plugin.tags = plugin.tags.filter((id) => id === BPM_TAG_ID);
+            plugin.tags = plugin.tags.filter((id) => protectedTagIds.has(id));
+            this.manager.applySpecialPluginTags(plugin);
         });
         await this.finishBulkMetadataEdit("批量编辑_已移除标签", plugins.length);
     }
@@ -1211,6 +1540,7 @@ export class ManagerModal extends Modal {
     }
 
     public async showHead() {
+        this.migratePersistedFilterValues();
         const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
         //@ts-ignore
         const modalEl: HTMLElement = this.contentEl.parentElement;
@@ -1287,7 +1617,9 @@ export class ManagerModal extends Modal {
         this.vaultsTabEl = SHARED_VAULTS_ENABLED
             ? createTab("vaults", t("共享库_Tab_标题"), "folder-sync", t("共享库_Tab_说明"))
             : undefined;
-        this.ribbonTabEl = createTab("ribbon", t("管理器_Tab_功能编排"), "grip-vertical", t("Ribbon_功能编排_说明"));
+        this.ribbonTabEl = this.isRibbonManagerEnabled()
+            ? createTab("ribbon", t("管理器_Tab_功能编排"), "grip-vertical", t("Ribbon_功能编排_说明"))
+            : undefined;
         this.troubleshootTabEl = createTab("troubleshoot", t("排查_Tab_短标题"), "search-check");
 
         const tools = toolbar.createDiv("manager-toolbar__tools");
@@ -1379,19 +1711,22 @@ export class ManagerModal extends Modal {
             }
         });
 
-        const ribbonResetButton = new ButtonComponent(actionBar.controlEl);
-        markTool(ribbonResetButton, "ribbon", 10);
-        ribbonResetButton.setIcon("rotate-ccw");
-        ribbonResetButton.setTooltip(t("Ribbon_重置_提示"));
-        ribbonResetButton.buttonEl.setAttribute("aria-label", t("Ribbon_重置_提示"));
-        this.bindLongPressTooltip(ribbonResetButton.buttonEl, t("Ribbon_重置_提示"));
-        ribbonResetButton.onClick(async () => {
-            if (!window.confirm(t("Ribbon_重置_确认"))) return;
-            if (!this.ribbonPage) this.ribbonPage = new RibbonModal(this.app, this.manager);
-            this.manager.ribbonModal = this.ribbonPage;
-            await this.ribbonPage.syncRibbonItems();
-            await this.ribbonPage.resetRibbonLayout();
-        });
+        if (this.isRibbonManagerEnabled()) {
+            const ribbonResetButton = new ButtonComponent(actionBar.controlEl);
+            markTool(ribbonResetButton, "ribbon", 10);
+            ribbonResetButton.setIcon("rotate-ccw");
+            ribbonResetButton.setTooltip(t("Ribbon_重置_提示"));
+            ribbonResetButton.buttonEl.setAttribute("aria-label", t("Ribbon_重置_提示"));
+            this.bindLongPressTooltip(ribbonResetButton.buttonEl, t("Ribbon_重置_提示"));
+            ribbonResetButton.onClick(async () => {
+                if (!window.confirm(t("Ribbon_重置_确认"))) return;
+                if (!this.isRibbonManagerEnabled()) return;
+                if (!this.ribbonPage) this.ribbonPage = new RibbonModal(this.app, this.manager);
+                this.manager.ribbonModal = this.ribbonPage;
+                await this.ribbonPage.syncRibbonItems();
+                await this.ribbonPage.resetRibbonLayout();
+            });
+        }
 
         const addSeparatorButton = new ButtonComponent(actionBar.controlEl);
         markTool(addSeparatorButton, "layout", 60);
@@ -1539,27 +1874,19 @@ export class ManagerModal extends Modal {
         // 过滤器
         const statusControl = createFilterSelectField(t("通用_状态_文本"), "list-filter", "compound");
         this.statusOperatorDropdown = createOperatorDropdown(statusControl, this.getStatusFilterOperator(), t("筛选_状态取反_标签"), (value) => this.setStatusFilterOperator(value));
-        const filterDropdown = new DropdownComponent(statusControl);
-        filterDropdown.addOptions(this.getStatusFilterOptions());
-        filterDropdown.setValue(this.getStatusFilterValue());
-        filterDropdown.selectEl.setAttribute("aria-label", t("筛选_状态_标签"));
-        filterDropdown.onChange((value) => {
-            this.setStatusFilterValue(value);
+        const statusOptions = Object.entries(this.getStatusFilterOptions());
+        this.statusMultiSelect = this.createMultiSelectFilter(statusControl, statusOptions, this.getStatusFilterValues(), "all", this.getStatusFilterOptions()["all"], t("筛选_状态_标签"), (values) => {
+            this.setStatusFilterValues(values);
             this.reloadShowData();
         });
-        this.statusDropdown = filterDropdown;
 
 
         // [过滤行] 分组选择列表
         const groups = this.getGroupFilterOptions(this.manager.translator.t("筛选_全部_描述"));
         const groupControl = createFilterSelectField(t("通用_分组_文本"), "folder-tree", "compound");
         createOperatorDropdown(groupControl, this.getGroupFilterOperator(), t("筛选_分组取反_标签"), (value) => this.setGroupFilterOperator(value));
-        this.groupDropdown = new DropdownComponent(groupControl);
-        this.addOrderedOptions(this.groupDropdown, groups);
-        this.groupDropdown.setValue(this.getGroupFilterValue());
-        this.groupDropdown.selectEl.setAttribute("aria-label", t("筛选_分组_标签"));
-        this.groupDropdown.onChange((value) => {
-            this.setGroupFilterValue(value);
+        this.groupMultiSelect = this.createMultiSelectFilter(groupControl, groups, this.getGroupFilterValues(), "", groups[0]?.[1] || t("筛选_全部_描述"), t("筛选_分组_标签"), (values) => {
+            this.setGroupFilterValues(values);
             this.reloadShowData();
         });
 
@@ -1567,12 +1894,8 @@ export class ManagerModal extends Modal {
         const tags = this.getTagFilterOptions(this.manager.translator.t("筛选_全部_描述"));
         const tagControl = createFilterSelectField(t("通用_标签_文本"), "tags", "compound");
         createOperatorDropdown(tagControl, this.getTagFilterOperator(), t("筛选_标签取反_标签"), (value) => this.setTagFilterOperator(value));
-        this.tagDropdown = new DropdownComponent(tagControl);
-        this.addOrderedOptions(this.tagDropdown, tags);
-        this.tagDropdown.setValue(this.getTagFilterValue());
-        this.tagDropdown.selectEl.setAttribute("aria-label", t("筛选_标签_标签"));
-        this.tagDropdown.onChange((value) => {
-            this.setTagFilterValue(value);
+        this.tagMultiSelect = this.createMultiSelectFilter(tagControl, tags, this.getTagFilterValues(), "", tags[0]?.[1] || t("筛选_全部_描述"), t("筛选_标签_标签"), (values) => {
+            this.setTagFilterValues(values);
             this.reloadShowData();
         });
 
@@ -1581,12 +1904,8 @@ export class ManagerModal extends Modal {
             const delays = this.getDelayFilterOptions(this.manager.translator.t("筛选_全部_描述"), true);
             const delayControl = createFilterSelectField(t("通用_延迟_文本"), "timer", "compound");
             createOperatorDropdown(delayControl, this.getDelayFilterOperator(), t("筛选_延迟取反_标签"), (value) => this.setDelayFilterOperator(value));
-            this.delayDropdown = new DropdownComponent(delayControl);
-            this.addOrderedOptions(this.delayDropdown, delays);
-            this.delayDropdown.setValue(this.getDelayFilterValue());
-            this.delayDropdown.selectEl.setAttribute("aria-label", t("筛选_延迟_标签"));
-            this.delayDropdown.onChange((value) => {
-                this.setDelayFilterValue(value);
+            this.delayMultiSelect = this.createMultiSelectFilter(delayControl, delays, this.getDelayFilterValues(), "", delays[0]?.[1] || t("筛选_全部_描述"), t("筛选_延迟_标签"), (values) => {
+                this.setDelayFilterValues(values);
                 this.reloadShowData();
             });
         }
@@ -1594,6 +1913,7 @@ export class ManagerModal extends Modal {
 
     private showHeadMobile() {
         const t = (k: any) => this.manager.translator.t(k);
+        this.migratePersistedFilterValues();
         this.titleEl.empty();
 
         const header = this.titleEl.createDiv("bpm-mobile-header");
@@ -1726,11 +2046,14 @@ export class ManagerModal extends Modal {
                     await this.resetPluginLayout();
                 }));
             }
-            menu.addSeparator();
-            // Ribbon 管理
-            menu.addItem((item) => item.setTitle(t("管理器_Ribbon管理_描述")).setIcon("grip-vertical").onClick(() => {
-                new RibbonModal(this.app, this.manager).open();
-            }));
+            if (this.isRibbonManagerEnabled()) {
+                menu.addSeparator();
+                // Ribbon 管理
+                menu.addItem((item) => item.setTitle(t("管理器_Ribbon管理_描述")).setIcon("grip-vertical").onClick(() => {
+                    if (!this.isRibbonManagerEnabled()) return;
+                    new RibbonModal(this.app, this.manager).open();
+                }));
+            }
             // 插件市场
             menu.addItem((item) => item.setTitle(t("管理器_插件市场_描述")).setIcon("store").onClick(() => {
                 void this.openPluginMarket();
@@ -1778,69 +2101,57 @@ export class ManagerModal extends Modal {
         const activeFiltersContainer = header.createDiv("bpm-active-filters");
         const updateActiveFilters = () => {
             activeFiltersContainer.empty();
-            const currentStatus = this.getStatusFilterValue();
-            const currentGroup = this.getGroupFilterValue();
-            const currentTag = this.getTagFilterValue();
-            const currentDelay = this.getDelayFilterValue();
+            const currentStatuses = this.getStatusFilterValues();
+            const currentGroups = this.getGroupFilterValues();
+            const currentTags = this.getTagFilterValues();
+            const currentDelays = this.getDelayFilterValues();
 
-            // 状态筛选标签
-            if (currentStatus && currentStatus !== "all") {
-                const filterLabels = this.getStatusFilterOptions();
+            const addChip = (label: string, operator: FilterOperator, onRemove: () => void) => {
                 const chip = activeFiltersContainer.createDiv("bpm-active-filter-chip");
-                chip.setText(this.formatFilterChipLabel(filterLabels[currentStatus] || currentStatus, this.getStatusFilterOperator()));
+                chip.setText(this.formatFilterChipLabel(label, operator));
                 const closeIcon = chip.createSpan("bpm-active-filter-chip__close");
                 setIcon(closeIcon, "x");
                 chip.addEventListener("click", () => {
-                    this.setStatusFilterValue("all");
+                    onRemove();
                     this.showHeadMobile();
                     this.reloadShowData();
+                });
+            };
+
+            // 状态筛选标签
+            const filterLabels = this.getStatusFilterOptions();
+            for (const status of currentStatuses) {
+                addChip(filterLabels[status] || status, this.getStatusFilterOperator(), () => {
+                    this.setStatusFilterValues(this.getStatusFilterValues().filter((value) => value !== status));
                 });
             }
 
             // 分组筛选标签
-            if (currentGroup) {
-                const groupItem = this.settings.GROUPS.find(g => g.id === currentGroup);
+            for (const group of currentGroups) {
+                const groupItem = this.settings.GROUPS.find(g => g.id === group);
                 if (groupItem) {
-                    const chip = activeFiltersContainer.createDiv("bpm-active-filter-chip");
-                    chip.setText(this.formatFilterChipLabel(groupItem.name, this.getGroupFilterOperator()));
-                    const closeIcon = chip.createSpan("bpm-active-filter-chip__close");
-                    setIcon(closeIcon, "x");
-                    chip.addEventListener("click", () => {
-                        this.setGroupFilterValue("");
-                        this.showHeadMobile();
-                        this.reloadShowData();
+                    addChip(groupItem.name, this.getGroupFilterOperator(), () => {
+                        this.setGroupFilterValues(this.getGroupFilterValues().filter((value) => value !== group));
                     });
                 }
             }
 
             // 标签筛选标签
-            if (currentTag) {
-                const tagItem = this.settings.TAGS.find(t => t.id === currentTag);
+            for (const tag of currentTags) {
+                const tagItem = this.settings.TAGS.find(t => t.id === tag);
                 if (tagItem) {
-                    const chip = activeFiltersContainer.createDiv("bpm-active-filter-chip");
-                    chip.setText(this.formatFilterChipLabel(tagItem.name, this.getTagFilterOperator()));
-                    const closeIcon = chip.createSpan("bpm-active-filter-chip__close");
-                    setIcon(closeIcon, "x");
-                    chip.addEventListener("click", () => {
-                        this.setTagFilterValue("");
-                        this.showHeadMobile();
-                        this.reloadShowData();
+                    addChip(tagItem.name, this.getTagFilterOperator(), () => {
+                        this.setTagFilterValues(this.getTagFilterValues().filter((value) => value !== tag));
                     });
                 }
             }
 
             // 延迟筛选标签
-            if (currentDelay) {
-                const delayItem = this.settings.DELAYS.find(d => d.id === currentDelay);
+            for (const delay of currentDelays) {
+                const delayItem = this.settings.DELAYS.find(d => d.id === delay);
                 if (delayItem) {
-                    const chip = activeFiltersContainer.createDiv("bpm-active-filter-chip");
-                    chip.setText(this.formatFilterChipLabel(delayItem.name, this.getDelayFilterOperator()));
-                    const closeIcon = chip.createSpan("bpm-active-filter-chip__close");
-                    setIcon(closeIcon, "x");
-                    chip.addEventListener("click", () => {
-                        this.setDelayFilterValue("");
-                        this.showHeadMobile();
-                        this.reloadShowData();
+                    addChip(delayItem.name, this.getDelayFilterOperator(), () => {
+                        this.setDelayFilterValues(this.getDelayFilterValues().filter((value) => value !== delay));
                     });
                 }
             }
@@ -1873,38 +2184,31 @@ export class ManagerModal extends Modal {
         // 状态
         const statusSetting = new Setting(filterPanel).setName(t("通用_状态_文本"));
         addMobileOperatorDropdown(statusSetting, this.getStatusFilterOperator(), t("筛选_状态取反_标签"), (value) => this.setStatusFilterOperator(value));
-        statusSetting.addDropdown((dd) => {
-            dd.addOptions(this.getStatusFilterOptions());
-            dd.setValue(this.getStatusFilterValue());
-            dd.onChange((v) => { this.setStatusFilterValue(v); this.showHeadMobile(); this.reloadShowData(); });
+        const statusOptions = Object.entries(this.getStatusFilterOptions());
+        this.createMultiSelectFilter(statusSetting.controlEl, statusOptions, this.getStatusFilterValues(), "all", this.getStatusFilterOptions()["all"], t("筛选_状态_标签"), (values) => {
+            this.setStatusFilterValues(values);
+            this.showHeadMobile();
+            this.reloadShowData();
         });
 
         // 分组
         const groups = this.getGroupFilterOptions(t("筛选_全部_描述"));
         const groupSetting = new Setting(filterPanel).setName(t("通用_分组_文本"));
         addMobileOperatorDropdown(groupSetting, this.getGroupFilterOperator(), t("筛选_分组取反_标签"), (value) => this.setGroupFilterOperator(value));
-        groupSetting.addDropdown((dd) => {
-            this.addOrderedOptions(dd, groups);
-            dd.setValue(this.getGroupFilterValue());
-            dd.onChange((value) => {
-                this.setGroupFilterValue(value);
-                this.showHeadMobile();
-                this.reloadShowData();
-            });
+        this.createMultiSelectFilter(groupSetting.controlEl, groups, this.getGroupFilterValues(), "", groups[0]?.[1] || t("筛选_全部_描述"), t("筛选_分组_标签"), (values) => {
+            this.setGroupFilterValues(values);
+            this.showHeadMobile();
+            this.reloadShowData();
         });
 
         // 标签
         const tags = this.getTagFilterOptions(t("筛选_全部_描述"));
         const tagSetting = new Setting(filterPanel).setName(t("通用_标签_文本"));
         addMobileOperatorDropdown(tagSetting, this.getTagFilterOperator(), t("筛选_标签取反_标签"), (value) => this.setTagFilterOperator(value));
-        tagSetting.addDropdown((dd) => {
-            this.addOrderedOptions(dd, tags);
-            dd.setValue(this.getTagFilterValue());
-            dd.onChange((value) => {
-                this.setTagFilterValue(value);
-                this.showHeadMobile();
-                this.reloadShowData();
-            });
+        this.createMultiSelectFilter(tagSetting.controlEl, tags, this.getTagFilterValues(), "", tags[0]?.[1] || t("筛选_全部_描述"), t("筛选_标签_标签"), (values) => {
+            this.setTagFilterValues(values);
+            this.showHeadMobile();
+            this.reloadShowData();
         });
 
         // 延迟
@@ -1912,14 +2216,10 @@ export class ManagerModal extends Modal {
             const delays = this.getDelayFilterOptions(t("筛选_全部_描述"));
             const delaySetting = new Setting(filterPanel).setName(t("通用_延迟_文本"));
             addMobileOperatorDropdown(delaySetting, this.getDelayFilterOperator(), t("筛选_延迟取反_标签"), (value) => this.setDelayFilterOperator(value));
-            delaySetting.addDropdown((dd) => {
-                this.addOrderedOptions(dd, delays);
-                dd.setValue(this.getDelayFilterValue());
-                dd.onChange((value) => {
-                    this.setDelayFilterValue(value);
-                    this.showHeadMobile();
-                    this.reloadShowData();
-                });
+            this.createMultiSelectFilter(delaySetting.controlEl, delays, this.getDelayFilterValues(), "", delays[0]?.[1] || t("筛选_全部_描述"), t("筛选_延迟_标签"), (values) => {
+                this.setDelayFilterValues(values);
+                this.showHeadMobile();
+                this.reloadShowData();
             });
         }
     }
@@ -2031,13 +2331,13 @@ export class ManagerModal extends Modal {
         const delaySettingsById = new Map(this.settings.DELAYS.map((delay) => [delay.id, delay]));
         const hiddenPluginIds = new Set(this.settings.HIDES || []);
         const lowerSearchText = this.searchText.trim().toLowerCase();
-        const statusFilter = this.getStatusFilterValue();
+        const statusFilter = this.getStatusFilterValues();
         const statusOperator = this.getStatusFilterOperator();
-        const groupFilter = this.getGroupFilterValue();
+        const groupFilter = this.getGroupFilterValues();
         const groupOperator = this.getGroupFilterOperator();
-        const tagFilter = this.getTagFilterValue();
+        const tagFilter = this.getTagFilterValues();
         const tagOperator = this.getTagFilterOperator();
-        const delayFilter = this.getDelayFilterValue();
+        const delayFilter = this.getDelayFilterValues();
         const delayOperator = this.getDelayFilterOperator();
         const getBasePath = (this.app.vault.adapter as any)?.getBasePath?.() as string | undefined;
         const basePath = getBasePath ? normalizePath(getBasePath) : "";
@@ -2082,7 +2382,7 @@ export class ManagerModal extends Modal {
             if (!this.matchesTagFilter(ManagerPlugin.tags, tagFilter, tagOperator)) continue;
             if (!this.matchesSingleValueFilter(ManagerPlugin.delay, delayFilter, delayOperator)) continue;
             if (lowerSearchText !== "" && !this.getPluginSearchText(ManagerPlugin, plugin).includes(lowerSearchText)) continue;
-            if (!this.editorMode && !isSelf && hiddenPluginIds.has(plugin.id) && statusFilter !== "hidden") continue;
+            if (!this.editorMode && !isSelf && hiddenPluginIds.has(plugin.id) && !statusFilter.includes("hidden")) continue;
             const rawDir = plugin.dir || `plugins/${plugin.id}`;
             const isAbsolute = new RegExp("^(?:[a-zA-Z]:[\\\\/]|[\\\\/])").test(rawDir);
             let pluginDir: string;
@@ -2850,11 +3150,9 @@ export class ManagerModal extends Modal {
                             isRestoring = false;
                             return;
                         }
-                        const statusFilter = this.getStatusFilterValue();
+                        const statusFilter = this.getStatusFilterValues();
                         const statusOperator = this.getStatusFilterOperator();
-                        const removeByFilter = statusOperator === "contains"
-                            ? ((statusFilter === "enabled" && !targetEnabled) || (statusFilter === "disabled" && targetEnabled))
-                            : ((statusFilter === "enabled" && targetEnabled) || (statusFilter === "disabled" && !targetEnabled));
+                        const removeByFilter = !this.matchesStatusFilter(ManagerPlugin, plugin, targetEnabled, statusFilter, statusOperator, hiddenPluginIds);
                         const updateCardUI = () => {
                             itemEl.settingEl.toggleClass("is-enabled", targetEnabled);
                             itemEl.settingEl.toggleClass("is-disabled", !targetEnabled);
@@ -2930,6 +3228,7 @@ export class ManagerModal extends Modal {
                     ManagerPlugin.group = "";
                     ManagerPlugin.delay = "";
                     ManagerPlugin.tags = [];
+                    this.manager.applySpecialPluginTags(ManagerPlugin);
                     await this.manager.savePluginAndExport(plugin.id);
                     this.reloadShowData();
                 });
@@ -3020,7 +3319,7 @@ export class ManagerModal extends Modal {
         const updateStatuses = this.manager.updateStatus || {};
         const checkedCount = Object.keys(updateStatuses).length;
         const updateCount = this.getPluginUpdateCount(updateStatuses);
-        const activeStatusFilter = this.getStatusFilterValue();
+        const activeStatusFilters = this.getStatusFilterValues();
 
         this.footEl.empty();
         const statItems: Array<{ cls: string; icon: string; label: string; value: number; filter: StatusFilterValue }> = [
@@ -3041,11 +3340,12 @@ export class ManagerModal extends Modal {
         statItems.forEach((item) => {
             const chip = this.footEl.createSpan({ cls: `bpm-stat-chip ${item.cls}` });
             chip.addClass("bpm-stat-chip--interactive");
-            chip.toggleClass("is-active", activeStatusFilter === item.filter && this.getStatusFilterOperator() === "contains");
+            const isActive = (item.filter === "all" ? activeStatusFilters.length === 0 : activeStatusFilters.includes(item.filter)) && this.getStatusFilterOperator() === "contains";
+            chip.toggleClass("is-active", isActive);
             chip.setAttribute("role", "button");
             chip.setAttribute("tabindex", "0");
             chip.setAttribute("aria-label", `${item.label} ${item.value}`);
-            chip.setAttribute("aria-pressed", `${activeStatusFilter === item.filter && this.getStatusFilterOperator() === "contains"}`);
+            chip.setAttribute("aria-pressed", `${isActive}`);
             const icon = chip.createSpan({ cls: "bpm-stat-chip__icon" });
             setIcon(icon, item.icon);
             chip.createSpan({ cls: "bpm-stat-chip__label", text: item.label });
@@ -3203,9 +3503,9 @@ export class ManagerModal extends Modal {
 
     private shouldRenderPluginLayoutSeparators(): boolean {
         return !this.hasActiveStatusFilter()
-            && !this.getGroupFilterValue()
-            && !this.getTagFilterValue()
-            && !this.getDelayFilterValue()
+            && this.getGroupFilterValues().length === 0
+            && this.getTagFilterValues().length === 0
+            && this.getDelayFilterValues().length === 0
             && !this.searchText;
     }
 
@@ -4312,6 +4612,15 @@ export class ManagerModal extends Modal {
     }
 
     private async showRibbonPanel(renderGeneration = this.renderGeneration) {
+        if (!this.isRibbonManagerEnabled()) {
+            this.activePage = "plugins";
+            this.installMode = false;
+            this.syncPageChrome();
+            this.contentEl.empty();
+            await this.showData(renderGeneration);
+            return;
+        }
+
         this.contentEl.empty();
         const page = this.contentEl.createDiv("manager-ribbon-page ribbon-manager-modal");
         page.createDiv({
@@ -5749,32 +6058,26 @@ export class ManagerModal extends Modal {
     private async refreshFilterOptions(preserveScroll = false) {
         const scrollTop = preserveScroll ? this.contentEl.scrollTop : 0;
         // 重新计算并刷新分组/标签/延迟下拉的计数
-        if (this.groupDropdown) {
-            const currentGroup = this.groupDropdown.selectEl.value ?? (this.settings.PERSISTENCE ? this.settings.FILTER_GROUP : this.group);
+        if (this.groupMultiSelect) {
             const groups = this.getGroupFilterOptions(this.manager.translator.t("筛选_全部_描述"));
-            const current = this.settings.PERSISTENCE ? this.settings.FILTER_GROUP : currentGroup;
-            this.resetDropdown(this.groupDropdown, groups, current);
+            this.groupMultiSelect.refreshOptions(groups, this.getGroupFilterValues());
         }
-        if (this.tagDropdown) {
-            const currentTag = this.tagDropdown.selectEl.value ?? (this.settings.PERSISTENCE ? this.settings.FILTER_TAG : this.tag);
+        if (this.tagMultiSelect) {
             const tags = this.getTagFilterOptions(this.manager.translator.t("筛选_全部_描述"));
-            const current = this.settings.PERSISTENCE ? this.settings.FILTER_TAG : currentTag;
-            this.resetDropdown(this.tagDropdown, tags, current);
+            this.tagMultiSelect.refreshOptions(tags, this.getTagFilterValues());
         }
-        if (this.settings.DELAY && this.delayDropdown) {
-            const currentDelay = this.delayDropdown.selectEl.value ?? (this.settings.PERSISTENCE ? this.settings.FILTER_DELAY : this.delay);
+        if (this.settings.DELAY && this.delayMultiSelect) {
             const delays = this.getDelayFilterOptions(this.manager.translator.t("筛选_全部_描述"));
-            const current = this.settings.PERSISTENCE ? this.settings.FILTER_DELAY : currentDelay;
-            this.resetDropdown(this.delayDropdown, delays, current);
+            this.delayMultiSelect.refreshOptions(delays, this.getDelayFilterValues());
         }
         await this.reloadShowData();
         if (preserveScroll) this.contentEl.scrollTo({ top: scrollTop });
     }
 
-    private resetDropdown(dropdown: DropdownComponent, options: Array<[string, string]>, value: string) {
-        dropdown.selectEl.empty();
-        this.addOrderedOptions(dropdown, options);
-        dropdown.setValue(options.some(([optionValue]) => optionValue === value) ? value : options[0]?.[0] || "");
+    public async refreshRibbonFeatureAvailability() {
+        this.ensureAllowedActivePage();
+        await this.showHead();
+        this.renderContent();
     }
 
     public async onOpen() {

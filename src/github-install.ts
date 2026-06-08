@@ -1,6 +1,7 @@
 import { Notice, normalizePath, requestUrl } from "obsidian";
 import type { PluginManifest, RequestUrlResponse } from "obsidian";
 import Manager from "main";
+import type { ManagerPlugin } from "./data/types";
 import { BPM_TAG_ID } from "./repo-resolver";
 
 /**
@@ -260,10 +261,11 @@ const upsertInstalledPluginRecord = (
 		plugin.desc = nextDesc || plugin.desc;
 		plugin.enabled = true;
 		if (shouldHaveBpmTag && !plugin.tags.includes(BPM_TAG_ID)) plugin.tags.push(BPM_TAG_ID);
+		manager.applySpecialPluginTags(plugin);
 		return;
 	}
 
-	manager.settings.Plugins.push({
+	const record: ManagerPlugin = {
 		id: pluginId,
 		name: nextName,
 		desc: nextDesc,
@@ -272,7 +274,9 @@ const upsertInstalledPluginRecord = (
 		enabled: true,
 		delay: "",
 		note: "",
-	});
+	};
+	manager.applySpecialPluginTags(record);
+	manager.settings.Plugins.push(record);
 };
 
 /**

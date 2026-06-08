@@ -58,6 +58,8 @@ export interface ManagerSettings {
     DELAY: boolean;
     /** 是否在插件卡片中隐藏 BPM 内置标签，例如 BPM 管理标识和 BPM 忽略。 */
     HIDE_BPM_TAG: boolean;
+    /** 是否启用边栏编排接管；关闭时 BPM 不再排序或隐藏 Ribbon 图标。 */
+    RIBBON_MANAGER_ENABLED: boolean;
     /** 管理页插件功能显示位置；item 表示直接展示在插件卡片上，menu 表示收纳到右键菜单。 */
     MAIN_PAGE_ACTION_PLACEMENT: MainPageActionPlacementSettings;
     /** 自检发现非 BPM 管理插件时，是否自动接管 community-plugins.json。 */
@@ -81,15 +83,19 @@ export interface ManagerSettings {
     /** 持久化的搜索关键词，仅在 PERSISTENCE 开启时作为管理页默认搜索值。 */
     FILTER_SEARCH: string;
     FILTER_STATUS: string;
+    FILTER_STATUS_VALUES?: string[];
     FILTER_STATUS_OPERATOR: FilterOperator;
     /** 持久化的分组筛选 id，仅在 PERSISTENCE 开启时生效。 */
     FILTER_GROUP: string;
+    FILTER_GROUP_VALUES?: string[];
     FILTER_GROUP_OPERATOR: FilterOperator;
     /** 持久化的标签筛选 id，仅在 PERSISTENCE 开启时生效。 */
     FILTER_TAG: string;
+    FILTER_TAG_VALUES?: string[];
     FILTER_TAG_OPERATOR: FilterOperator;
     /** 持久化的延迟配置筛选 id，仅在 PERSISTENCE 与 DELAY 开启时生效。 */
     FILTER_DELAY: string;
+    FILTER_DELAY_VALUES?: string[];
     FILTER_DELAY_OPERATOR: FilterOperator;
 
     // 样式设置页
@@ -161,6 +167,7 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     CENTER: false,
     DELAY: false,
     HIDE_BPM_TAG: false,
+    RIBBON_MANAGER_ENABLED: false,
     MAIN_PAGE_ACTION_PLACEMENT: { ...DEFAULT_MAIN_PAGE_ACTION_PLACEMENT },
     AUTO_TAKEOVER: false,
     SELF_CHECK_IGNORED: false,
@@ -174,12 +181,16 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     // 管理页筛选状态
     FILTER_SEARCH: "",
     FILTER_STATUS: "all",
+    FILTER_STATUS_VALUES: [],
     FILTER_STATUS_OPERATOR: "contains",
     FILTER_GROUP: "",
+    FILTER_GROUP_VALUES: [],
     FILTER_GROUP_OPERATOR: "contains",
     FILTER_TAG: "",
+    FILTER_TAG_VALUES: [],
     FILTER_TAG_OPERATOR: "contains",
     FILTER_DELAY: "",
+    FILTER_DELAY_VALUES: [],
     FILTER_DELAY_OPERATOR: "contains",
 
     // 样式设置页
