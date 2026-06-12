@@ -129,7 +129,7 @@ const parseReleaseDate = (value?: string): number | null => {
 	return Number.isNaN(time) ? null : time;
 };
 
-const compareVersionTags = (a: string = "0.0.0", b: string = "0.0.0"): number => {
+const compareVersionTags = (a = "0.0.0", b = "0.0.0"): number => {
 	const pa = a.replace(/^v/i, "").split(".").map(Number);
 	const pb = b.replace(/^v/i, "").split(".").map(Number);
 	const len = Math.max(pa.length, pb.length);

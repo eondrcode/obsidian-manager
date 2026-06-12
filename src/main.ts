@@ -913,7 +913,7 @@ export default class Manager extends Plugin {
     }
 
     // 版本比较：>0 表示 a>b
-    private compareVersions(a: string = "0.0.0", b: string = "0.0.0"): number {
+    private compareVersions(a = "0.0.0", b = "0.0.0"): number {
         const pa = a.split(".").map(Number);
         const pb = b.split(".").map(Number);
         const len = Math.max(pa.length, pb.length);
@@ -1201,7 +1201,7 @@ export default class Manager extends Plugin {
 
         // Determine platform
         let baseSelector = "";
-        let isMobile = Platform.isMobile;
+        const isMobile = Platform.isMobile;
 
         if (isMobile) {
             baseSelector = `.menu-scroll .menu-item`; // Mobile logic
@@ -1332,13 +1332,13 @@ export default class Manager extends Plugin {
         });
 
         // 3. 应用显隐 (直接操作 DOM 样式以确保移动端生效)
-        let visualChange = false;
+
         itemsWithOrder.forEach(({ item, visible }) => {
             const currentDisplay = item.style.display;
             const targetDisplay = visible ? "" : "none";
             if (currentDisplay !== targetDisplay) {
                 item.style.display = targetDisplay;
-                visualChange = true;
+
             }
         });
 

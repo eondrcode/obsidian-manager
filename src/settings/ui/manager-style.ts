@@ -1,6 +1,6 @@
 import BaseSetting from "../base-setting";
 import { DropdownComponent, Setting, ToggleComponent } from "obsidian";
-import Commands from "src/command";
+// import Commands from "src/command";
 import { PluginOverviewLayout } from "../data";
 // import { GROUP_STYLE, ITEM_STYLE, TAG_STYLE } from "src/data/data";
 

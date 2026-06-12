@@ -79,10 +79,11 @@ const CONFIG_DIR_NAME = ".obsidian";
 const getNodeDeps = (): NodeDeps | null => {
 	try {
 		if (typeof require !== "function") return null;
-		return {
-			fs: require("fs") as NodeFs,
-			path: require("path") as NodePath,
-		};
+		// eslint-disable-next-line @typescript-eslint/no-var-requires
+		const fs = require("fs") as NodeFs;
+		// eslint-disable-next-line @typescript-eslint/no-var-requires
+		const path = require("path") as NodePath;
+		return { fs, path };
 	} catch {
 		return null;
 	}
@@ -120,7 +121,7 @@ const createVaultId = (deps: NodeDeps, vaultPath: string): string => {
 };
 
 const resolveVaultPath = (deps: NodeDeps, inputPath: string): string => {
-	let resolved = deps.path.resolve(cleanInputPath(inputPath));
+	const resolved = deps.path.resolve(cleanInputPath(inputPath));
 	const baseName = deps.path.basename(resolved).toLowerCase();
 	const parent = deps.path.dirname(resolved);
 	const parentName = deps.path.basename(parent).toLowerCase();

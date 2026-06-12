@@ -4,7 +4,7 @@
  * 非模态窗口，用户可以拖动，不会锁定焦点
  */
 
-import { App, ButtonComponent, Notice, Setting, setIcon } from 'obsidian';
+import { App, ButtonComponent, Notice, setIcon } from 'obsidian';
 import Manager from 'main';
 import { TroubleshootState, INITIAL_TROUBLESHOOT_STATE, cloneState } from './troubleshoot-state';
 import { TroubleshootAlgorithm } from './troubleshoot-algorithm';
@@ -16,7 +16,7 @@ export class TroubleshootModal {
     private algorithm: TroubleshootAlgorithm;
     private state: TroubleshootState;
     private t: (key: any) => string;
-    private lastDescription: string = '';
+    private lastDescription = '';
 
     // 悬浮窗元素
     private containerEl: HTMLElement | null = null;
@@ -174,7 +174,7 @@ export class TroubleshootModal {
         if (!this.headerEl || !this.contentEl) return;
 
         // 头部
-        const titleSpan = this.headerEl.createSpan({ text: this.t('排查_欢迎_标题'), cls: 'troubleshoot-floating-title' });
+        this.headerEl.createSpan({ text: this.t('排查_欢迎_标题'), cls: 'troubleshoot-floating-title' });
 
         // 关闭按钮
         const closeBtn = this.headerEl.createEl('button', { cls: 'troubleshoot-floating-close' });
