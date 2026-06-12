@@ -151,7 +151,7 @@ export class TagsModal extends Modal {
                             this.managerPlugin.tags = this.managerPlugin.tags.filter(t => t !== tag.id);
                         }
                         await this.manager.savePluginAndExport(this.managerPlugin.id);
-                        this.managerModal.reloadShowData();
+                        this.managerModal.refreshPluginCard(this.managerPlugin.id, { allowReload: true });
                         this.reloadShowData();
                     });
                     toggle.toggleEl.addClass('manager-tag-editor__toggle');
@@ -206,7 +206,7 @@ export class TagsModal extends Modal {
                     cb.onClick(() => {
                         this.selected = '';
                         this.reloadShowData();
-                        this.managerModal.reloadShowData();
+                        this.managerModal.refreshVisiblePluginCards();
                     });
                 })
             }

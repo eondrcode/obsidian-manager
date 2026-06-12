@@ -1330,6 +1330,52 @@ body.theme-dark {
     pointer-events: none;
 }
 
+.manager-secret-token-setting {
+    align-items: flex-start;
+}
+
+.manager-secret-token-setting .setting-item-control {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+}
+
+.manager-secret-token-setting input[type="password"] {
+    width: 240px;
+    min-width: 180px;
+    max-width: 100%;
+}
+
+.manager-secret-token-setting button {
+    min-height: 32px;
+}
+
+.manager-secret-token-setting__status {
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+@media (max-width: 760px) {
+    .manager-secret-token-setting {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .manager-secret-token-setting .setting-item-control {
+        justify-content: flex-start;
+        width: 100%;
+    }
+
+    .manager-secret-token-setting input[type="password"] {
+        flex: 1 1 220px;
+        width: min(100%, 320px);
+    }
+}
+
 /* 标签设置页面 */
 .manager-setting-tag__container {
     display: flex;

@@ -32,6 +32,15 @@ const EONDR_PLUGIN_RULES = [
     { id: "i18n", repo: "eondrcode/obsidian-i18n" },
 ];
 const EONDR_REPO_OWNER = "eondrcode";
+const GITHUB_TOKEN_SECRET_ID = "github-token";
+
+type SecretStorageLike = {
+    setSecret?: (id: string, secret: string) => void;
+    getSecret?: (id: string) => string | null;
+    listSecrets?: () => string[];
+    deleteSecret?: (id: string) => void;
+    removeSecret?: (id: string) => void;
+};
 
 export default class Manager extends Plugin {
     public settings: ManagerSettings;
@@ -344,6 +353,65 @@ export default class Manager extends Plugin {
     public async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
     public async saveSettings() { await this.saveData(this.settings); }
 
+    private getSecretStorage(): SecretStorageLike | null {
+        const storage = (this.app as unknown as { secretStorage?: SecretStorageLike }).secretStorage;
+        if (!storage || typeof storage.getSecret !== "function" || typeof storage.setSecret !== "function") return null;
+        return storage;
+    }
+
+    public supportsSecretStorage(): boolean {
+        return Boolean(this.getSecretStorage());
+    }
+
+    public async getGithubToken(): Promise<string | undefined> {
+        const storage = this.getSecretStorage();
+        const stored = storage?.getSecret?.(GITHUB_TOKEN_SECRET_ID)?.trim();
+        if (stored) return stored;
+
+        const legacy = this.settings.GITHUB_TOKEN?.trim();
+        if (!legacy) return undefined;
+
+        if (storage) {
+            try {
+                storage.setSecret?.(GITHUB_TOKEN_SECRET_ID, legacy);
+                this.settings.GITHUB_TOKEN = "";
+                await this.saveSettings();
+            } catch (error) {
+                if (this.settings.DEBUG) console.error("[BPM] migrate GitHub token to secret storage failed", error);
+            }
+        }
+        return legacy;
+    }
+
+    public hasGithubToken(): boolean {
+        return Boolean(this.getSecretStorage()?.getSecret?.(GITHUB_TOKEN_SECRET_ID)?.trim() || this.settings.GITHUB_TOKEN?.trim());
+    }
+
+    public async setGithubToken(token: string): Promise<void> {
+        const nextToken = token.trim();
+        const storage = this.getSecretStorage();
+        if (storage) {
+            storage.setSecret?.(GITHUB_TOKEN_SECRET_ID, nextToken);
+            this.settings.GITHUB_TOKEN = "";
+        } else {
+            this.settings.GITHUB_TOKEN = nextToken;
+        }
+        await this.saveSettings();
+    }
+
+    public async clearGithubToken(): Promise<void> {
+        const storage = this.getSecretStorage();
+        try {
+            storage?.deleteSecret?.(GITHUB_TOKEN_SECRET_ID);
+            storage?.removeSecret?.(GITHUB_TOKEN_SECRET_ID);
+            storage?.setSecret?.(GITHUB_TOKEN_SECRET_ID, "");
+        } catch (error) {
+            if (this.settings.DEBUG) console.error("[BPM] clear GitHub token secret failed", error);
+        }
+        this.settings.GITHUB_TOKEN = "";
+        await this.saveSettings();
+    }
+
     // 保存单个插件配置。保留方法名以兼容旧调用点。
     public async savePluginAndExport(pluginId: string) {
         await this.saveSettings();
@@ -405,7 +473,7 @@ export default class Manager extends Plugin {
             progress.dispose();
         } catch (e) {
             if (this.settings.DEBUG) console.error("[BPM] startup check updates failed", e);
-            if (!this.settings.GITHUB_TOKEN) {
+            if (!this.hasGithubToken()) {
                 new Notice(this.translator.t("通知_检查更新失败_建议Token"));
             }
         }
@@ -997,10 +1065,11 @@ export default class Manager extends Plugin {
     }
 
     private async fetchGithubManifestVersion(repo: string): Promise<string | null> {
+        const token = await this.getGithubToken();
         const headers: Record<string, string> = {
             "User-Agent": "better-plugins-manager"
         };
-        if (this.settings.GITHUB_TOKEN) headers["Authorization"] = `Bearer ${this.settings.GITHUB_TOKEN}`;
+        if (token) headers["Authorization"] = `Bearer ${token}`;
 
         // 1) 尝试最新 release 的 manifest.json
         try {
@@ -1058,7 +1127,11 @@ export default class Manager extends Plugin {
         const ok = await installPluginFromGithub(this, repo, version, false);
         if (ok) {
             await this.checkUpdates();
-            this.reloadIfCurrentModal();
+            try {
+                this.managerModal?.refreshPluginCard(pluginId, { allowReload: true });
+            } catch {
+                this.reloadIfCurrentModal();
+            }
         }
         return ok;
     }

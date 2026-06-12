@@ -133,7 +133,7 @@ export class GroupModal extends Modal {
                     .onChange(async () => {
                         this.managerPlugin.group = this.managerPlugin.group === group.id ? '' : group.id;
                         await this.manager.savePluginAndExport(this.managerPlugin.id);
-                        this.managerModal.reloadShowData();
+                        this.managerModal.refreshPluginCard(this.managerPlugin.id, { allowReload: true });
                         this.reloadShowData();
                     });
                     toggle.toggleEl.addClass('manager-tag-editor__toggle');
@@ -183,7 +183,7 @@ export class GroupModal extends Modal {
                     cb.onClick(() => {
                         this.selected = '';
                         this.reloadShowData();
-                        this.managerModal.reloadShowData();
+                        this.managerModal.refreshVisiblePluginCards();
                     });
                 })
             }

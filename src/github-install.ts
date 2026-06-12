@@ -75,7 +75,7 @@ const RELEASE_VERSION_CACHE_TTL_MS = 5 * 60 * 1000;
  */
 const releaseVersionCache = new Map<string, { expiresAt: number; versions: ReleaseVersion[] }>();
 
-const getToken = (manager: Manager): string | undefined => manager.settings.GITHUB_TOKEN?.trim() || undefined;
+const getToken = async (manager: Manager): Promise<string | undefined> => manager.getGithubToken();
 
 const buildHeaders = (token?: string, accept = "application/vnd.github+json"): Record<string, string> => {
 	const headers: Record<string, string> = {
@@ -160,7 +160,7 @@ const pickAsset = (release: ReleaseResponse, name: string): string | null =>
 const cloneReleaseVersions = (versions: ReleaseVersion[]): ReleaseVersion[] =>
 	versions.map((version) => ({ ...version }));
 
-const buildReleaseCacheKey = (repo: string, token?: string): string => `${repo}\n${token ?? "anonymous"}`;
+const buildReleaseCacheKey = (repo: string, token?: string): string => `${repo}\n${token ? "authenticated" : "anonymous"}`;
 
 /**
  * 生成 raw 文件候选地址。
@@ -288,7 +288,7 @@ const upsertInstalledPluginRecord = (
  */
 export const fetchReleaseVersions = async (manager: Manager, repoInput: string): Promise<ReleaseVersion[]> => {
 	const repo = sanitizeRepo(repoInput);
-	const token = getToken(manager);
+	const token = await getToken(manager);
 	const cacheKey = buildReleaseCacheKey(repo, token);
 	const cached = releaseVersionCache.get(cacheKey);
 	const now = Date.now();
@@ -344,7 +344,7 @@ export const installPluginFromGithub = async (
 ): Promise<boolean> => {
 	try {
 		const repo = sanitizeRepo(repoInput);
-		const token = getToken(manager);
+		const token = await getToken(manager);
 		const release = await getRelease(repo, version, token);
 		const tag = release.tag_name || version || "";
 
@@ -446,7 +446,7 @@ export const installPluginFromGithub = async (
 	} catch (error) {
 		const err = error as GithubRequestError;
 		console.error(error);
-		if (err?.status === 403 && !manager.settings.GITHUB_TOKEN) {
+		if (err?.status === 403 && !manager.hasGithubToken()) {
 			new Notice(manager.translator.t("安装_错误_限速"));
 		} else if (err?.status === 404) {
 			new Notice(manager.translator.t("安装_错误_缺少资源"));
@@ -466,7 +466,7 @@ export const installPluginFromGithub = async (
 export const installThemeFromGithub = async (manager: Manager, repoInput: string, version?: string): Promise<boolean> => {
 	try {
 		const repo = sanitizeRepo(repoInput);
-		const token = getToken(manager);
+		const token = await getToken(manager);
 		const release = await getRelease(repo, version, token);
 
 		const manifestUrl = pickAsset(release, "manifest.json");

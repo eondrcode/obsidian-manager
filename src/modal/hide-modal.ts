@@ -292,9 +292,13 @@ export class HideModal extends Modal {
                 hiddenToggle.setValue(isHidden);
                 hiddenToggle.onChange((value) => {
                     // 更新隐藏列表
-                    if (value) this.settings.HIDES.push(plugin.id); else this.settings.HIDES = this.settings.HIDES.filter(id => id !== plugin.id);
+                    if (value) {
+                        if (!this.settings.HIDES.includes(plugin.id)) this.settings.HIDES.push(plugin.id);
+                    } else {
+                        this.settings.HIDES = this.settings.HIDES.filter(id => id !== plugin.id);
+                    }
                     this.manager.saveSettings();
-                    this.managerModal.reloadShowData();
+                    this.managerModal.refreshPluginCard(plugin.id, { allowReload: true });
                 });
             }
         }

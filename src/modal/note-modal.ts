@@ -104,7 +104,7 @@ export class NoteModal extends Modal {
         this.setSaveState("saving");
         try {
             await this.manager.savePluginAndExport(this.managerPlugin.id);
-            await this.managerModal.reloadShowData();
+            this.managerModal.refreshPluginCard(this.managerPlugin.id, { allowReload: true });
             if (this.saveRevision === revision && !this.saveQueued) {
                 this.setSaveState("saved");
             }

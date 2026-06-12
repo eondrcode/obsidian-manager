@@ -15,6 +15,7 @@ export default class ManagerMainPage extends BaseSetting {
         { id: "downloadUpdate", icon: "download", labelKey: "管理器_下载更新_描述", descKey: "设置_主页面功能_下载更新_说明" },
         { id: "singleStart", icon: "repeat-1", labelKey: "菜单_单次启动_描述", descKey: "设置_主页面功能_单次启动_说明" },
         { id: "restart", icon: "refresh-ccw", labelKey: "菜单_重启插件_描述", descKey: "设置_主页面功能_重启插件_说明" },
+        { id: "enableIgnored", icon: "shield-check", labelKey: "菜单_启用BPM忽略插件_标题", descKey: "设置_主页面功能_启用BPM忽略插件_说明" },
         { id: "hide", icon: "eye-off", labelKey: "菜单_隐藏插件_标题", descKey: "设置_主页面功能_隐藏插件_说明" },
         { id: "note", icon: "notebook-pen", labelKey: "菜单_笔记_标题", descKey: "设置_主页面功能_笔记_说明" },
         { id: "hotkeys", icon: "circle-plus", labelKey: "菜单_快捷键_标题", descKey: "设置_主页面功能_快捷键_说明" },
