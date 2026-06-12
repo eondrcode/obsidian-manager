@@ -49,6 +49,7 @@ import {
     ManagerTransferTheme,
     parseManagerTransferPackage,
 } from "../import-export";
+import { markSourceInstalledRelease, sourceHasUpdate as sourceHasConfiguredUpdate, syncSourceReleaseCheck } from "../source-release";
 import {
     createSharedVaultLinks,
     forgetSharedVault,
@@ -695,6 +696,10 @@ export class ManagerModal extends Modal {
         menuEl.setAttribute("role", "listbox");
         menuEl.setAttribute("aria-multiselectable", "true");
         menuEl.setAttribute("aria-label", ariaLabel);
+        const filterFieldEl = rootEl.closest(".manager-filter-field") as HTMLElement | null;
+        const filterSectionEl = rootEl.closest(".manager-section--filters") as HTMLElement | null;
+        const mobileFilterPanelEl = rootEl.closest(".bpm-mobile-header__filters") as HTMLElement | null;
+        const managerContainerEl = rootEl.closest(".manager-container") as HTMLElement | null;
 
         let currentOptions = options;
         let selectedValues = this.normalizeFilterValues(values, allValue);
@@ -714,6 +719,10 @@ export class ManagerModal extends Modal {
         function close() {
             isOpen = false;
             rootEl.removeClass("is-open");
+            filterFieldEl?.removeClass("is-filter-menu-open");
+            filterSectionEl?.removeClass("is-filter-menu-open");
+            mobileFilterPanelEl?.removeClass("is-filter-menu-open");
+            managerContainerEl?.removeClass("has-open-filter-menu");
             buttonEl.setAttribute("aria-expanded", "false");
             document.removeEventListener("click", handleDocumentClick);
         }
@@ -725,6 +734,10 @@ export class ManagerModal extends Modal {
             }
             isOpen = true;
             rootEl.addClass("is-open");
+            filterFieldEl?.addClass("is-filter-menu-open");
+            filterSectionEl?.addClass("is-filter-menu-open");
+            mobileFilterPanelEl?.addClass("is-filter-menu-open");
+            managerContainerEl?.addClass("has-open-filter-menu");
             buttonEl.setAttribute("aria-expanded", "true");
             window.setTimeout(() => document.addEventListener("click", handleDocumentClick), 0);
         };
@@ -1040,6 +1053,28 @@ export class ManagerModal extends Modal {
             this.manager.synchronizePlugins(Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manager.manifest.id) as PluginManifest[]);
             new Notice(this.manager.translator.t("卸载_通知_一"));
         }, { id: plugin.id, name: plugin.name }).open();
+    }
+
+    private async clearPluginConfig(plugin: PluginManifest, isSelf: boolean) {
+        if (isSelf) {
+            new Notice(this.manager.translator.t("管理器_清空配置_自身拦截"));
+            return;
+        }
+        const configPath = normalizePath(`${this.app.vault.configDir}/plugins/${plugin.id}/data.json`);
+        const adapter = this.app.vault.adapter;
+        try {
+            if (!(await adapter.exists(configPath))) {
+                new Notice(this.manager.translator.t("管理器_清空配置_无配置"));
+                return;
+            }
+            const pluginName = plugin.name || plugin.id;
+            if (!window.confirm(this.manager.translator.t("管理器_清空配置_确认", { name: pluginName }))) return;
+            await adapter.remove(configPath);
+            new Notice(this.manager.translator.t("管理器_清空配置_成功"));
+        } catch (error) {
+            console.error("[BPM] clear plugin config failed", plugin.id, error);
+            new Notice(this.manager.translator.t("管理器_清空配置_失败"));
+        }
     }
 
     private async singleStartPlugin(plugin: PluginManifest) {
@@ -2550,7 +2585,7 @@ export class ManagerModal extends Modal {
                 //         })
                 // );
 
-                const hasOpenMenuItems = this.isMainPageActionInMenu("openSettings") || this.isMainPageActionInMenu("openDir") || this.isMainPageActionInMenu("openRepo") || this.isMainPageActionInMenu("delete");
+                const hasOpenMenuItems = this.isMainPageActionInMenu("openSettings") || this.isMainPageActionInMenu("openDir") || this.isMainPageActionInMenu("openRepo") || this.isMainPageActionInMenu("clearConfig") || this.isMainPageActionInMenu("delete");
                 if (hasOpenMenuItems) addContextSeparator();
                 if (this.isMainPageActionInMenu("openSettings")) {
                     menu.addItem((item) =>
@@ -2578,6 +2613,16 @@ export class ManagerModal extends Modal {
                             .setIcon("github")
                             .onClick(async () => {
                                 await this.openPluginRepo(plugin.id);
+                            })
+                    );
+                }
+                if (this.isMainPageActionInMenu("clearConfig")) {
+                    menu.addItem((item) =>
+                        item.setTitle(this.manager.translator.t("管理器_清空配置_描述"))
+                            .setIcon("file-cog")
+                            .setDisabled(isSelf)
+                            .onClick(async () => {
+                                await this.clearPluginConfig(plugin, isSelf);
                             })
                     );
                 }
@@ -2992,6 +3037,17 @@ export class ManagerModal extends Modal {
                                 }));
                             hasCurrentGroup = true;
                         }
+                        if (this.isMainPageActionInMenu("clearConfig")) {
+                            if (hasPreviousGroup && !hasCurrentGroup) menu.addSeparator();
+                            menu.addItem((item) => item
+                                .setTitle(this.manager.translator.t("管理器_清空配置_描述"))
+                                .setIcon("file-cog")
+                                .setDisabled(isSelf)
+                                .onClick(async () => {
+                                    await this.clearPluginConfig(plugin, isSelf);
+                                }));
+                            hasCurrentGroup = true;
+                        }
                         if (this.isMainPageActionInMenu("delete")) {
                             if (hasPreviousGroup && !hasCurrentGroup) menu.addSeparator();
                             menu.addItem((item) => item
@@ -3145,6 +3201,17 @@ export class ManagerModal extends Modal {
                         openPluginDirButton.setDisabled(true);
                         managerOpen(pluginDir, this.manager);
                         openPluginDirButton.setDisabled(false);
+                    });
+                }
+
+                // [按钮] 清空配置
+                const clearConfigButton = this.createConfiguredItemAction(itemEl.controlEl, "clearConfig");
+                if (clearConfigButton) {
+                    clearConfigButton.setIcon("file-cog");
+                    clearConfigButton.setTooltip(this.manager.translator.t("管理器_清空配置_描述"));
+                    clearConfigButton.setDisabled(isSelf);
+                    clearConfigButton.onClick(async () => {
+                        await this.clearPluginConfig(plugin, isSelf);
                     });
                 }
 
@@ -3770,19 +3837,6 @@ export class ManagerModal extends Modal {
         return this.manager.settings.BETA_SOURCES;
     }
 
-    private compareVersions(a: string = "0.0.0", b: string = "0.0.0"): number {
-        const pa = a.replace(/^v/i, "").split(".").map(Number);
-        const pb = b.replace(/^v/i, "").split(".").map(Number);
-        const len = Math.max(pa.length, pb.length);
-        for (let i = 0; i < len; i++) {
-            const ai = Number.isFinite(pa[i]) ? pa[i] : 0;
-            const bi = Number.isFinite(pb[i]) ? pb[i] : 0;
-            if (ai > bi) return 1;
-            if (ai < bi) return -1;
-        }
-        return 0;
-    }
-
     private getPluginIdByRepo(repo: string): string | null {
         const normalized = sanitizeRepo(repo);
         const entry = Object.entries(this.manager.settings.REPO_MAP || {})
@@ -3848,9 +3902,8 @@ export class ManagerModal extends Modal {
     }
 
     private sourceHasUpdate(source: BetaSource): boolean {
-        const localVersion = this.getSourceLocalVersion(source);
-        if (!source.latestVersion || !localVersion) return false;
-        return this.compareVersions(source.latestVersion, localVersion) > 0;
+        source.localVersion = this.getSourceLocalVersion(source) || source.localVersion || "";
+        return sourceHasConfiguredUpdate(source);
     }
 
     private getSourceStats(sources = this.getBetaSources()) {
@@ -3921,11 +3974,6 @@ export class ManagerModal extends Modal {
         ].slice(0, 12);
     }
 
-    private pickSourceVersion(source: BetaSource, versions: ReleaseVersion[]): string {
-        if (source.mode === "frozen") return source.frozenVersion || source.latestVersion || versions[0]?.version || "";
-        return versions.find((version) => !version.prerelease)?.version || versions[0]?.version || "";
-    }
-
     private upsertBetaSource(source: BetaSource) {
         const sources = this.getBetaSources();
         const repo = sanitizeRepo(source.repo);
@@ -3937,6 +3985,7 @@ export class ManagerModal extends Modal {
             enabled: source.enabled ?? true,
             autoUpdate: source.autoUpdate ?? false,
             mode: source.mode || "latest",
+            updateCheckMode: source.updateCheckMode || "release",
         };
         if (existing) {
             Object.assign(existing, next);
@@ -3948,15 +3997,12 @@ export class ManagerModal extends Modal {
     private async checkBetaSource(source: BetaSource): Promise<BetaSource> {
         try {
             const versions = await fetchReleaseVersions(this.manager, source.repo);
-            const latestVersion = this.pickSourceVersion(source, versions);
-            const latestRelease = versions.find((version) => version.version === latestVersion);
-            source.latestVersion = latestVersion || "";
-            source.latestPublishedAt = latestRelease?.publishedAt;
-            source.localVersion = this.getSourceLocalVersion(source);
+            const localVersion = this.getSourceLocalVersion(source);
+            const releaseCheck = syncSourceReleaseCheck(source, versions, localVersion);
             await this.refreshSourcePackageCreatedAt(source);
             source.lastChecked = Date.now();
             source.error = "";
-            if (source.mode === "frozen" && !source.frozenVersion) source.frozenVersion = latestVersion;
+            if (source.mode === "frozen" && !source.frozenVersion) source.frozenVersion = releaseCheck.target?.tag;
         } catch (error) {
             source.error = (error as Error)?.message || String(error);
             source.lastChecked = Date.now();
@@ -3968,8 +4014,9 @@ export class ManagerModal extends Modal {
     private async updateBetaSource(source: BetaSource, reinstall = false): Promise<boolean> {
         await this.checkBetaSource(source);
         const targetVersion = source.mode === "frozen"
-            ? source.frozenVersion || source.latestVersion || ""
-            : source.latestVersion || "";
+            ? source.frozenVersion || source.latestReleaseTag || source.latestVersion || ""
+            : source.latestReleaseTag || source.latestVersion || "";
+        const targetPublishedAt = source.latestReleasePublishedAt || source.latestPublishedAt;
         if (!targetVersion && !reinstall) {
             new Notice(this.manager.translator.t("来源_未获取可安装版本_提示"));
             return false;
@@ -3982,11 +4029,12 @@ export class ManagerModal extends Modal {
         if (source.type === "plugin") {
             const pluginId = this.getPluginIdByRepo(source.repo) || source.id;
             if (pluginId) source.id = pluginId;
-            source.localVersion = pluginId
+            const localVersion = pluginId
                 ? ((this.appPlugins.manifests[pluginId] as PluginManifest | undefined)?.version || targetVersion)
                 : targetVersion;
+            markSourceInstalledRelease(source, targetVersion, targetPublishedAt, localVersion);
         } else {
-            source.localVersion = targetVersion;
+            markSourceInstalledRelease(source, targetVersion, targetPublishedAt, targetVersion);
         }
         await this.refreshSourcePackageCreatedAt(source);
         source.error = "";
@@ -4199,12 +4247,13 @@ export class ManagerModal extends Modal {
             const notInstalledText = t("来源_未安装");
             const notCheckedText = t("来源_未检查");
             const localVersion = this.getSourceLocalVersion(source) || notInstalledText;
-            const latestVersion = source.latestVersion || notCheckedText;
+            const installedReleaseTag = source.installedReleaseTag || (localVersion === notInstalledText ? "" : localVersion);
+            const latestVersion = source.latestReleaseTag || source.latestVersion || notCheckedText;
             const localVersionText = localVersion === notInstalledText
                 ? localVersion
-                : this.formatVersionWithDate(localVersion, source.installedAt);
-            const latestVersionText = source.latestVersion
-                ? this.formatVersionWithDate(source.latestVersion, source.latestPublishedAt)
+                : this.formatVersionWithDate(installedReleaseTag || localVersion, source.installedReleasePublishedAt || source.installedAt);
+            const latestVersionText = source.latestReleaseTag || source.latestVersion
+                ? this.formatVersionWithDate(source.latestReleaseTag || source.latestVersion || "", source.latestReleasePublishedAt || source.latestPublishedAt)
                 : latestVersion;
             const hasUpdate = this.sourceHasUpdate(source);
 
@@ -4232,8 +4281,15 @@ export class ManagerModal extends Modal {
                 text: source.mode === "frozen" ? t("来源_模式_固定版本") : t("来源_模式_跟随最新"),
                 cls: `manager-source-item__chip ${source.mode === "frozen" ? "is-frozen" : "is-latest"}`,
             }));
+            chips.appendChild(createSpan({
+                text: source.updateCheckMode === "version" ? t("来源_检测方式_版本号") : t("来源_检测方式_发布顺序"),
+                cls: `manager-source-item__chip ${source.updateCheckMode === "version" ? "is-latest" : "is-frozen"}`,
+            }));
             if (source.autoUpdate) {
                 chips.appendChild(createSpan({ text: t("来源_自动更新"), cls: "manager-source-item__chip is-auto" }));
+            }
+            if (source.includePrerelease) {
+                chips.appendChild(createSpan({ text: t("安装_发布类型_预发布"), cls: "manager-source-item__chip is-frozen" }));
             }
             if (hasUpdate) {
                 chips.appendChild(createSpan({ text: t("来源_有更新"), cls: "manager-source-item__chip is-update" }));
@@ -4274,6 +4330,21 @@ export class ManagerModal extends Modal {
             modeDropdown.selectEl.addClass("manager-source-item__mode");
             modeDropdown.selectEl.setAttribute("aria-label", t("来源_版本策略"));
 
+            const updateCheckDropdown = new DropdownComponent(strategyWrap);
+            updateCheckDropdown.addOptions({
+                release: t("来源_检测方式_发布顺序"),
+                version: t("来源_检测方式_版本号"),
+            });
+            updateCheckDropdown.setValue(source.updateCheckMode || "release");
+            updateCheckDropdown.onChange(async (value: "release" | "version") => {
+                source.updateCheckMode = value;
+                await this.manager.saveSettings();
+                this.renderContent();
+            });
+            updateCheckDropdown.selectEl.addClass("manager-source-item__mode");
+            updateCheckDropdown.selectEl.addClass("manager-source-item__check-mode");
+            updateCheckDropdown.selectEl.setAttribute("aria-label", t("来源_检测方式"));
+
             if (source.mode === "frozen") {
                 const frozenInput = new TextComponent(strategyWrap);
                 frozenInput.setPlaceholder("tag");
@@ -4299,6 +4370,20 @@ export class ManagerModal extends Modal {
                 this.renderContent();
             });
 
+            const prereleaseGroup = controls.createDiv("manager-source-card__control-group manager-source-card__control-group--pre");
+            prereleaseGroup.createSpan({ cls: "manager-source-card__control-label", text: t("安装_发布类型_预发布") });
+            const prereleaseWrap = prereleaseGroup.createDiv("manager-source-item__toggle");
+            prereleaseWrap.createSpan({ cls: "manager-source-item__toggle-label", text: t("来源_最新") });
+            const prereleaseToggle = new ToggleComponent(prereleaseWrap);
+            prereleaseToggle.setValue(Boolean(source.includePrerelease));
+            prereleaseToggle.toggleEl.setAttribute("aria-label", t("安装_发布类型_预发布"));
+            prereleaseToggle.onChange(async (value) => {
+                source.includePrerelease = value;
+                await this.manager.saveSettings();
+                await this.checkBetaSource(source);
+                this.renderContent();
+            });
+
             const actionGroup = controls.createDiv("manager-source-card__actions");
             const prepareActionButton = (btn: ButtonComponent, label: string) => {
                 btn.setTooltip(label);
@@ -4318,7 +4403,7 @@ export class ManagerModal extends Modal {
             const updateBtn = new ButtonComponent(actionGroup);
             updateBtn.setIcon("download");
             prepareActionButton(updateBtn, t("来源_更新_按钮"));
-            updateBtn.setDisabled(!source.latestVersion && localVersion === notInstalledText);
+            updateBtn.setDisabled(!source.latestReleaseTag && !source.latestVersion && localVersion === notInstalledText);
             updateBtn.onClick(async () => {
                 updateBtn.setDisabled(true);
                 await this.updateBetaSource(source);
@@ -4485,7 +4570,7 @@ export class ManagerModal extends Modal {
             if (this.installVersions.length === 0) return null;
             const selected = this.installVersion.trim();
             if (selected) return this.installVersions.find((item) => item.version === selected) ?? null;
-            return this.installVersions[0];
+            return this.installVersions.find((item) => !item.prerelease) || this.installVersions[0];
         };
         const updateReleaseInfo = () => {
             if (!releaseTitleEl || !releaseMetaEl || !releaseBodyEl) return;
@@ -4692,18 +4777,39 @@ export class ManagerModal extends Modal {
                     this.rememberInstallHistory(validRepo, this.installType, this.installVersion, this.installTrackSource);
                     if (this.installTrackSource) {
                         const pluginId = this.installType === "plugin" ? this.getPluginIdByRepo(validRepo) : validRepo;
-                        const selectedRelease = getSelectedRelease();
+                        let selectedRelease = getSelectedRelease();
+                        if (!selectedRelease) {
+                            try {
+                                const versions = await fetchReleaseVersions(this.manager, validRepo);
+                                selectedRelease = this.installVersion
+                                    ? versions.find((item) => item.version === this.installVersion) ?? null
+                                    : versions.find((item) => !item.prerelease) || versions[0] || null;
+                            } catch {
+                                selectedRelease = null;
+                            }
+                        }
+                        const installedReleaseTag = this.installVersion || selectedRelease?.version || undefined;
+                        const installedReleasePublishedAt = selectedRelease?.publishedAt;
+                        const localVersion = this.installType === "plugin" && pluginId
+                            ? ((this.appPlugins.manifests[pluginId] as PluginManifest | undefined)?.version || installedReleaseTag)
+                            : installedReleaseTag;
                         const nextSource: BetaSource = {
                             id: pluginId || validRepo,
                             repo: validRepo,
                             type: this.installType,
                             mode: this.installVersion ? "frozen" : "latest",
                             frozenVersion: this.installVersion || undefined,
+                            includePrerelease: Boolean(selectedRelease?.prerelease),
+                            updateCheckMode: "release",
                             autoUpdate: false,
                             enabled: true,
-                            localVersion: this.installVersion || selectedRelease?.version || undefined,
-                            latestVersion: this.installVersion || selectedRelease?.version || undefined,
-                            latestPublishedAt: selectedRelease?.publishedAt,
+                            localVersion,
+                            latestVersion: installedReleaseTag,
+                            latestPublishedAt: installedReleasePublishedAt,
+                            installedReleaseTag,
+                            installedReleasePublishedAt,
+                            latestReleaseTag: installedReleaseTag,
+                            latestReleasePublishedAt: installedReleasePublishedAt,
                             lastChecked: Date.now(),
                         };
                         nextSource.installedAt = await this.readSourcePackageCreatedAt(nextSource);

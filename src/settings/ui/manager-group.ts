@@ -23,8 +23,15 @@ export default class ManagerGroup extends BaseSetting {
         headerText.createDiv({ cls: 'manager-taxonomy-setting__title', text: t('设置_分组设置_标题') });
         headerText.createDiv({ cls: 'manager-taxonomy-setting__desc', text: t('设置_分组设置_描述') });
         const stats = header.createDiv('manager-taxonomy-setting__stats');
-        stats.createSpan({ cls: 'manager-taxonomy-setting__stat', text: t('设置_分类_统计', { label: t('通用_全部_文本'), count: this.manager.settings.GROUPS.length }) });
-        stats.createSpan({ cls: 'manager-taxonomy-setting__stat', text: t('设置_分类_统计', { label: t('通用_使用中_文本'), count: usedCount }) });
+        const createStat = (label: string, value: number, icon: string) => {
+            const stat = stats.createSpan({ cls: 'manager-taxonomy-setting__stat' });
+            const statIcon = stat.createSpan({ cls: 'manager-taxonomy-setting__stat-icon' });
+            setIcon(statIcon, icon);
+            stat.createSpan({ cls: 'manager-taxonomy-setting__stat-label', text: label });
+            stat.createSpan({ cls: 'manager-taxonomy-setting__stat-value', text: `${value}` });
+        };
+        createStat(t('通用_全部_文本'), this.manager.settings.GROUPS.length, 'folders');
+        createStat(t('通用_使用中_文本'), usedCount, 'check');
 
         const createItem = new Setting(page)
             .setName(t('通用_新增_文本'))

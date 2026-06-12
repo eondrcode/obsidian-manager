@@ -3097,6 +3097,7 @@ body.theme-dark {
 .manager-source-page__stat {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 5px;
     min-height: 26px;
     padding: 0 7px;
@@ -3105,7 +3106,7 @@ body.theme-dark {
     background: var(--bpm-muted);
     color: var(--text-muted);
     font-size: 11px;
-    line-height: 1;
+    line-height: 1.2;
     white-space: nowrap;
 }
 
@@ -3170,7 +3171,7 @@ body.theme-dark {
     color: var(--text-muted);
     font-size: 12px;
     font-weight: 650;
-    line-height: 1;
+    line-height: 1.2;
     white-space: nowrap;
     cursor: pointer;
     transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease, transform 0.12s ease;
@@ -3204,13 +3205,18 @@ body.theme-dark {
 }
 
 .manager-repo-page__switch-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-width: 18px;
+    min-height: 18px;
     padding: 2px 5px;
     border-radius: 999px;
     background: var(--bpm-muted);
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
     font-size: 10px;
+    line-height: 1;
 }
 
 .manager-repo-page__switch.is-active .manager-repo-page__switch-count {
@@ -3522,6 +3528,7 @@ body.theme-dark {
 .manager-source-item__strategy {
     display: inline-flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
     min-width: 0;
 }
@@ -5921,6 +5928,9 @@ body.theme-dark {
 }
 
 .manager-source-item__chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-height: 22px;
     padding: 2px 7px;
     border: 1px solid var(--bpm-border);
@@ -5929,7 +5939,8 @@ body.theme-dark {
     color: var(--text-muted);
     font-size: 11px;
     font-weight: 650;
-    line-height: 1;
+    line-height: 1.2;
+    white-space: nowrap;
 }
 
 .manager-source-item__chip.is-latest,
@@ -5964,6 +5975,10 @@ body.theme-dark {
 
 .manager-source-item__version {
     width: 104px;
+}
+
+.manager-source-item__check-mode {
+    width: 112px;
 }
 
 .manager-container .manager-item__name-delay {
@@ -8786,11 +8801,14 @@ body.theme-dark {
 .manager-tag-editor__badge,
 .manager-setting-tag__badge,
 .manager-taxonomy-setting__stat {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-height: var(--bpm-chip-height);
     padding: var(--bpm-chip-padding);
     border-radius: var(--bpm-radius-sm);
     font-size: 11px;
-    line-height: 1;
+    line-height: 1.2;
 }
 
 .manager-header .bpm-stat-chip {
@@ -10286,4 +10304,323 @@ body.theme-dark {
         min-width: 0;
         max-width: none;
     }
+}
+
+/* Unified taxonomy settings: groups, tags, and delay presets. */
+.manager-setting-group__container.manager-taxonomy-setting,
+.manager-setting-tag__container.manager-taxonomy-setting,
+.manager-setting-delay__container.manager-taxonomy-setting {
+    gap: 12px;
+    padding: 2px 0 4px;
+}
+
+.manager-taxonomy-setting__header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 14px;
+    row-gap: 10px;
+    align-items: center;
+    min-height: 0;
+    padding: 12px 14px;
+    border: 1px solid var(--bpm-border);
+    border-radius: var(--bpm-radius);
+    background: linear-gradient(180deg,
+            color-mix(in srgb, var(--bpm-muted) 52%, var(--bpm-card)),
+            var(--bpm-card));
+    box-shadow: var(--bpm-shadow);
+}
+
+.manager-taxonomy-setting__header-main {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 10px;
+}
+
+.manager-taxonomy-setting__header-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 var(--bpm-icon-tile);
+    width: var(--bpm-icon-tile);
+    height: var(--bpm-icon-tile);
+    border: 1px solid color-mix(in srgb, var(--interactive-accent) 20%, var(--bpm-border));
+    border-radius: var(--bpm-radius-sm);
+    background: var(--bpm-accent-soft);
+    color: var(--text-accent);
+}
+
+.manager-taxonomy-setting__header-icon svg {
+    width: var(--bpm-icon-size);
+    height: var(--bpm-icon-size);
+}
+
+.manager-taxonomy-setting__header-text {
+    min-width: 0;
+}
+
+.manager-taxonomy-setting__title {
+    color: var(--text-normal);
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.manager-taxonomy-setting__desc {
+    margin-top: 3px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.manager-taxonomy-setting__stats {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 0;
+}
+
+.manager-taxonomy-setting__stat {
+    gap: 5px;
+    min-height: 26px;
+    padding: 0 8px;
+    border: 1px solid var(--bpm-border);
+    border-radius: var(--bpm-radius-sm);
+    background: var(--bpm-card-muted);
+    color: var(--text-muted);
+    font-weight: 650;
+    white-space: nowrap;
+}
+
+.manager-taxonomy-setting__stat-icon {
+    display: inline-flex;
+    width: 13px;
+    height: 13px;
+}
+
+.manager-taxonomy-setting__stat-icon svg {
+    width: 13px;
+    height: 13px;
+}
+
+.manager-taxonomy-setting__stat-value {
+    color: var(--text-normal);
+    font-variant-numeric: tabular-nums;
+}
+
+.manager-taxonomy-setting__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.manager-taxonomy-setting__row.setting-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 14px;
+    align-items: center;
+    min-height: 52px;
+    margin: 0;
+    padding: 11px 12px 11px 14px;
+    border: 1px solid var(--bpm-border);
+    border-radius: var(--bpm-radius);
+    background: var(--bpm-card);
+    box-shadow: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+
+.manager-taxonomy-setting__row.setting-item:hover {
+    border-color: color-mix(in srgb, var(--interactive-accent) 22%, var(--bpm-border));
+    background: var(--bpm-card-hover);
+    box-shadow: var(--bpm-shadow);
+}
+
+.manager-taxonomy-setting__row--create.setting-item {
+    background: color-mix(in srgb, var(--bpm-muted) 36%, var(--bpm-card));
+}
+
+.manager-taxonomy-setting__row.is-used {
+    border-left: 3px solid color-mix(in srgb, var(--interactive-accent) 72%, var(--bpm-border));
+    padding-left: 12px;
+}
+
+.manager-taxonomy-setting__row>.setting-item-info {
+    min-width: 0;
+}
+
+.manager-taxonomy-setting__item-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.manager-taxonomy-setting__preview.manager-tag,
+.manager-setting-delay__preview.manager-taxonomy-setting__preview {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    max-width: 100%;
+    border-radius: var(--bpm-radius-sm);
+    font-weight: 650;
+    line-height: 1.2;
+}
+
+.manager-setting-delay__preview.manager-taxonomy-setting__preview {
+    min-width: 48px;
+    padding: 2px 9px;
+    border: 1px solid color-mix(in srgb, var(--interactive-accent) 24%, var(--bpm-border));
+    background: var(--bpm-accent-soft);
+    color: var(--text-accent);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.manager-taxonomy-setting__id,
+.manager-setting-delay__name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.manager-taxonomy-setting__id {
+    color: var(--text-faint);
+    font-family: var(--font-monospace);
+    font-size: 11px;
+}
+
+.manager-setting-delay__name {
+    color: var(--text-normal);
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.manager-taxonomy-setting__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    margin-top: 5px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.manager-taxonomy-setting__controls.setting-item-control {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
+    gap: 7px;
+}
+
+.manager-taxonomy-setting__controls input[type="color"] {
+    padding: 2px;
+    border: 1px solid var(--bpm-border);
+    border-radius: var(--bpm-radius-sm);
+    background: var(--bpm-card);
+}
+
+.manager-taxonomy-setting__input {
+    width: 144px;
+    min-width: 112px;
+    border-color: var(--bpm-border);
+    background: var(--bpm-card);
+}
+
+.manager-taxonomy-setting__input:focus,
+.manager-taxonomy-setting__controls input[type="color"]:focus {
+    border-color: color-mix(in srgb, var(--interactive-accent) 42%, var(--bpm-border));
+    box-shadow: 0 0 0 2px var(--bpm-ring);
+}
+
+.manager-setting-delay__slider {
+    width: 150px;
+    min-width: 120px;
+}
+
+.manager-taxonomy-setting .clickable-icon,
+.manager-taxonomy-setting button {
+    border-radius: var(--bpm-radius-sm);
+}
+
+.manager-taxonomy-setting .clickable-icon[aria-label*="删除"]:hover,
+.manager-taxonomy-setting button[aria-label*="删除"]:hover,
+.manager-taxonomy-setting .clickable-icon[aria-label*="Delete"]:hover,
+.manager-taxonomy-setting button[aria-label*="Delete"]:hover {
+    color: var(--text-error);
+    background: color-mix(in srgb, var(--text-error) 10%, transparent);
+}
+
+@media (max-width: 760px) {
+    .manager-taxonomy-setting__header,
+    .manager-taxonomy-setting__row.setting-item {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .manager-taxonomy-setting__stats,
+    .manager-taxonomy-setting__controls.setting-item-control {
+        justify-content: flex-start;
+    }
+
+    .manager-taxonomy-setting__controls.setting-item-control {
+        width: 100%;
+    }
+
+    .manager-taxonomy-setting__input,
+    .manager-setting-delay__slider {
+        width: min(100%, 220px);
+        flex: 1 1 150px;
+    }
+}
+
+/* Keep overview filter menus above the plugin list instead of clipping inside the filter bar. */
+.manager-container .manager-section.manager-section--filters,
+.manager-container .manager-section.manager-section--filters .manager-section__content,
+.manager-container .manager-section.manager-section--filters .manager-bar__search,
+.manager-container .manager-section.manager-section--filters .setting-item-control,
+.manager-container .manager-section.manager-section--filters .manager-filter-control-group,
+.manager-container .manager-section.manager-section--filters .manager-filter-field,
+.manager-container .manager-section.manager-section--filters .manager-filter-field__control,
+.manager-container .manager-section.manager-section--filters .manager-filter-select-group {
+    overflow: visible;
+}
+
+.manager-container .manager-section.manager-section--filters {
+    position: relative;
+    z-index: 8;
+}
+
+.manager-container .manager-section.manager-section--filters.is-filter-menu-open {
+    z-index: 80;
+}
+
+.manager-container .manager-filter-field.is-filter-menu-open {
+    position: relative;
+    z-index: 90;
+}
+
+.manager-container .manager-multiselect-filter.is-open {
+    z-index: 100;
+}
+
+.manager-container .manager-multiselect-filter__menu {
+    z-index: 120;
+    min-width: 100%;
+    box-shadow: var(--bpm-ui-modal-shadow);
+}
+
+.manager-container .manager-item-container {
+    position: relative;
+    z-index: 1;
+}
+
+.manager-container--mobile .bpm-mobile-header,
+.manager-container--mobile .bpm-mobile-header__filters.is-filter-menu-open {
+    overflow: visible;
+    z-index: 90;
 }

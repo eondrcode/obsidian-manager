@@ -13,6 +13,7 @@ import { fetchReleaseVersions, installPluginFromGithub, installThemeFromGithub, 
 import { performSelfCheck } from './self-check';
 import { SystemRibbonManager } from './manager/system-ribbon-manager';
 import { RibbonItem } from './data/types';
+import { markSourceInstalledRelease, sourceHasUpdate as sourceHasConfiguredUpdate, syncSourceReleaseCheck } from './source-release';
 
 type UpdateSource = 'official' | 'github' | 'unknown';
 interface UpdateStatus {
@@ -411,14 +412,7 @@ export default class Manager extends Plugin {
     }
 
     private sourceHasUpdate(source: BetaSource): boolean {
-        const localVersion = source.localVersion || "";
-        if (!source.latestVersion || !localVersion) return false;
-        return this.compareVersions(source.latestVersion, localVersion) > 0;
-    }
-
-    private pickBetaSourceVersion(source: BetaSource, versions: ReleaseVersion[]): string {
-        if (source.mode === "frozen") return source.frozenVersion || source.latestVersion || versions[0]?.version || "";
-        return versions.find(v => !v.prerelease)?.version || versions[0]?.version || "";
+        return sourceHasConfiguredUpdate(source);
     }
 
     private getBetaSourcePluginId(source: BetaSource): string {
@@ -443,17 +437,15 @@ export default class Manager extends Plugin {
     private async checkBetaSource(source: BetaSource): Promise<void> {
         try {
             const versions = await fetchReleaseVersions(this, source.repo);
-            const latestVersion = this.pickBetaSourceVersion(source, versions);
-            const latestRelease = versions.find((version) => version.version === latestVersion);
-            source.latestVersion = latestVersion || "";
-            source.latestPublishedAt = latestRelease?.publishedAt;
-            source.lastChecked = Date.now();
-            source.error = "";
-
+            let localVersion = source.localVersion || "";
             if (source.type === "plugin") {
                 const pluginId = this.getBetaSourcePluginId(source);
-                source.localVersion = (this.appPlugins.manifests[pluginId] as PluginManifest | undefined)?.version || source.localVersion || "";
+                localVersion = (this.appPlugins.manifests[pluginId] as PluginManifest | undefined)?.version || source.localVersion || "";
             }
+            const releaseCheck = syncSourceReleaseCheck(source, versions, localVersion);
+            if (source.mode === "frozen" && !source.frozenVersion) source.frozenVersion = releaseCheck.target?.tag;
+            source.lastChecked = Date.now();
+            source.error = "";
             await this.refreshBetaSourceInstalledAt(source);
         } catch (e) {
             source.error = (e as Error)?.message || String(e);
@@ -492,13 +484,23 @@ export default class Manager extends Plugin {
         for (const source of sources) {
             try {
                 const checkedRecently = source.lastChecked && Date.now() - source.lastChecked < 60_000;
-                let targetVersion = checkedRecently ? source.latestVersion || "" : "";
+                let targetVersion = checkedRecently
+                    ? source.latestReleaseTag || source.latestVersion || ""
+                    : "";
+                let targetPublishedAt = checkedRecently
+                    ? source.latestReleasePublishedAt || source.latestPublishedAt
+                    : undefined;
                 if (!targetVersion) {
                     const versions = await fetchReleaseVersions(this, source.repo);
-                    targetVersion = this.pickBetaSourceVersion(source, versions);
-                    const targetRelease = versions.find((version) => version.version === targetVersion);
-                    source.latestVersion = targetVersion || "";
-                    source.latestPublishedAt = targetRelease?.publishedAt;
+                    let localVersion = source.localVersion || "";
+                    if (source.type === "plugin") {
+                        const pluginId = this.getBetaSourcePluginId(source);
+                        localVersion = (this.appPlugins.manifests[pluginId] as PluginManifest | undefined)?.version || source.localVersion || "";
+                    }
+                    const releaseCheck = syncSourceReleaseCheck(source, versions, localVersion);
+                    if (source.mode === "frozen" && !source.frozenVersion) source.frozenVersion = releaseCheck.target?.tag;
+                    targetVersion = releaseCheck.target?.tag || "";
+                    targetPublishedAt = releaseCheck.target?.publishedAt;
                     source.lastChecked = Date.now();
                     source.error = "";
                 }
@@ -508,24 +510,20 @@ export default class Manager extends Plugin {
                     const pluginId = this.getBetaSourcePluginId(source);
                     const localVersion = (this.appPlugins.manifests[pluginId] as PluginManifest | undefined)?.version || source.localVersion || "";
                     source.localVersion = localVersion;
-                    const needsUpdate = source.mode === "frozen"
-                        ? localVersion !== targetVersion
-                        : this.compareVersions(targetVersion, localVersion || "0.0.0") > 0;
+                    const needsUpdate = sourceHasConfiguredUpdate(source);
                     if (needsUpdate) {
                         const ok = await installPluginFromGithub(this, source.repo, targetVersion, true);
                         if (ok) {
                             this.getBetaSourcePluginId(source);
                             const manifest = this.appPlugins.manifests[source.id] as PluginManifest | undefined;
-                            source.localVersion = manifest?.version || targetVersion;
+                            markSourceInstalledRelease(source, targetVersion, targetPublishedAt, manifest?.version || targetVersion);
                         }
                     }
                 } else {
-                    const needsUpdate = source.mode === "frozen"
-                        ? source.localVersion !== targetVersion
-                        : !source.localVersion || this.compareVersions(targetVersion, source.localVersion) > 0;
+                    const needsUpdate = sourceHasConfiguredUpdate(source);
                     if (needsUpdate) {
                         const ok = await installThemeFromGithub(this, source.repo, targetVersion);
-                        if (ok) source.localVersion = targetVersion;
+                        if (ok) markSourceInstalledRelease(source, targetVersion, targetPublishedAt, targetVersion);
                     }
                 }
                 await this.refreshBetaSourceInstalledAt(source);

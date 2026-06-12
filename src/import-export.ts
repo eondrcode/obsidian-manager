@@ -72,10 +72,16 @@ export interface ManagerTransferPlugin {
 	source?: {
 		mode: BetaSource["mode"];
 		frozenVersion?: string;
+		includePrerelease?: boolean;
+		updateCheckMode?: BetaSource["updateCheckMode"];
 		autoUpdate: boolean;
 		localVersion?: string;
 		latestVersion?: string;
 		latestPublishedAt?: string;
+		installedReleaseTag?: string;
+		installedReleasePublishedAt?: string;
+		latestReleaseTag?: string;
+		latestReleasePublishedAt?: string;
 		installedAt?: number;
 	};
 }
@@ -94,10 +100,16 @@ export interface ManagerTransferTheme {
 	source?: {
 		mode: BetaSource["mode"];
 		frozenVersion?: string;
+		includePrerelease?: boolean;
+		updateCheckMode?: BetaSource["updateCheckMode"];
 		autoUpdate: boolean;
 		localVersion?: string;
 		latestVersion?: string;
 		latestPublishedAt?: string;
+		installedReleaseTag?: string;
+		installedReleasePublishedAt?: string;
+		latestReleaseTag?: string;
+		latestReleasePublishedAt?: string;
 		installedAt?: number;
 	};
 }
@@ -601,10 +613,16 @@ export const collectInstalledThemes = async (
 					source: includeSource && source ? {
 						mode: source.mode,
 						frozenVersion: source.frozenVersion,
+						includePrerelease: source.includePrerelease,
+						updateCheckMode: source.updateCheckMode,
 						autoUpdate: source.autoUpdate,
 						localVersion: source.localVersion,
 						latestVersion: source.latestVersion,
 						latestPublishedAt: source.latestPublishedAt,
+						installedReleaseTag: source.installedReleaseTag,
+						installedReleasePublishedAt: source.installedReleasePublishedAt,
+						latestReleaseTag: source.latestReleaseTag,
+						latestReleasePublishedAt: source.latestReleasePublishedAt,
 						installedAt: source.installedAt,
 					} : undefined,
 				});
@@ -653,10 +671,16 @@ const buildTransferPlugin = async (
 		source: source ? {
 			mode: source.mode,
 			frozenVersion: source.frozenVersion,
+			includePrerelease: source.includePrerelease,
+			updateCheckMode: source.updateCheckMode,
 			autoUpdate: source.autoUpdate,
 			localVersion: source.localVersion,
 			latestVersion: source.latestVersion,
 			latestPublishedAt: source.latestPublishedAt,
+			installedReleaseTag: source.installedReleaseTag,
+			installedReleasePublishedAt: source.installedReleasePublishedAt,
+			latestReleaseTag: source.latestReleaseTag,
+			latestReleasePublishedAt: source.latestReleasePublishedAt,
 			installedAt: source.installedAt,
 		} : undefined,
 	};
@@ -1223,11 +1247,17 @@ export const applyManagerTransferPackage = async (
 					type: "theme",
 					mode: theme.source?.mode || "latest",
 					frozenVersion: theme.source?.frozenVersion,
+					includePrerelease: theme.source?.includePrerelease,
+					updateCheckMode: theme.source?.updateCheckMode,
 					autoUpdate: Boolean(theme.source?.autoUpdate),
 					enabled: true,
 					localVersion: theme.source?.localVersion || theme.version,
 					latestVersion: theme.source?.latestVersion || theme.version,
 					latestPublishedAt: theme.source?.latestPublishedAt,
+					installedReleaseTag: theme.source?.installedReleaseTag,
+					installedReleasePublishedAt: theme.source?.installedReleasePublishedAt,
+					latestReleaseTag: theme.source?.latestReleaseTag,
+					latestReleasePublishedAt: theme.source?.latestReleasePublishedAt,
 					installedAt: theme.source?.installedAt,
 					lastChecked: Date.now(),
 				}]);

@@ -22,6 +22,7 @@ export default class ManagerMainPage extends BaseSetting {
         { id: "openRepo", icon: "github", labelKey: "管理器_打开仓库_标题", descKey: "设置_主页面功能_打开仓库_说明" },
         { id: "openSettings", icon: "settings", labelKey: "管理器_打开设置_描述", descKey: "设置_主页面功能_打开设置_说明" },
         { id: "openDir", icon: "folder-open", labelKey: "管理器_打开目录_描述", descKey: "设置_主页面功能_打开目录_说明" },
+        { id: "clearConfig", icon: "file-cog", labelKey: "管理器_清空配置_描述", descKey: "设置_主页面功能_清空配置_说明" },
         { id: "delete", icon: "trash", labelKey: "管理器_删除插件_描述", descKey: "设置_主页面功能_删除插件_说明" },
     ];
 

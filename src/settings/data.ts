@@ -13,6 +13,7 @@ export const MAIN_PAGE_ACTION_IDS = [
     "openRepo",
     "openSettings",
     "openDir",
+    "clearConfig",
     "delete",
 ] as const;
 
@@ -35,6 +36,7 @@ export const DEFAULT_MAIN_PAGE_ACTION_PLACEMENT: Record<MainPageActionId, MainPa
     openRepo: "item",
     openSettings: "item",
     openDir: "item",
+    clearConfig: "menu",
     delete: "item",
 };
 

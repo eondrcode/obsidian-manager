@@ -53,11 +53,17 @@ export interface BetaSource {
 	type: "plugin" | "theme";
 	mode: "latest" | "frozen";
 	frozenVersion?: string;
+	includePrerelease?: boolean;
+	updateCheckMode?: "release" | "version";
 	autoUpdate: boolean;
 	enabled: boolean;
 	localVersion?: string;
 	latestVersion?: string;
 	latestPublishedAt?: string;
+	installedReleaseTag?: string;
+	installedReleasePublishedAt?: string;
+	latestReleaseTag?: string;
+	latestReleasePublishedAt?: string;
 	installedAt?: number;
 	lastChecked?: number;
 	error?: string;

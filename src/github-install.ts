@@ -26,6 +26,7 @@ interface ReleaseResponse {
 	tag_name?: string;
 	name?: string;
 	body?: string;
+	draft?: boolean;
 	prerelease?: boolean;
 	published_at?: string;
 	html_url?: string;
@@ -306,6 +307,7 @@ export const fetchReleaseVersions = async (manager: Manager, repoInput: string):
 	}
 
 	const versions = releases
+		.filter((release) => !release.draft)
 		.map((release) => ({
 			version: release.tag_name || "",
 			prerelease: Boolean(release.prerelease),
