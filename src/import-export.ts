@@ -410,11 +410,13 @@ const collectPackageFiles = async (manager: Manager, baseDir: string): Promise<M
 	return files;
 };
 
+/*
 const collectPluginFiles = async (manager: Manager, pluginId: string): Promise<ManagerTransferPluginFile[]> => {
 	const safePluginId = getSafePluginId(pluginId);
 	if (!safePluginId) return [];
 	return collectPackageFiles(manager, getPluginDir(manager, safePluginId));
 };
+*/
 
 const collectPluginConfig = async (
 	manager: Manager,

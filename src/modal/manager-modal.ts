@@ -7,7 +7,6 @@ import {
     Modal,
     Notice,
     PluginManifest,
-    requestUrl,
     SearchComponent,
     setIcon,
     Setting,
@@ -1856,10 +1855,10 @@ export class ManagerModal extends Modal {
     }
 
     async processPlugins(originPlugins: any) {
-        let plugins: any = {};
-        for (let name in originPlugins) {
+        const plugins: any = {};
+        for (const name in originPlugins) {
             try {
-                let plugin = { ...originPlugins[name] }; // new an object and make it extensible
+                const plugin = { ...originPlugins[name] }; // new an object and make it extensible
                 plugin.manifest = { ...originPlugins[name].manifest }
                 plugin.manifest["pluginUrl"] = `https://obsidian.md/plugins?id=${plugin.manifest.id}`;
                 plugin.manifest["author2"] = plugin.manifest.author?.replace(/<.*?@.*?\..*?>/g, "").trim(); // remove email address
@@ -1916,7 +1915,7 @@ export class ManagerModal extends Modal {
         this.desktopActionWrapper = actionWrapper;
         const actionContent = actionWrapper.createDiv("manager-section__content");
         actionContent.addClass("manager-section__content--actions");
-        const bindLongPressTooltip = (btn: ButtonComponent, text: string) => {
+        /*
             let timer: number | undefined;
             const show = () => { new Notice(text, 1500); };
             btn.buttonEl.addEventListener("touchstart", () => {
@@ -1925,7 +1924,7 @@ export class ManagerModal extends Modal {
             const clear = () => { if (timer) window.clearTimeout(timer); timer = undefined; };
             btn.buttonEl.addEventListener("touchend", clear);
             btn.buttonEl.addEventListener("touchcancel", clear);
-        };
+        */
         const toolbar = actionContent.createDiv("manager-toolbar");
         const tabs = toolbar.createDiv("manager-toolbar__tabs");
         tabs.setAttribute("role", "tablist");
@@ -3227,7 +3226,7 @@ export class ManagerModal extends Modal {
                 let singleStartButton: ExtraButtonComponent | null = null;
                 let restartButton: ExtraButtonComponent | null = null;
                 let enableIgnoredButton: ExtraButtonComponent | null = null;
-                let toggleSwitch: ToggleComponent | undefined;
+
 
                 if (isMobile && [
                     "checkUpdate",
@@ -3561,7 +3560,7 @@ export class ManagerModal extends Modal {
                 }
 
                 // [按钮] 切换状态
-                toggleSwitch = new ToggleComponent(itemEl.controlEl);
+                const toggleSwitch = new ToggleComponent(itemEl.controlEl);
                 const stateToggle = toggleSwitch;
                 stateToggle.setTooltip(this.manager.translator.t("管理器_切换状态_描述"));
                 stateToggle.setValue(isEnabled);
@@ -4928,9 +4927,11 @@ export class ManagerModal extends Modal {
             }
             if (versionInputEl) versionInputEl.value = "";
         };
-        let releaseTitleEl: HTMLElement | undefined;
-        let releaseMetaEl: HTMLElement | undefined;
-        let releaseBodyEl: HTMLElement | undefined;
+        const releaseEls: {
+            title?: HTMLElement;
+            meta?: HTMLElement;
+            body?: HTMLElement;
+        } = {};
         const formatReleaseDate = (value?: string) => {
             if (!value) return "";
             const date = new Date(value);
@@ -4949,26 +4950,26 @@ export class ManagerModal extends Modal {
             return this.installVersions.find((item) => !item.prerelease) || this.installVersions[0];
         };
         const updateReleaseInfo = () => {
-            if (!releaseTitleEl || !releaseMetaEl || !releaseBodyEl) return;
+            if (!releaseEls.title || !releaseEls.meta || !releaseEls.body) return;
             const release = getSelectedRelease();
-            releaseTitleEl.empty();
-            releaseMetaEl.empty();
-            releaseBodyEl.empty();
+            releaseEls.title.empty();
+            releaseEls.meta.empty();
+            releaseEls.body.empty();
             if (!release) {
-                releaseTitleEl.setText(t("安装_版本更新信息_标题"));
-                releaseBodyEl.setText(t("安装_版本更新信息_空提示"));
-                releaseBodyEl.addClass("is-empty");
+                releaseEls.title.setText(t("安装_版本更新信息_标题"));
+                releaseEls.body.setText(t("安装_版本更新信息_空提示"));
+                releaseEls.body.addClass("is-empty");
                 return;
             }
-            releaseBodyEl.removeClass("is-empty");
-            releaseTitleEl.setText(release.name || release.version);
+            releaseEls.body.removeClass("is-empty");
+            releaseEls.title.setText(release.name || release.version);
             const metaParts = [
                 release.version,
                 release.prerelease ? t("安装_发布类型_预发布") : t("安装_发布类型_正式版"),
                 formatReleaseDate(release.publishedAt),
             ].filter(Boolean);
-            releaseMetaEl.setText(metaParts.join(" · "));
-            releaseBodyEl.setText((release.body || "").trim() || t("安装_暂无更新说明"));
+            releaseEls.meta.setText(metaParts.join(" · "));
+            releaseEls.body.setText((release.body || "").trim() || t("安装_暂无更新说明"));
         };
         const fetchVersions = async () => {
             const validRepo = this.requireInstallRepo();
@@ -5114,9 +5115,9 @@ export class ManagerModal extends Modal {
         const releaseInfoIcon = releaseInfoHead.createSpan({ cls: "manager-install__release-icon" });
         setIcon(releaseInfoIcon, "newspaper");
         const releaseInfoText = releaseInfoHead.createDiv("manager-install__release-text");
-        releaseTitleEl = releaseInfoText.createDiv("manager-install__release-title");
-        releaseMetaEl = releaseInfoText.createDiv("manager-install__release-meta");
-        releaseBodyEl = releaseInfo.createDiv("manager-install__release-body");
+        releaseEls.title = releaseInfoText.createDiv("manager-install__release-title");
+        releaseEls.meta = releaseInfoText.createDiv("manager-install__release-meta");
+        releaseEls.body = releaseInfo.createDiv("manager-install__release-body");
         updateReleaseInfo();
 
         const trackSetting = new Setting(panel)

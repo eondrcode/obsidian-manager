@@ -9,7 +9,7 @@ export class SystemRibbonManager {
     private app: App;
     private manager: Manager;
     private configPath: string;
-    private isInternalUpdate: boolean = false;
+    private isInternalUpdate = false;
     private onConfigChange: () => void;
     private fileWatcher: any;
 

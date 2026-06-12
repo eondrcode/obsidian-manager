@@ -15,7 +15,7 @@ export default class Agreement {
     // 存储社区插件信息的对象，键为插件 ID，值为插件详细信息
     communityPlugins: Record<string, { [key: string]: string }>;
     // 标记是否已经加载了社区插件列表
-    loaded: boolean = false;
+    loaded = false;
     // 防抖函数，用于定时刷新社区插件列表，每小时执行一次
     debounceFetch = debounce(async () => { await this.fetchCommunityPlugins() }, 1000 * 60 * 60);
 
@@ -73,7 +73,7 @@ export default class Agreement {
      * @param enable - 安装后是否启用插件，默认为 false
      * @param github - 插件的 GitHub 仓库地址，默认为空字符串
      */
-    public async pluginInstall(id: string, version: string = "", enable: boolean = false, github: string = "") {
+    public async pluginInstall(id: string, version = "", enable = false, github = "") {
         // 打印日志，记录开始安装插件的信息
         // console.log(`[插件管理器] 开始安装插件 -- ${id} - ${version} - ${enable} - ${github}`);
         // 如果社区插件列表未加载，则先加载 否则，触发防抖函数，定时刷新社区插件列表
@@ -132,7 +132,7 @@ export default class Agreement {
      */
     public async parsePluginInstall(params: ObsidianProtocolData) {
         // 解析参数，设置默认值
-        let args = {
+        const args = {
             id: params.id,
             version: params?.version ?? "",
             enable: ["", "true", "1"].includes(params.enable.toLowerCase()),
@@ -149,7 +149,7 @@ export default class Agreement {
      */
     public async parsePluginGithub(params: ObsidianProtocolData) {
         // 解析参数，设置默认值
-        let args = { id: params.id };
+        const args = { id: params.id };
         await this.pluginGithub(args.id);
     }
 }

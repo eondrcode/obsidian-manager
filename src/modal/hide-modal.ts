@@ -2,9 +2,7 @@ import {
     App,
     ButtonComponent,
     DropdownComponent,
-    ExtraButtonComponent,
     Modal,
-    Notice,
     PluginManifest,
     SearchComponent,
     Setting,
@@ -15,29 +13,7 @@ import { ManagerSettings, TagFilterOperator } from "../settings/data";
 
 import Manager from "main";
 import { ManagerModal } from "./manager-modal";
-import { TagsModal } from "./tags-modal";
 
-interface ExportPluginManifest {
-    id: string;
-    name: string;
-    version: string;
-    author: string;
-    description: string;
-    export: boolean;
-}
-
-interface ImportPluginManifest {
-    id: string;
-    name: string;
-    version: string;
-    author: string;
-    description: string;
-}
-
-
-// ==============================
-//          侧边栏 对话框 翻译
-// ==============================
 export class HideModal extends Modal {
     manager: Manager;
     managerModal: ManagerModal;
@@ -53,13 +29,13 @@ export class HideModal extends Modal {
     searchText = "";
     // 搜索结果
     searchEl: SearchComponent;
-    delay: string = "";
-    tag: string = "";
+    delay = "";
+    tag = "";
     tagOperator: TagFilterOperator = "contains";
-    group: string = "";
+    group = "";
     groupOperator: TagFilterOperator = "contains";
     delayOperator: TagFilterOperator = "contains";
-    filter: string = "all";
+    filter = "all";
 
     private addOrderedOptions(dropdown: DropdownComponent, options: Array<[string, string]>) {
         for (const [value, text] of options) {
