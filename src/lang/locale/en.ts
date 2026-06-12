@@ -486,6 +486,7 @@ export default {
     管理器_状态_显示中: 'Visible',
     管理器_应用更改中_提示: 'Applying changes. Please avoid repeated actions.',
     管理器_暂无匹配插件: 'No matching plugins',
+    管理器_暂无匹配插件_说明: 'No plugins match the current search or filters. Try changing the keyword or removing some filters.',
     管理器_安装_操作_安装中: 'Installing...',
     批量编辑_入口: 'Bulk edit',
     批量编辑_标题: 'Bulk edit',

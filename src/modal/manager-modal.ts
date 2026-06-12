@@ -3374,9 +3374,11 @@ export class ManagerModal extends Modal {
         if (bulkBarHost) this.renderBulkBar(bulkBarHost);
         if (renderedCount === 0) {
             const empty = this.contentEl.createDiv("bpm-empty-state manager-plugin-page__empty");
-            const icon = empty.createDiv();
+            empty.setAttribute("role", "status");
+            const icon = empty.createDiv("bpm-empty-state__icon");
             setIcon(icon, "search-x");
-            empty.createDiv({ cls: "bpm-empty-state__text", text: t("管理器_暂无匹配插件") });
+            empty.createDiv({ cls: "bpm-empty-state__title", text: t("管理器_暂无匹配插件") });
+            empty.createDiv({ cls: "bpm-empty-state__text", text: t("管理器_暂无匹配插件_说明") });
         }
         // 计算页尾
         this.updateStats();
