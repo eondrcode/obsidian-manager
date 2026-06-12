@@ -75,6 +75,8 @@ export interface ManagerTransferPlugin {
 		autoUpdate: boolean;
 		localVersion?: string;
 		latestVersion?: string;
+		latestPublishedAt?: string;
+		installedAt?: number;
 	};
 }
 
@@ -95,6 +97,8 @@ export interface ManagerTransferTheme {
 		autoUpdate: boolean;
 		localVersion?: string;
 		latestVersion?: string;
+		latestPublishedAt?: string;
+		installedAt?: number;
 	};
 }
 
@@ -600,6 +604,8 @@ export const collectInstalledThemes = async (
 						autoUpdate: source.autoUpdate,
 						localVersion: source.localVersion,
 						latestVersion: source.latestVersion,
+						latestPublishedAt: source.latestPublishedAt,
+						installedAt: source.installedAt,
 					} : undefined,
 				});
 			}
@@ -650,6 +656,8 @@ const buildTransferPlugin = async (
 			autoUpdate: source.autoUpdate,
 			localVersion: source.localVersion,
 			latestVersion: source.latestVersion,
+			latestPublishedAt: source.latestPublishedAt,
+			installedAt: source.installedAt,
 		} : undefined,
 	};
 };
@@ -1219,6 +1227,8 @@ export const applyManagerTransferPackage = async (
 					enabled: true,
 					localVersion: theme.source?.localVersion || theme.version,
 					latestVersion: theme.source?.latestVersion || theme.version,
+					latestPublishedAt: theme.source?.latestPublishedAt,
+					installedAt: theme.source?.installedAt,
 					lastChecked: Date.now(),
 				}]);
 			}

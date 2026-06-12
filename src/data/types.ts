@@ -57,6 +57,8 @@ export interface BetaSource {
 	enabled: boolean;
 	localVersion?: string;
 	latestVersion?: string;
+	latestPublishedAt?: string;
+	installedAt?: number;
 	lastChecked?: number;
 	error?: string;
 }

@@ -1,4 +1,4 @@
-import { ObsidianProtocolData, Plugin, PluginManifest, Workspace } from 'obsidian';
+import { normalizePath, ObsidianProtocolData, Plugin, PluginManifest, Workspace } from 'obsidian';
 import { DEFAULT_SETTINGS, ManagerSettings } from './settings/data';
 import { ManagerSettingTab } from './settings';
 import { Translator } from './lang/inxdex';
@@ -421,21 +421,40 @@ export default class Manager extends Plugin {
         return versions.find(v => !v.prerelease)?.version || versions[0]?.version || "";
     }
 
+    private getBetaSourcePluginId(source: BetaSource): string {
+        const mappedId = Object.entries(this.settings.REPO_MAP || {})
+            .find(([, repo]) => sanitizeRepo(repo) === sanitizeRepo(source.repo))?.[0];
+        if (mappedId) source.id = mappedId;
+        return mappedId || source.id;
+    }
+
+    private async refreshBetaSourceInstalledAt(source: BetaSource): Promise<void> {
+        const folder = source.type === "plugin"
+            ? normalizePath(`${this.app.vault.configDir}/plugins/${this.getBetaSourcePluginId(source)}`)
+            : normalizePath(`${this.app.vault.configDir}/themes/${source.id}`);
+        try {
+            const stat = await this.app.vault.adapter.stat(folder);
+            source.installedAt = stat ? (stat.ctime || stat.mtime || undefined) : undefined;
+        } catch {
+            source.installedAt = undefined;
+        }
+    }
+
     private async checkBetaSource(source: BetaSource): Promise<void> {
         try {
             const versions = await fetchReleaseVersions(this, source.repo);
             const latestVersion = this.pickBetaSourceVersion(source, versions);
+            const latestRelease = versions.find((version) => version.version === latestVersion);
             source.latestVersion = latestVersion || "";
+            source.latestPublishedAt = latestRelease?.publishedAt;
             source.lastChecked = Date.now();
             source.error = "";
 
             if (source.type === "plugin") {
-                const mappedId = Object.entries(this.settings.REPO_MAP || {})
-                    .find(([, repo]) => sanitizeRepo(repo) === sanitizeRepo(source.repo))?.[0];
-                if (mappedId) source.id = mappedId;
-                const pluginId = mappedId || source.id;
+                const pluginId = this.getBetaSourcePluginId(source);
                 source.localVersion = (this.appPlugins.manifests[pluginId] as PluginManifest | undefined)?.version || source.localVersion || "";
             }
+            await this.refreshBetaSourceInstalledAt(source);
         } catch (e) {
             source.error = (e as Error)?.message || String(e);
             source.lastChecked = Date.now();
@@ -477,17 +496,16 @@ export default class Manager extends Plugin {
                 if (!targetVersion) {
                     const versions = await fetchReleaseVersions(this, source.repo);
                     targetVersion = this.pickBetaSourceVersion(source, versions);
+                    const targetRelease = versions.find((version) => version.version === targetVersion);
                     source.latestVersion = targetVersion || "";
+                    source.latestPublishedAt = targetRelease?.publishedAt;
                     source.lastChecked = Date.now();
                     source.error = "";
                 }
 
                 if (!targetVersion) continue;
                 if (source.type === "plugin") {
-                    const mappedId = Object.entries(this.settings.REPO_MAP || {})
-                        .find(([, repo]) => sanitizeRepo(repo) === sanitizeRepo(source.repo))?.[0];
-                    if (mappedId) source.id = mappedId;
-                    const pluginId = mappedId || source.id;
+                    const pluginId = this.getBetaSourcePluginId(source);
                     const localVersion = (this.appPlugins.manifests[pluginId] as PluginManifest | undefined)?.version || source.localVersion || "";
                     source.localVersion = localVersion;
                     const needsUpdate = source.mode === "frozen"
@@ -496,9 +514,7 @@ export default class Manager extends Plugin {
                     if (needsUpdate) {
                         const ok = await installPluginFromGithub(this, source.repo, targetVersion, true);
                         if (ok) {
-                            const nextMappedId = Object.entries(this.settings.REPO_MAP || {})
-                                .find(([, repo]) => sanitizeRepo(repo) === sanitizeRepo(source.repo))?.[0];
-                            if (nextMappedId) source.id = nextMappedId;
+                            this.getBetaSourcePluginId(source);
                             const manifest = this.appPlugins.manifests[source.id] as PluginManifest | undefined;
                             source.localVersion = manifest?.version || targetVersion;
                         }
@@ -512,6 +528,7 @@ export default class Manager extends Plugin {
                         if (ok) source.localVersion = targetVersion;
                     }
                 }
+                await this.refreshBetaSourceInstalledAt(source);
             } catch (e) {
                 source.error = (e as Error)?.message || String(e);
                 source.lastChecked = Date.now();

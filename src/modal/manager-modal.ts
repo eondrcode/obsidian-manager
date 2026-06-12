@@ -104,6 +104,10 @@ type MultiSelectFilterControl = {
     close: () => void;
 };
 
+type FilterOperatorControl = {
+    setValue: (value: FilterOperator) => void;
+};
+
 
 
 // ==============================
@@ -152,7 +156,7 @@ export class ManagerModal extends Modal {
     installTrackSource = true;
     searchBarEl?: HTMLElement;
     statusMultiSelect?: MultiSelectFilterControl;
-    statusOperatorDropdown?: DropdownComponent;
+    statusOperatorControl?: FilterOperatorControl;
     groupMultiSelect?: MultiSelectFilterControl;
     tagMultiSelect?: MultiSelectFilterControl;
     delayMultiSelect?: MultiSelectFilterControl;
@@ -521,7 +525,7 @@ export class ManagerModal extends Modal {
         this.setStatusFilterOperator("contains");
         this.setStatusFilterValue(value);
         this.statusMultiSelect?.setValues(value === "all" ? [] : [value]);
-        this.statusOperatorDropdown?.setValue("contains");
+        this.statusOperatorControl?.setValue("contains");
         this.syncPageChrome();
         void this.reloadShowData();
     }
@@ -1843,18 +1847,37 @@ export class ManagerModal extends Modal {
             const selectGroup = controlEl.createDiv("manager-filter-select-group");
             return selectGroup;
         };
-        const createOperatorDropdown = (container: HTMLElement, value: FilterOperator, ariaLabel: string, onChange: (value: string) => void) => {
-            const dropdown = new DropdownComponent(container);
-            dropdown.selectEl.parentElement?.addClass("manager-filter-operator-dropdown");
-            dropdown.selectEl.addClass("manager-filter-operator");
-            dropdown.addOptions(this.getFilterOperatorOptions());
-            dropdown.setValue(value);
-            dropdown.selectEl.setAttribute("aria-label", ariaLabel);
-            dropdown.onChange((value) => {
-                onChange(value);
+        const createOperatorToggle = (container: HTMLElement, value: FilterOperator, ariaLabel: string, onChange: (value: string) => void): FilterOperatorControl => {
+            const options = this.getFilterOperatorOptions();
+            const buttonEl = container.createEl("button", { cls: "manager-filter-operator-toggle" });
+            buttonEl.type = "button";
+            let currentValue = this.normalizeFilterOperator(value);
+
+            const updateButton = () => {
+                const isExclude = currentValue === "not-contains";
+                buttonEl.empty();
+                setIcon(buttonEl, isExclude ? "circle-slash" : "check");
+                buttonEl.toggleClass("is-exclude", isExclude);
+                buttonEl.toggleClass("is-include", !isExclude);
+                buttonEl.setAttribute("aria-label", `${ariaLabel}: ${options[currentValue]}`);
+                buttonEl.setAttribute("aria-pressed", `${isExclude}`);
+                buttonEl.setAttribute("title", options[currentValue]);
+            };
+
+            buttonEl.addEventListener("click", () => {
+                currentValue = currentValue === "contains" ? "not-contains" : "contains";
+                updateButton();
+                onChange(currentValue);
                 this.reloadShowData();
             });
-            return dropdown;
+            updateButton();
+
+            return {
+                setValue: (nextValue: FilterOperator) => {
+                    currentValue = this.normalizeFilterOperator(nextValue);
+                    updateButton();
+                },
+            };
         };
 
         // [搜索行] 搜索框
@@ -1873,7 +1896,7 @@ export class ManagerModal extends Modal {
 
         // 过滤器
         const statusControl = createFilterSelectField(t("通用_状态_文本"), "list-filter", "compound");
-        this.statusOperatorDropdown = createOperatorDropdown(statusControl, this.getStatusFilterOperator(), t("筛选_状态取反_标签"), (value) => this.setStatusFilterOperator(value));
+        this.statusOperatorControl = createOperatorToggle(statusControl, this.getStatusFilterOperator(), t("筛选_状态取反_标签"), (value) => this.setStatusFilterOperator(value));
         const statusOptions = Object.entries(this.getStatusFilterOptions());
         this.statusMultiSelect = this.createMultiSelectFilter(statusControl, statusOptions, this.getStatusFilterValues(), "all", this.getStatusFilterOptions()["all"], t("筛选_状态_标签"), (values) => {
             this.setStatusFilterValues(values);
@@ -1884,7 +1907,7 @@ export class ManagerModal extends Modal {
         // [过滤行] 分组选择列表
         const groups = this.getGroupFilterOptions(this.manager.translator.t("筛选_全部_描述"));
         const groupControl = createFilterSelectField(t("通用_分组_文本"), "folder-tree", "compound");
-        createOperatorDropdown(groupControl, this.getGroupFilterOperator(), t("筛选_分组取反_标签"), (value) => this.setGroupFilterOperator(value));
+        createOperatorToggle(groupControl, this.getGroupFilterOperator(), t("筛选_分组取反_标签"), (value) => this.setGroupFilterOperator(value));
         this.groupMultiSelect = this.createMultiSelectFilter(groupControl, groups, this.getGroupFilterValues(), "", groups[0]?.[1] || t("筛选_全部_描述"), t("筛选_分组_标签"), (values) => {
             this.setGroupFilterValues(values);
             this.reloadShowData();
@@ -1893,7 +1916,7 @@ export class ManagerModal extends Modal {
         // [过滤行] 标签选择列表
         const tags = this.getTagFilterOptions(this.manager.translator.t("筛选_全部_描述"));
         const tagControl = createFilterSelectField(t("通用_标签_文本"), "tags", "compound");
-        createOperatorDropdown(tagControl, this.getTagFilterOperator(), t("筛选_标签取反_标签"), (value) => this.setTagFilterOperator(value));
+        createOperatorToggle(tagControl, this.getTagFilterOperator(), t("筛选_标签取反_标签"), (value) => this.setTagFilterOperator(value));
         this.tagMultiSelect = this.createMultiSelectFilter(tagControl, tags, this.getTagFilterValues(), "", tags[0]?.[1] || t("筛选_全部_描述"), t("筛选_标签_标签"), (values) => {
             this.setTagFilterValues(values);
             this.reloadShowData();
@@ -1903,7 +1926,7 @@ export class ManagerModal extends Modal {
         if (this.settings.DELAY) {
             const delays = this.getDelayFilterOptions(this.manager.translator.t("筛选_全部_描述"), true);
             const delayControl = createFilterSelectField(t("通用_延迟_文本"), "timer", "compound");
-            createOperatorDropdown(delayControl, this.getDelayFilterOperator(), t("筛选_延迟取反_标签"), (value) => this.setDelayFilterOperator(value));
+            createOperatorToggle(delayControl, this.getDelayFilterOperator(), t("筛选_延迟取反_标签"), (value) => this.setDelayFilterOperator(value));
             this.delayMultiSelect = this.createMultiSelectFilter(delayControl, delays, this.getDelayFilterValues(), "", delays[0]?.[1] || t("筛选_全部_描述"), t("筛选_延迟_标签"), (values) => {
                 this.setDelayFilterValues(values);
                 this.reloadShowData();
@@ -2166,24 +2189,36 @@ export class ManagerModal extends Modal {
         updateActiveFilters();
 
         const filterPanel = header.createDiv(`bpm-mobile-header__filters${this.mobileFiltersCollapsed ? " is-collapsed" : ""}`);
-        const addMobileOperatorDropdown = (setting: Setting, value: FilterOperator, ariaLabel: string, onChange: (value: string) => void) => {
-            setting.addDropdown((dd) => {
-                dd.selectEl.parentElement?.addClass("manager-filter-operator-dropdown");
-                dd.selectEl.addClass("manager-filter-operator");
-                dd.addOptions(this.getFilterOperatorOptions());
-                dd.setValue(value);
-                dd.selectEl.setAttribute("aria-label", ariaLabel);
-                dd.onChange((selected) => {
-                    onChange(selected);
-                    this.showHeadMobile();
-                    this.reloadShowData();
-                });
+        const addMobileOperatorToggle = (setting: Setting, value: FilterOperator, ariaLabel: string, onChange: (value: string) => void) => {
+            const options = this.getFilterOperatorOptions();
+            const buttonEl = setting.controlEl.createEl("button", { cls: "manager-filter-operator-toggle" });
+            buttonEl.type = "button";
+            let currentValue = this.normalizeFilterOperator(value);
+
+            const updateButton = () => {
+                const isExclude = currentValue === "not-contains";
+                buttonEl.empty();
+                setIcon(buttonEl, isExclude ? "circle-slash" : "check");
+                buttonEl.toggleClass("is-exclude", isExclude);
+                buttonEl.toggleClass("is-include", !isExclude);
+                buttonEl.setAttribute("aria-label", `${ariaLabel}: ${options[currentValue]}`);
+                buttonEl.setAttribute("aria-pressed", `${isExclude}`);
+                buttonEl.setAttribute("title", options[currentValue]);
+            };
+
+            buttonEl.addEventListener("click", () => {
+                currentValue = currentValue === "contains" ? "not-contains" : "contains";
+                updateButton();
+                onChange(currentValue);
+                this.showHeadMobile();
+                this.reloadShowData();
             });
+            updateButton();
         };
 
         // 状态
         const statusSetting = new Setting(filterPanel).setName(t("通用_状态_文本"));
-        addMobileOperatorDropdown(statusSetting, this.getStatusFilterOperator(), t("筛选_状态取反_标签"), (value) => this.setStatusFilterOperator(value));
+        addMobileOperatorToggle(statusSetting, this.getStatusFilterOperator(), t("筛选_状态取反_标签"), (value) => this.setStatusFilterOperator(value));
         const statusOptions = Object.entries(this.getStatusFilterOptions());
         this.createMultiSelectFilter(statusSetting.controlEl, statusOptions, this.getStatusFilterValues(), "all", this.getStatusFilterOptions()["all"], t("筛选_状态_标签"), (values) => {
             this.setStatusFilterValues(values);
@@ -2194,7 +2229,7 @@ export class ManagerModal extends Modal {
         // 分组
         const groups = this.getGroupFilterOptions(t("筛选_全部_描述"));
         const groupSetting = new Setting(filterPanel).setName(t("通用_分组_文本"));
-        addMobileOperatorDropdown(groupSetting, this.getGroupFilterOperator(), t("筛选_分组取反_标签"), (value) => this.setGroupFilterOperator(value));
+        addMobileOperatorToggle(groupSetting, this.getGroupFilterOperator(), t("筛选_分组取反_标签"), (value) => this.setGroupFilterOperator(value));
         this.createMultiSelectFilter(groupSetting.controlEl, groups, this.getGroupFilterValues(), "", groups[0]?.[1] || t("筛选_全部_描述"), t("筛选_分组_标签"), (values) => {
             this.setGroupFilterValues(values);
             this.showHeadMobile();
@@ -2204,7 +2239,7 @@ export class ManagerModal extends Modal {
         // 标签
         const tags = this.getTagFilterOptions(t("筛选_全部_描述"));
         const tagSetting = new Setting(filterPanel).setName(t("通用_标签_文本"));
-        addMobileOperatorDropdown(tagSetting, this.getTagFilterOperator(), t("筛选_标签取反_标签"), (value) => this.setTagFilterOperator(value));
+        addMobileOperatorToggle(tagSetting, this.getTagFilterOperator(), t("筛选_标签取反_标签"), (value) => this.setTagFilterOperator(value));
         this.createMultiSelectFilter(tagSetting.controlEl, tags, this.getTagFilterValues(), "", tags[0]?.[1] || t("筛选_全部_描述"), t("筛选_标签_标签"), (values) => {
             this.setTagFilterValues(values);
             this.showHeadMobile();
@@ -2215,7 +2250,7 @@ export class ManagerModal extends Modal {
         if (this.settings.DELAY) {
             const delays = this.getDelayFilterOptions(t("筛选_全部_描述"));
             const delaySetting = new Setting(filterPanel).setName(t("通用_延迟_文本"));
-            addMobileOperatorDropdown(delaySetting, this.getDelayFilterOperator(), t("筛选_延迟取反_标签"), (value) => this.setDelayFilterOperator(value));
+            addMobileOperatorToggle(delaySetting, this.getDelayFilterOperator(), t("筛选_延迟取反_标签"), (value) => this.setDelayFilterOperator(value));
             this.createMultiSelectFilter(delaySetting.controlEl, delays, this.getDelayFilterValues(), "", delays[0]?.[1] || t("筛选_全部_描述"), t("筛选_延迟_标签"), (values) => {
                 this.setDelayFilterValues(values);
                 this.showHeadMobile();
@@ -3755,9 +3790,59 @@ export class ManagerModal extends Modal {
         return entry?.[0] ?? null;
     }
 
+    private getSourcePackageFolder(source: BetaSource): string {
+        if (source.type === "plugin") {
+            const pluginId = this.getPluginIdByRepo(source.repo) || source.id;
+            return pluginId ? normalizePath(`${this.app.vault.configDir}/plugins/${pluginId}`) : "";
+        }
+        return normalizePath(`${this.app.vault.configDir}/themes/${source.id}`);
+    }
+
+    private async readSourcePackageCreatedAt(source: BetaSource): Promise<number | undefined> {
+        const folder = this.getSourcePackageFolder(source);
+        if (!folder) return undefined;
+        try {
+            const stat = await this.app.vault.adapter.stat(folder);
+            if (!stat) return undefined;
+            return stat.ctime || stat.mtime || undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    private async refreshSourcePackageCreatedAt(source: BetaSource): Promise<void> {
+        const installedAt = await this.readSourcePackageCreatedAt(source);
+        source.installedAt = installedAt;
+    }
+
+    private async refreshSourcesPackageCreatedAt(sources = this.getBetaSources()): Promise<boolean> {
+        let changed = false;
+        await Promise.all(sources.map(async (source) => {
+            const installedAt = await this.readSourcePackageCreatedAt(source);
+            if (source.installedAt !== installedAt) {
+                source.installedAt = installedAt;
+                changed = true;
+            }
+        }));
+        return changed;
+    }
+
+    private formatSourceDate(value?: number | string): string {
+        if (!value) return "";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "";
+        return date.toLocaleDateString();
+    }
+
+    private formatVersionWithDate(version: string, date?: number | string): string {
+        const dateText = this.formatSourceDate(date);
+        return dateText ? `${version} · ${dateText}` : version;
+    }
+
     private getSourceLocalVersion(source: BetaSource): string {
         if (source.type === "plugin") {
-            return (this.appPlugins.manifests[source.id] as PluginManifest | undefined)?.version || source.localVersion || "";
+            const pluginId = this.getPluginIdByRepo(source.repo) || source.id;
+            return (this.appPlugins.manifests[pluginId] as PluginManifest | undefined)?.version || source.localVersion || "";
         }
         return source.localVersion || "";
     }
@@ -3864,8 +3949,11 @@ export class ManagerModal extends Modal {
         try {
             const versions = await fetchReleaseVersions(this.manager, source.repo);
             const latestVersion = this.pickSourceVersion(source, versions);
+            const latestRelease = versions.find((version) => version.version === latestVersion);
             source.latestVersion = latestVersion || "";
+            source.latestPublishedAt = latestRelease?.publishedAt;
             source.localVersion = this.getSourceLocalVersion(source);
+            await this.refreshSourcePackageCreatedAt(source);
             source.lastChecked = Date.now();
             source.error = "";
             if (source.mode === "frozen" && !source.frozenVersion) source.frozenVersion = latestVersion;
@@ -3900,6 +3988,7 @@ export class ManagerModal extends Modal {
         } else {
             source.localVersion = targetVersion;
         }
+        await this.refreshSourcePackageCreatedAt(source);
         source.error = "";
         await this.manager.saveSettings();
         return true;
@@ -4053,6 +4142,11 @@ export class ManagerModal extends Modal {
 
         const page = containerEl.createDiv("manager-source-page");
         const sources = this.getBetaSources();
+        void this.refreshSourcesPackageCreatedAt(sources).then(async (changed) => {
+            if (!changed || this.activePage !== "sources") return;
+            await this.manager.saveSettings();
+            this.renderContent();
+        });
 
         if (sources.length === 0) {
             const empty = page.createDiv("bpm-empty-state manager-source-page__empty");
@@ -4106,6 +4200,12 @@ export class ManagerModal extends Modal {
             const notCheckedText = t("来源_未检查");
             const localVersion = this.getSourceLocalVersion(source) || notInstalledText;
             const latestVersion = source.latestVersion || notCheckedText;
+            const localVersionText = localVersion === notInstalledText
+                ? localVersion
+                : this.formatVersionWithDate(localVersion, source.installedAt);
+            const latestVersionText = source.latestVersion
+                ? this.formatVersionWithDate(source.latestVersion, source.latestPublishedAt)
+                : latestVersion;
             const hasUpdate = this.sourceHasUpdate(source);
 
             const card = list.createDiv("manager-source-card");
@@ -4148,8 +4248,8 @@ export class ManagerModal extends Modal {
                 meta.createSpan({ cls: "manager-source-card__meta-label", text: label });
                 meta.createSpan({ cls: "manager-source-card__meta-value", text: value, title: value });
             };
-            createMeta(t("来源_当前"), localVersion, "hard-drive", localVersion === notInstalledText ? "is-muted" : undefined);
-            createMeta(t("来源_最新"), latestVersion, "tag", hasUpdate ? "is-update" : undefined);
+            createMeta(t("来源_当前"), localVersionText, "hard-drive", localVersion === notInstalledText ? "is-muted" : undefined);
+            createMeta(t("来源_最新"), latestVersionText, "tag", hasUpdate ? "is-update" : undefined);
             createMeta(t("来源_检查"), checkedText, "clock");
             if (source.error) {
                 const errorEl = cardMain.createDiv("manager-source-card__error");
@@ -4376,6 +4476,11 @@ export class ManagerModal extends Modal {
             if (Number.isNaN(date.getTime())) return "";
             return date.toLocaleDateString();
         };
+        const getReleaseOptionLabel = (release: ReleaseVersion) => [
+            release.version,
+            formatReleaseDate(release.publishedAt),
+            release.prerelease ? t("安装_发布类型_预发布") : "",
+        ].filter(Boolean).join(" · ");
         const getSelectedRelease = () => {
             if (this.installVersions.length === 0) return null;
             const selected = this.installVersion.trim();
@@ -4512,7 +4617,7 @@ export class ManagerModal extends Modal {
         versionSetting.addDropdown((dd) => {
             versionSelectEl = dd.selectEl;
             dd.addOption("", t("管理器_安装_版本_默认最新"));
-            this.installVersions.forEach((v) => dd.addOption(v.version, `${v.version}${v.prerelease ? " (pre)" : ""}`));
+            this.installVersions.forEach((v) => dd.addOption(v.version, getReleaseOptionLabel(v)));
             dd.setValue(this.installVersion);
             dd.onChange((v) => {
                 this.installVersion = v;
@@ -4587,7 +4692,8 @@ export class ManagerModal extends Modal {
                     this.rememberInstallHistory(validRepo, this.installType, this.installVersion, this.installTrackSource);
                     if (this.installTrackSource) {
                         const pluginId = this.installType === "plugin" ? this.getPluginIdByRepo(validRepo) : validRepo;
-                        this.upsertBetaSource({
+                        const selectedRelease = getSelectedRelease();
+                        const nextSource: BetaSource = {
                             id: pluginId || validRepo,
                             repo: validRepo,
                             type: this.installType,
@@ -4595,10 +4701,13 @@ export class ManagerModal extends Modal {
                             frozenVersion: this.installVersion || undefined,
                             autoUpdate: false,
                             enabled: true,
-                            localVersion: this.installVersion || getSelectedRelease()?.version || undefined,
-                            latestVersion: this.installVersion || getSelectedRelease()?.version || undefined,
+                            localVersion: this.installVersion || selectedRelease?.version || undefined,
+                            latestVersion: this.installVersion || selectedRelease?.version || undefined,
+                            latestPublishedAt: selectedRelease?.publishedAt,
                             lastChecked: Date.now(),
-                        });
+                        };
+                        nextSource.installedAt = await this.readSourcePackageCreatedAt(nextSource);
+                        this.upsertBetaSource(nextSource);
                     }
                     await this.manager.saveSettings();
                     this.activePage = this.installTrackSource ? "sources" : "plugins";
