@@ -281,7 +281,46 @@ export default class Manager extends Plugin {
     }
 
     private clearRibbonStyleOverrides() {
-        document.getElementById("bpm-ribbon-manager-style")?.remove();
+        document
+            .querySelectorAll<HTMLElement>('[data-bpm-ribbon-managed="true"], [data-bpm-menu-managed="true"]')
+            .forEach((element) => this.clearManagedElementStyle(element));
+    }
+
+    private rememberManagedElementStyle(element: HTMLElement, marker: "ribbon" | "menu") {
+        element.setAttribute(marker === "ribbon" ? "data-bpm-ribbon-managed" : "data-bpm-menu-managed", "true");
+        if (!element.hasAttribute("data-bpm-original-display")) {
+            element.setAttribute("data-bpm-original-display", element.style.display);
+        }
+        if (!element.hasAttribute("data-bpm-original-order")) {
+            element.setAttribute("data-bpm-original-order", element.style.order);
+        }
+    }
+
+    private clearManagedElementStyle(element: HTMLElement) {
+        const originalDisplay = element.getAttribute("data-bpm-original-display");
+        const originalOrder = element.getAttribute("data-bpm-original-order");
+
+        if (originalDisplay !== null) element.style.display = originalDisplay;
+        else element.style.removeProperty("display");
+
+        if (originalOrder !== null) element.style.order = originalOrder;
+        else element.style.removeProperty("order");
+
+        element.removeAttribute("data-bpm-ribbon-managed");
+        element.removeAttribute("data-bpm-menu-managed");
+        element.removeAttribute("data-bpm-original-display");
+        element.removeAttribute("data-bpm-original-order");
+    }
+
+    private applyManagedVisibility(element: HTMLElement, visible: boolean, marker: "ribbon" | "menu") {
+        this.rememberManagedElementStyle(element, marker);
+        const originalDisplay = element.getAttribute("data-bpm-original-display") || "";
+        element.style.display = visible ? originalDisplay : "none";
+    }
+
+    private applyManagedOrder(element: HTMLElement, order: number, marker: "ribbon" | "menu") {
+        this.rememberManagedElementStyle(element, marker);
+        element.style.order = `${order}`;
     }
 
     private stopRibbonRuntimeFeatures() {
@@ -1186,56 +1225,48 @@ export default class Manager extends Plugin {
             return;
         }
 
-        let styleEl = document.getElementById("bpm-ribbon-manager-style");
-        if (!styleEl) {
-            styleEl = document.createElement("style");
-            styleEl.id = "bpm-ribbon-manager-style";
-            document.head.appendChild(styleEl);
-        }
-
         const items = this.settings.RIBBON_SETTINGS || [];
         if (items.length === 0) {
-            styleEl.innerHTML = "";
+            this.clearRibbonStyleOverrides();
             return;
         }
 
-        // Determine platform
-        let baseSelector = "";
-        const isMobile = Platform.isMobile;
-
-        if (isMobile) {
-            baseSelector = `.menu-scroll .menu-item`; // Mobile logic
-        } else {
-            baseSelector = `.side-dock-actions div.clickable-icon.side-dock-ribbon-action`;
+        if (Platform.isMobile) {
+            document
+                .querySelectorAll<HTMLElement>(".menu-scroll")
+                .forEach((menuScroll) => this.processMenuItems(menuScroll));
+            return;
         }
 
-        const cssRules = items.map(item => {
-            if (!item.name) return "";
-            const order = Number.isFinite(item.order) ? item.order : 9999;
-            if (!item.visible) {
-                const selector = this.generateMultiLineAriaLabelSelector(baseSelector, item.name);
-                return `${selector} { order: ${order}; display: none !important; }`;
-            }
-            const selector = this.generateMultiLineAriaLabelSelector(baseSelector, item.name);
-            return `${selector} { order: ${order}; }`;
-        }).filter(rule => rule !== "").join("\n");
+        const ribbonElements = Array.from(
+            document.querySelectorAll<HTMLElement>(".side-dock-actions div.clickable-icon.side-dock-ribbon-action")
+        );
 
-        styleEl.innerHTML = cssRules;
+        ribbonElements.forEach((element) => {
+            const item = this.findRibbonSettingForElement(element, items);
+            if (!item) {
+                if (element.hasAttribute("data-bpm-ribbon-managed")) this.clearManagedElementStyle(element);
+                return;
+            }
+
+            const order = Number.isFinite(item.order) ? item.order : 9999;
+            this.applyManagedOrder(element, order, "ribbon");
+            this.applyManagedVisibility(element, item.visible !== false, "ribbon");
+        });
     }
 
-    private generateMultiLineAriaLabelSelector(baseSelector: string, ariaLabelText: string): string {
-        const lines = ariaLabelText.split("\n").filter(line => line.trim() !== "");
+    private findRibbonSettingForElement(element: HTMLElement, items: RibbonItem[]): RibbonItem | undefined {
+        const label = element.getAttribute("aria-label") || element.getAttribute("title") || "";
+        if (!label) return undefined;
+        return items.find((item) => item.name && this.ribbonLabelMatchesName(label, item.name));
+    }
+
+    private ribbonLabelMatchesName(label: string, itemName: string): boolean {
+        const lines = itemName.split("\n").map(line => line.trim()).filter(line => line !== "");
         if (lines.length <= 1) {
-            const escapedName = ariaLabelText.replace(/"/g, '\\"');
-            return `${baseSelector}[aria-label="${escapedName}"]`;
-        } else {
-            const selectors = lines.map(line => {
-                const trimmedLine = line.trim();
-                const escapedLine = trimmedLine.replace(/"/g, '\\"');
-                return `[aria-label*="${escapedLine}"]`;
-            }).join("");
-            return `${baseSelector}${selectors}`;
+            return label === itemName;
         }
+        return lines.every((line) => label.includes(line));
     }
 
     private menuObserver: MutationObserver | null = null;
@@ -1334,12 +1365,7 @@ export default class Manager extends Plugin {
         // 3. 应用显隐 (直接操作 DOM 样式以确保移动端生效)
 
         itemsWithOrder.forEach(({ item, visible }) => {
-            const currentDisplay = item.style.display;
-            const targetDisplay = visible ? "" : "none";
-            if (currentDisplay !== targetDisplay) {
-                item.style.display = targetDisplay;
-
-            }
+            this.applyManagedVisibility(item, visible, "menu");
         });
 
         // 4. 检查是否需要排序

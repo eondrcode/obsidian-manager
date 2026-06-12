@@ -4918,7 +4918,7 @@ export class ManagerModal extends Modal {
         let versionSelectEl: HTMLSelectElement | undefined;
         const resetVersionControls = () => {
             if (versionSelectEl) {
-                versionSelectEl.innerHTML = "";
+                versionSelectEl.empty();
                 const option = document.createElement("option");
                 option.value = "";
                 option.text = t("管理器_安装_版本_默认最新");

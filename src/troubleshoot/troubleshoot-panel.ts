@@ -35,7 +35,7 @@ export class TroubleshootPanel {
         if (savedState && (savedState.status === "running" || savedState.status === "completed")) {
             this.state = savedState;
         } else {
-            this.state = cloneState(INITIAL_TROUBLESHOOT_STATE);
+            this.state = cloneState(INITIAL_TROUBLESHOOT_STATE); 
         }
     }
 
@@ -46,7 +46,7 @@ export class TroubleshootPanel {
 
     private async clearState() {
         this.state = cloneState(INITIAL_TROUBLESHOOT_STATE);
-        this.manager.settings.TROUBLESHOOT_STATE = this.state;
+        this.manager.settings.TROUBLESHOOT_STATE = this.state; 
         await this.manager.saveSettings();
     }
 
