@@ -1,13 +1,53 @@
+<div align="center">
+
 # Better Plugins Manager
 
-[简体中文](docs/README_CN.md)
+**A more capable plugin manager for Obsidian.**
 
-![GitHub Downloads](https://img.shields.io/github/downloads/zenozero-dev/obsidian-manager/total)
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/zenozero-dev/obsidian-manager)
-![Last commit](https://img.shields.io/github/last-commit/zenozero-dev/obsidian-manager)
-![Issues](https://img.shields.io/github/issues/zenozero-dev/obsidian-manager)
-![Stars](https://img.shields.io/github/stars/zenozero-dev/obsidian-manager?style=social)
-[![爱发电](https://img.shields.io/badge/%E7%88%B1%E5%8F%91%E7%94%B5-%E6%94%AF%E6%8C%81%E4%BD%9C%E8%80%85-946ce6)](https://ifdian.net/a/eondr)
+Keep plugin-heavy Obsidian vaults fast and manageable with delayed startup, batch controls, groups and tags, GitHub installs, and guided conflict diagnosis.
+
+<p>
+  <a href="docs/README_CN.md">简体中文</a>
+  ·
+  <a href="docs/README_JA.md">日本語</a>
+  ·
+  <a href="docs/README_KO.md">한국어</a>
+  ·
+  <a href="docs/README_ES.md">Español</a>
+  ·
+  <a href="docs/README_FR.md">Français</a>
+  ·
+  <a href="docs/README_RU.md">Русский</a>
+  ·
+  <a href="https://github.com/zenozero-dev/obsidian-manager/releases">Releases</a>
+  ·
+  <a href="https://ifdian.net/a/eondr">Support</a>
+</p>
+
+<p>
+  <a href="https://github.com/zenozero-dev/obsidian-manager/releases">
+    <img alt="Latest Release" src="https://img.shields.io/github/v/release/zenozero-dev/obsidian-manager?style=flat-square&label=release">
+  </a>
+  <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/zenozero-dev/obsidian-manager/total?style=flat-square&label=downloads">
+  <img alt="Last Commit" src="https://img.shields.io/github/last-commit/zenozero-dev/obsidian-manager?style=flat-square&label=last%20commit">
+  <img alt="Issues" src="https://img.shields.io/github/issues/zenozero-dev/obsidian-manager?style=flat-square&label=issues">
+  <img alt="Stars" src="https://img.shields.io/github/stars/zenozero-dev/obsidian-manager?style=flat-square&label=stars">
+  <img alt="License" src="https://img.shields.io/github/license/zenozero-dev/obsidian-manager?style=flat-square&label=license">
+</p>
+
+<p>
+  <img alt="Obsidian Plugin" src="https://img.shields.io/badge/Obsidian-plugin-7C3AED?style=flat-square&logo=obsidian&logoColor=white">
+  <img alt="Minimum Obsidian Version" src="https://img.shields.io/badge/Obsidian-%E2%89%A5%201.5.8-7C3AED?style=flat-square">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-ready-3178C6?style=flat-square&logo=typescript&logoColor=white">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-desktop%20%7C%20mobile-4B5563?style=flat-square">
+  <img alt="i18n" src="https://img.shields.io/badge/i18n-7%20languages-0F766E?style=flat-square">
+  <img alt="GitHub Source Tracking" src="https://img.shields.io/badge/GitHub-source%20tracking-181717?style=flat-square&logo=github&logoColor=white">
+  <a href="https://ifdian.net/a/eondr">
+    <img alt="Sponsor on Afdian" src="https://img.shields.io/badge/Afdian-sponsor-946ce6?style=flat-square">
+  </a>
+</p>
+
+</div>
 
 ![Screenshot](docs/img/index.png)
 
@@ -15,207 +55,219 @@
 
 ## 🎯 What is BPM?
 
-**Better Plugins Manager** is a powerful Obsidian plugin manager that provides a richer management experience than the native one.
+**Better Plugins Manager (BPM)** is a control center for Obsidian community plugins, designed for vaults that rely on many plugins and need more than simple enable/disable toggles.
 
-> Delay Start • Batch Operations • Groups & Tags • GitHub Install • Conflict Troubleshooter • Mobile Friendly
+It helps you keep startup responsive, organize plugins by workflow, install plugins from GitHub releases, and isolate conflicts when something breaks.
+
+| 🚀 Startup | 📦 Management | 🏷️ Organization | 📥 Installation | 🔍 Diagnosis |
+|------------|---------------|------------------|-----------------|--------------|
+| Delayed plugin startup and startup self-checks | Batch enable/disable, quick search, and status filters | Groups, tags, notes, descriptions, and custom names | Install from GitHub repositories and release versions | Guided conflict troubleshooting with report generation |
 
 ---
 
 ## ✨ Core Features
 
-### 🚀 Performance Optimization
-| Feature | Description |
-|---------|-------------|
-| **Delay Start** | Start plugins with preset delays to reduce startup lag |
-| **Startup Self-Check** | 🆕 Detect plugin management conflicts, prevent Obsidian and BPM from controlling plugins simultaneously |
+BPM is organized around five focused tabs. Each tab owns one workflow, so related controls stay together and the manager remains easy to scan across desktop and mobile.
 
-This feature needs to be enabled in settings, disabled by default.
-![Delay start needs to be enabled manually](docs/img/PixPin_2026-01-14_23-56-04.png)
+| Tab | Workflow |
+|-----|----------|
+| 🧩 Plugin View | Manage installed plugins, metadata, filters, startup behavior, and per-plugin actions |
+| 📥 Install Hub | Install plugins or themes from GitHub and manage tracked sources |
+| 📦 Transfer Pack | Export, import, and restore plugin/theme packs across vaults |
+| 🎛️ Ribbon Order | Control Obsidian ribbon icon order and visibility |
+| 🔍 Conflict Diagnosis | Locate plugin problems and generate troubleshooting reports |
 
-### 📦 Batch Management
-| Feature | Description |
-|---------|-------------|
-| **Toggle All** | Quickly enable/disable all plugins |
-| **Group Operations** | Batch enable/disable by group |
-| **Quick Search** | Filter by status, group, tag, delay, and keywords |
+### 🧩 Plugin View
 
-### 🏷️ Organization & Annotation
-| Feature | Description |
-|---------|-------------|
-| **Custom Names** | Give plugins memorable names |
-| **Notes & Descriptions** | Record plugin usage and configuration notes |
-| **Groups & Tags** | Flexible categorization, BPM installs auto-tagged `bpm-install` |
+The main tab for day-to-day plugin management.
 
-### 📥 GitHub Installation
+![Download function panel](docs/img/PluginView.png)
 
-1. ![Open download panel from BPM](docs/img/PixPin_2026-01-14_23-52-00.png)
-2. ![Download function panel](docs/img/PixPin_2026-01-14_23-52-35.png)
+| Area | What it does |
+|------|--------------|
+| **Plugin list** | Browse installed community plugins in a compact, searchable management view |
+| **Batch actions** | Enable or disable plugins in bulk, including grouped workflows |
+| **Filters** | Filter by enabled state, group, tag, delay setting, and keyword |
+| **Organization** | Add custom names, descriptions, notes, groups, and tags |
+| **Startup control** | Assign delayed startup presets and keep startup behavior visible from the list |
+| **Plugin actions** | Check updates, download updates, restart a plugin, temporarily start a plugin, open settings, open folders, copy IDs, open repositories, clear config, hide, or delete |
+| **BPM tags** | Automatically marks BPM-installed plugins with `bpm-install` and supports ignored plugins with `bpm-ignore` |
 
-| Feature | Description |
-|---------|-------------|
-| **Repo Install** | Supports `user/repo` or full URL |
-| **Version Selection** | Pick releases like BRAT |
-| **Jump to Repo** | One-click jump to GitHub from plugin card |
+### 📥 Install Hub
 
-### 🔍 Conflict Troubleshooter 🆕
+The Install Hub handles GitHub-based installation and the sources BPM can track after installation.
 
-![Conflict Troubleshooter](docs/img/PixPin_2026-01-14_23-54-40.png)
+![Download function panel](docs/img/installHub.png)
 
-| Feature | Description |
-|---------|-------------|
-| **Binary Search** | Quickly locate problematic plugins or conflict pairs |
-| **Wizard-style UI** | Draggable floating window, test while troubleshooting |
-| **Generate Report** | Export Markdown troubleshooting report |
+| Area | What it does |
+|------|--------------|
+| **Install type** | Switch between plugin and theme installation |
+| **Repository input** | Accepts `user/repo` or full GitHub repository URLs |
+| **Release selection** | Fetch available GitHub releases and install latest or a selected version |
+| **Release notes** | Shows release information before installation when available |
+| **Recent installs** | Keeps recently used repositories for faster repeated installs |
+| **Source tracking** | Optionally tracks installed repositories for later checks, updates, and reinstalls |
+| **Source management** | Review tracked plugin/theme sources, update targets, reinstall items, and keep source metadata current |
 
+### 📦 Transfer Pack
 
+The Transfer Pack tab moves plugin setups between vaults without turning the README into a manual checklist.
 
-### ↕ Customize Ribbon Bar 🆕
+![Transfer Pack](docs/img/transferPack.png)
 
-If you are annoyed by the ribbon icons changing order every time you start Obsidian due to BPM's delayed startup, please use this feature.
+| Area | What it does |
+|------|--------------|
+| **Export list** | Select local plugins and themes to include in a JSON transfer pack |
+| **Plugin configs** | Export selected plugin configuration files when needed |
+| **Taxonomy** | Export BPM groups, tags, and delay presets |
+| **Layout data** | Export manager order, hidden items, and ribbon layout |
+| **Sources** | Export GitHub repository maps, source subscriptions, and install history |
+| **Workspace preferences** | Export style, delay mode, tag display, and startup-check preferences |
+| **Import preview** | Load a pack, review bundled plugins, themes, sources, configs, and layout data before applying |
+| **Restore options** | Install missing plugins/themes, merge plugin config, restore enabled state, apply layout, merge sources, and import themes |
 
-1. ![Open Ribbon Sort Function from BPM Panel](docs/img/PixPin_2026-01-14_23-55-10.png)
-2. ![Ribbon Sort Function Panel](docs/img/PixPin_2026-01-14_23-51-05.png)
+### 🎛️ Ribbon Order
 
-| Feature | Description |
-|---------|-------------|
-| **Show/Hide Ribbon Icons** | Customize the visibility of each icon on the ribbon bar |
-| **Customize Ribbon Order** | Customize the order of each icon on the ribbon bar by dragging |
+The Ribbon Order tab keeps Obsidian's left ribbon predictable, especially when delayed plugins register icons after startup.
 
-### 📱 Mobile Adaptation
-| Feature | Description |
-|---------|-------------|
-| **Responsive Layout** | Auto-switch between mobile/desktop layouts |
-| **Collapsible Action Bar** | Save screen space |
-| **Long-press Tooltips** | Touch-friendly interaction |
+![Ribbon Sort Function Panel](docs/img/ribbonOrder.png)
+
+| Area | What it does |
+|------|--------------|
+| **Icon ordering** | Drag ribbon items into a stable order |
+| **Visibility control** | Show or hide individual ribbon icons |
+| **Native sync mode** | Manages ribbon layout in BPM data without relying on Obsidian workspace config |
+| **Reset action** | Show all ribbon items and sort them by name |
+| **Reload guidance** | Prompts for reload when hidden startup icons need Obsidian to refresh |
+
+### 🔍 Conflict Diagnosis
+
+The Conflict Diagnosis tab guides plugin conflict testing step by step, keeping the tested state and result in one place.
+
+![Conflict Troubleshooter](docs/img/conflictScan.png)
+
+| Area | What it does |
+|------|--------------|
+| **Pre-check** | Confirms whether the issue still appears when other plugins are disabled |
+| **Binary narrowing** | Uses guided split testing to reduce the suspect plugin set |
+| **Conflict pair search** | Helps locate two-plugin conflicts, including cross-group cases |
+| **Manual feedback loop** | Asks you to test each step and mark whether the problem still exists |
+| **State controls** | Undo the previous step, restart Obsidian, exit troubleshooting, restore the original state, or keep the current state |
+| **Result report** | Generates a Markdown conflict report with the detected plugins and suggested next actions |
 
 ---
 
 ## 📦 Installation
 
-### Method 1: Official Marketplace (Recommended)
-1. Open Obsidian Settings → Community Plugins
-2. Search for "Better Plugins Manager"
-3. Click Install and Enable
+### Community Plugins
 
-### Method 2: Manual Installation
-1. Download the [latest Release](https://github.com/zenozero-dev/obsidian-manager/releases)
-2. Extract to `.obsidian/plugins/better-plugins-manager/`
-3. Restart Obsidian and enable
+Recommended for most users.
+
+1. Open **Obsidian Settings → Community Plugins**.
+2. Search for **Better Plugins Manager**.
+3. Install and enable the plugin.
+
+### Manual Install
+
+Use this when you want to install a GitHub release directly.
+
+1. Download the [latest release](https://github.com/zenozero-dev/obsidian-manager/releases).
+2. Copy `main.js`, `manifest.json`, and `styles.css` into `.obsidian/plugins/better-plugins-manager/`.
+3. Restart Obsidian.
+4. Enable **Better Plugins Manager** from **Settings → Community Plugins**.
 
 ---
 
 ## 🚦 Quick Start
 
-### Open the Manager
+### Open BPM
 
-- Click the 📁 icon in the sidebar
-- Or use Command Palette: `Ctrl/Cmd + P` → "Open Plugin Manager"
+After enabling the plugin, open BPM in either way:
 
-The panel is divided into three areas, from top to bottom:
+- Click the BPM icon in the left ribbon.
+- Run **Open the plugin manager** from the command palette.
 
-1. Action Button Area
-2. Filter & Search Area
-3. Plugin List Area
+### First Steps
 
-### Usage Tips
-- **Left-click** to interact with elements, hover over buttons to see tooltips
-- **Right-click** to open context menu
+1. Start in **Plugin View** to review installed plugins, filters, groups, tags, and delay settings.
+2. Use **Install Hub** when installing plugins or themes from GitHub.
+3. Use **Transfer Pack** when moving a plugin setup between vaults.
+4. Use **Conflict Diagnosis** when a plugin issue needs guided isolation.
 
----
+### Interaction Tips
 
-## 🔍 Plugin Conflict Troubleshooter
-
-When encountering issues caused by plugin conflicts, use the Conflict Troubleshooter wizard:
-
-### How to Use
-1. Click the 🔍 button on the toolbar or use command "Troubleshoot plugin conflicts"
-2. Follow the wizard prompts
-3. Test if the problem exists at each step, click the corresponding button
-4. Automatically locate the problematic plugin or conflict pair
-
-### Supported Scenarios
-- **Single Plugin Issue**: A plugin itself has a bug
-- **Two-Plugin Conflict**: Two plugins work fine separately but conflict when used together
-
-### Tips
-- The floating window is draggable for convenient testing
-- Supports undo last step
-- Troubleshooting state is saved, can continue after restart
+- **Left-click** primary controls to toggle, edit, install, import, or run an action.
+- **Right-click** a plugin item to open its context menu.
+- **Hover** toolbar buttons to see tooltips; on touch devices, use long press where supported.
 
 ---
 
-## ⚙️ Startup Self-Check
+## 🔍 Conflict Diagnosis Tutorial
 
-BPM checks `community-plugins.json` on startup:
+Use **Conflict Diagnosis** when a problem appears after enabling community plugins and you need a structured way to narrow down the cause.
 
-| Situation | Action |
-|-----------|--------|
-| Only BPM | Normal startup |
-| Other plugins present | Prompt to take over |
+### Workflow
 
-### Why Takeover?
-- Avoid Obsidian and BPM controlling plugins simultaneously
-- Ensure delay-start and other features work properly
-- Maintain plugin state consistency
+1. Open the **Conflict Diagnosis** tab, or run **Troubleshoot plugin conflicts** from the command palette.
+2. Start a diagnosis session. BPM records the current plugin state before changing anything.
+3. Test your vault after each step, then choose **Problem Still Exists** or **Problem Gone**.
+4. Continue through the guided split tests until BPM narrows the result to a plugin or plugin pair.
+5. Review the result, restore the original plugin state or keep the current state, then generate a Markdown report if needed.
+
+### Notes
+
+- Diagnosis depends on your feedback at each step; use the same test action every time.
+- Intermittent bugs, load-order issues, configuration-specific bugs, or conflicts involving three or more plugins may still need manual verification.
+- You can undo the previous step, restart Obsidian during testing, exit the session, restore the original state, or keep the current state.
 
 ---
 
-## 📤 Export to Obsidian Base
+## 🛡️ Startup Takeover
 
-### Configuration
-Set **Plugin info export directory** in settings (folder inside your vault)
+When **Delayed Startup** is enabled, BPM checks `.obsidian/community-plugins.json` to make sure Obsidian and BPM are not trying to control the same plugins at startup.
 
-### Rules
-| Prefix | Permission |
-|--------|------------|
-| `bpm_rw_*` | Read-write |
-| `bpm_ro_*` | Read-only |
-| `bpm_rwc_repo` | Conditionally writable |
+| Case | BPM behavior |
+|------|--------------|
+| No unmanaged plugins | Starts normally |
+| Unmanaged plugins detected | Shows a takeover prompt |
+| Auto Takeover enabled | Moves detected plugins under BPM management automatically |
+| Plugin marked `bpm-ignore` | Leaves it in Obsidian's native startup list |
 
-### Frontmatter Example
+Taking over keeps delayed startup, enabled state, and BPM's plugin records consistent. After a successful takeover, restart Obsidian so the startup list is applied cleanly.
 
-```yaml
----
-bpm_ro_id: some-plugin
-bpm_rw_name: Custom Name
-bpm_rw_desc: Custom Description
-bpm_rw_note: Note
-bpm_rw_enabled: true
-bpm_rwc_repo: user/repo
-bpm_ro_group: group-id
-bpm_ro_tags:
-  - tag-a
-  - bpm-install
-bpm_ro_delay: delay-id
-bpm_ro_installed_via_bpm: true
 ---
 
-Body section: You can edit or replace this content.
-```
+## 📦 Transfer & Legacy Export
+
+For current versions, use the **Transfer Pack** tab to move setups between vaults. It exports and imports plugin lists, themes, selected plugin configs, groups, tags, delay presets, layout data, ribbon order, source subscriptions, install history, and workspace preferences.
+
+The older Markdown/frontmatter export for Obsidian Base is kept only for legacy data compatibility. New setups should use **Transfer Pack** instead of configuring a Base export folder.
 
 ---
 
 ## ⚙️ Settings
 
-| Setting | Description |
-|---------|-------------|
-| Delay Profiles | Create delay configurations and assign to plugins |
-| Hide BPM Tag | Keep auto-tag but hide from UI |
-| GitHub API Token | Increase rate limits for release fetching |
-| Fade Disabled Plugins | Visually dim disabled plugin cards |
-| Export Notice Text | Customize the body text of exported files |
-| Self-Check Reminder | Control whether startup self-check popup shows |
+BPM settings are split into focused pages:
+
+| Page | What you can configure |
+|------|------------------------|
+| **Basic** | Language, persistent filters, delayed startup, auto takeover, startup update checks, source update checks, source auto-update, BPM tag visibility, ribbon order, commands, debug mode, and GitHub token |
+| **Main Page Actions** | Choose which plugin actions appear directly on plugin cards and which stay in the right-click menu |
+| **Style** | Plugin list layout, item display style, group/tag styles, and disabled-plugin fading |
+| **Groups** | Create, rename, recolor, and delete plugin groups |
+| **Tags** | Create, rename, recolor, and delete plugin tags |
+| **Delay** | Create and maintain delayed-start profiles; shown only when delayed startup is enabled |
 
 ---
 
 ## ⌨️ Commands
 
-| Command | Description |
-|---------|-------------|
-| Open Plugin Manager | Open BPM main interface |
-| Troubleshoot plugin conflicts | 🆕 Start conflict troubleshooter wizard |
-| Enable/Disable [Plugin Name] | Per-plugin toggle (enable in settings) |
-| Enable/Disable [Group Name] | Group batch operations (enable in settings) |
+| Command | Availability | Description |
+|---------|--------------|-------------|
+| **Open the plugin manager** | Always available | Opens the BPM main interface |
+| **Troubleshoot plugin conflicts** | Always available | Starts the conflict diagnosis workflow |
+| **Enable/Disable [Plugin Name]** | Optional setting | Registers one command per plugin for direct toggling |
+| **One-click Enable/Disable [Group Name]** | Optional setting | Registers group-level commands for batch toggling |
 
 ---
 
