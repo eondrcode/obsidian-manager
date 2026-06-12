@@ -3562,32 +3562,33 @@ export class ManagerModal extends Modal {
 
                 // [按钮] 切换状态
                 toggleSwitch = new ToggleComponent(itemEl.controlEl);
-                toggleSwitch.setTooltip(this.manager.translator.t("管理器_切换状态_描述"));
-                toggleSwitch.setValue(isEnabled);
+                const stateToggle = toggleSwitch;
+                stateToggle.setTooltip(this.manager.translator.t("管理器_切换状态_描述"));
+                stateToggle.setValue(isEnabled);
 
                 // 检查 BPM 忽略标签
                 const managerPluginForToggle = ManagerPlugin;
                 const isBpmIgnored = managerPluginForToggle.tags?.includes(BPM_IGNORE_TAG);
 
                 if (isSelf) {
-                    toggleSwitch.setValue(true);
-                    toggleSwitch.setDisabled(true);
-                    toggleSwitch.setTooltip(this.manager.translator.t("管理器_自身不可禁用_提示"));
+                    stateToggle.setValue(true);
+                    stateToggle.setDisabled(true);
+                    stateToggle.setTooltip(this.manager.translator.t("管理器_自身不可禁用_提示"));
                 } else {
                     let isRestoring = false;
                     const syncToggleValue = (value: boolean) => {
                         isRestoring = true;
-                        toggleSwitch?.setValue(value);
+                        stateToggle.setValue(value);
                         isRestoring = false;
                     };
-                    if (isBpmIgnored) toggleSwitch.setTooltip(this.manager.translator.t("提示_BPM忽略_描述"));
-                    toggleSwitch.onChange(async () => {
+                    if (isBpmIgnored) stateToggle.setTooltip(this.manager.translator.t("提示_BPM忽略_描述"));
+                    stateToggle.onChange(async () => {
                         if (isRestoring) return;
-                        const targetEnabled = toggleSwitch.getValue();
+                        const targetEnabled = stateToggle.getValue();
                         if (isBpmIgnored) {
                             new Notice(this.manager.translator.t("提示_BPM忽略_操作拦截"));
                             isRestoring = true;
-                            toggleSwitch.setValue(!targetEnabled);
+                            stateToggle.setValue(!targetEnabled);
                             isRestoring = false;
                             return;
                         }
