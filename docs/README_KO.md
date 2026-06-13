@@ -19,20 +19,20 @@
   ·
   <a href="README_RU.md">Русский</a>
   ·
-  <a href="https://github.com/zenozero-dev/obsidian-manager/releases">Releases</a>
+  <a href="https://github.com/eondrcode/obsidian-manager/releases">Releases</a>
   ·
   <a href="https://ifdian.net/a/eondr">Support</a>
 </p>
 
 <p>
-  <a href="https://github.com/zenozero-dev/obsidian-manager/releases">
-    <img alt="Latest Release" src="https://img.shields.io/github/v/release/zenozero-dev/obsidian-manager?style=flat-square&label=release">
+  <a href="https://github.com/eondrcode/obsidian-manager/releases">
+    <img alt="Latest Release" src="https://img.shields.io/github/v/release/eondrcode/obsidian-manager?style=flat-square&label=release">
   </a>
-  <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/zenozero-dev/obsidian-manager/total?style=flat-square&label=downloads">
-  <img alt="Last Commit" src="https://img.shields.io/github/last-commit/zenozero-dev/obsidian-manager?style=flat-square&label=last%20commit">
-  <img alt="Issues" src="https://img.shields.io/github/issues/zenozero-dev/obsidian-manager?style=flat-square&label=issues">
-  <img alt="Stars" src="https://img.shields.io/github/stars/zenozero-dev/obsidian-manager?style=flat-square&label=stars">
-  <img alt="License" src="https://img.shields.io/github/license/zenozero-dev/obsidian-manager?style=flat-square&label=license">
+  <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/eondrcode/obsidian-manager/total?style=flat-square&label=downloads">
+  <img alt="Last Commit" src="https://img.shields.io/github/last-commit/eondrcode/obsidian-manager?style=flat-square&label=last%20commit">
+  <img alt="Issues" src="https://img.shields.io/github/issues/eondrcode/obsidian-manager?style=flat-square&label=issues">
+  <img alt="Stars" src="https://img.shields.io/github/stars/eondrcode/obsidian-manager?style=flat-square&label=stars">
+  <img alt="License" src="https://img.shields.io/github/license/eondrcode/obsidian-manager?style=flat-square&label=license">
 </p>
 
 <p>
@@ -171,7 +171,7 @@ Conflict Diagnosis는 플러그인 충돌 테스트를 단계별로 안내하고
 
 GitHub Release를 직접 설치하고 싶을 때 사용합니다.
 
-1. [latest release](https://github.com/zenozero-dev/obsidian-manager/releases)를 다운로드합니다.
+1. [latest release](https://github.com/eondrcode/obsidian-manager/releases)를 다운로드합니다.
 2. `main.js`, `manifest.json`, `styles.css`를 `.obsidian/plugins/better-plugins-manager/`에 복사합니다.
 3. Obsidian을 다시 시작합니다.
 4. **Settings → Community Plugins** 에서 **Better Plugins Manager** 를 활성화합니다.

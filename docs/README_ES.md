@@ -19,20 +19,20 @@ Mantén manejables los vaults de Obsidian con muchos plugins mediante inicio dif
   ·
   <a href="README_RU.md">Русский</a>
   ·
-  <a href="https://github.com/zenozero-dev/obsidian-manager/releases">Releases</a>
+  <a href="https://github.com/eondrcode/obsidian-manager/releases">Releases</a>
   ·
   <a href="https://ifdian.net/a/eondr">Support</a>
 </p>
 
 <p>
-  <a href="https://github.com/zenozero-dev/obsidian-manager/releases">
-    <img alt="Latest Release" src="https://img.shields.io/github/v/release/zenozero-dev/obsidian-manager?style=flat-square&label=release">
+  <a href="https://github.com/eondrcode/obsidian-manager/releases">
+    <img alt="Latest Release" src="https://img.shields.io/github/v/release/eondrcode/obsidian-manager?style=flat-square&label=release">
   </a>
-  <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/zenozero-dev/obsidian-manager/total?style=flat-square&label=downloads">
-  <img alt="Last Commit" src="https://img.shields.io/github/last-commit/zenozero-dev/obsidian-manager?style=flat-square&label=last%20commit">
-  <img alt="Issues" src="https://img.shields.io/github/issues/zenozero-dev/obsidian-manager?style=flat-square&label=issues">
-  <img alt="Stars" src="https://img.shields.io/github/stars/zenozero-dev/obsidian-manager?style=flat-square&label=stars">
-  <img alt="License" src="https://img.shields.io/github/license/zenozero-dev/obsidian-manager?style=flat-square&label=license">
+  <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/eondrcode/obsidian-manager/total?style=flat-square&label=downloads">
+  <img alt="Last Commit" src="https://img.shields.io/github/last-commit/eondrcode/obsidian-manager?style=flat-square&label=last%20commit">
+  <img alt="Issues" src="https://img.shields.io/github/issues/eondrcode/obsidian-manager?style=flat-square&label=issues">
+  <img alt="Stars" src="https://img.shields.io/github/stars/eondrcode/obsidian-manager?style=flat-square&label=stars">
+  <img alt="License" src="https://img.shields.io/github/license/eondrcode/obsidian-manager?style=flat-square&label=license">
 </p>
 
 <p>
@@ -171,7 +171,7 @@ Recomendado para la mayoría de usuarios.
 
 Úsala para instalar directamente una release de GitHub.
 
-1. Descarga la [latest release](https://github.com/zenozero-dev/obsidian-manager/releases).
+1. Descarga la [latest release](https://github.com/eondrcode/obsidian-manager/releases).
 2. Copia `main.js`, `manifest.json` y `styles.css` en `.obsidian/plugins/better-plugins-manager/`.
 3. Reinicia Obsidian.
 4. Activa **Better Plugins Manager** desde **Settings → Community Plugins**.

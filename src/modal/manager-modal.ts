@@ -2089,7 +2089,7 @@ export class ManagerModal extends Modal {
         githubButton.setIcon("github");
         githubButton.setTooltip(this.manager.translator.t("管理器_GITHUB_描述"));
         this.bindLongPressTooltip(githubButton.buttonEl, this.manager.translator.t("管理器_GITHUB_描述"));
-        githubButton.onClick(() => { window.open("https://github.com/zenozero-dev/obsidian-manager"); });
+        githubButton.onClick(() => { window.open("https://github.com/eondrcode/obsidian-manager"); });
 
         const tutorialButton = new ButtonComponent(actionBar.controlEl);
         markTool(tutorialButton, "resource", 110);
@@ -2418,7 +2418,7 @@ export class ManagerModal extends Modal {
                 this.appSetting.openTabById(this.manager.manifest.id);
             }));
             menu.addItem((item) => item.setTitle(t("管理器_GITHUB_描述")).setIcon("github").onClick(() => {
-                window.open("https://github.com/zenozero-dev/obsidian-manager");
+                window.open("https://github.com/eondrcode/obsidian-manager");
             }));
             menu.addItem((item) => item.setTitle(t("管理器_视频教程_描述")).setIcon("book-open").onClick(() => {
                 window.open("https://www.bilibili.com/video/BV1WyrkYMEce/");
@@ -2669,7 +2669,7 @@ export class ManagerModal extends Modal {
             }
             menu.addSeparator();
             menu.addItem((item) => item.setTitle(t("管理器_GITHUB_描述")).setIcon("github").onClick(() => {
-                window.open("https://github.com/zenozero-dev/obsidian-manager");
+                window.open("https://github.com/eondrcode/obsidian-manager");
             }));
             menu.addItem((item) => item.setTitle(t("管理器_视频教程_描述")).setIcon("book-open").onClick(() => {
                 window.open("https://www.bilibili.com/video/BV1WyrkYMEce/");

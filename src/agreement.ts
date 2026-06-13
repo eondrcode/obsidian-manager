@@ -1,5 +1,5 @@
 import ShareMyPlugin from "main";
-import { Notice, ObsidianProtocolData, debounce } from "obsidian";
+import { Notice, ObsidianProtocolData, debounce, requestUrl } from "obsidian";
 
 // 导出一个全局的 communityPlugins 变量，可在其他模块中使用
 export let communityPlugins: any;
@@ -13,7 +13,7 @@ export default class Agreement {
     // 引用 ShareMyPlugin 实例，方便访问主插件的属性和方法
     plugin: ShareMyPlugin;
     // 存储社区插件信息的对象，键为插件 ID，值为插件详细信息
-    communityPlugins: Record<string, { [key: string]: string }>;
+    communityPlugins: Record<string, { [key: string]: string }> = {};
     // 标记是否已经加载了社区插件列表
     loaded = false;
     // 防抖函数，用于定时刷新社区插件列表，每小时执行一次
@@ -24,7 +24,8 @@ export default class Agreement {
      */
     async fetchCommunityPlugins() {
         // 从指定的 URL 获取社区插件列表的 JSON 数据
-        const pluginList = await fetch(`https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json`).then(r => r.json());
+        const res = await requestUrl("https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json");
+        const pluginList = res.json;
         // if (!pluginList.ok) { new Notice(`[插件管理器] 无法连接到Github(跳转主页及下载不可用)`); }
         // 创建一个空对象，用于存储以插件 ID 为键的插件信息
         const keyedPluginList: Record<string, any> = {};
@@ -108,7 +109,8 @@ export default class Agreement {
         // 如果需要安装插件
         if (installFlag) {
             // 从 GitHub 仓库获取插件的 manifest.json 文件
-            const manifest = await fetch(`https://raw.githubusercontent.com/${repo}/HEAD/manifest.json`).then(r => r.json());
+            const manifestRes = await requestUrl(`https://raw.githubusercontent.com/${repo}/HEAD/manifest.json`);
+            const manifest = manifestRes.json;
             // 如果版本为 "latest" 或空字符串，则使用 manifest 中的版本
             if (version.toLowerCase() === "latest" || version === "") version = manifest.version;
             // 调用插件注册表的 installPlugin 方法安装插件
