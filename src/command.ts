@@ -7,12 +7,6 @@ const Commands = (app: App, manager: Manager) => {
     manager.addCommand({
         id: 'manager-view',
         name: manager.translator.t('命令_管理面板_描述'),
-        hotkeys: [
-            {
-                modifiers: ['Ctrl'],
-                key: 'M',
-            }
-        ],
         callback: () => { new ManagerModal(app, manager).open() }
     });
 
@@ -58,13 +52,13 @@ const Commands = (app: App, manager: Manager) => {
                     name: `${manager.translator.t('命令行_一键启用_文本')} ${group.name}`,
                     callback: async () => {
                         const filteredPlugins = manager.settings.Plugins.filter(plugin => plugin.group === group.id);
-                        filteredPlugins.forEach(async plugin => {
+                        for (const plugin of filteredPlugins) {
                             if (plugin && !plugin.enabled) {
                                 await manager.appPlugins.enablePlugin(plugin.id);
                                 plugin.enabled = true;
                                 await manager.savePluginAndExport(plugin.id);
                             }
-                        });
+                        }
                         Commands(app, manager);
                     }
                 });
@@ -73,13 +67,13 @@ const Commands = (app: App, manager: Manager) => {
                     name: `${manager.translator.t('命令行_一键禁用_文本')} ${group.name}`,
                     callback: async () => {
                         const filteredPlugins = manager.settings.Plugins.filter(plugin => plugin.group === group.id);
-                        filteredPlugins.forEach(async plugin => {
+                        for (const plugin of filteredPlugins) {
                             if (plugin && plugin.enabled) {
                                 await manager.appPlugins.disablePlugin(plugin.id);
                                 plugin.enabled = false;
                                 await manager.savePluginAndExport(plugin.id);
                             }
-                        });
+                        }
                         Commands(app, manager);
                     }
                 });
@@ -121,12 +115,12 @@ const Commands = (app: App, manager: Manager) => {
                     name: `${manager.translator.t('命令行_一键启用_文本')} ${group.name} ${manager.translator.t('命令行_分组_文本')}`,
                     callback: async () => {
                         const filteredPlugins = manager.settings.Plugins.filter(plugin => plugin.group === group.id);
-                        filteredPlugins.forEach(async plugin => {
+                        for (const plugin of filteredPlugins) {
                             await manager.appPlugins.enablePluginAndSave(plugin.id);
                             const mp = manager.settings.Plugins.find(p => p.id === plugin.id);
                             if (mp) mp.enabled = true;
                             await manager.savePluginAndExport(plugin.id);
-                        });
+                        }
                         Commands(app, manager);
                     }
                 });
@@ -135,12 +129,12 @@ const Commands = (app: App, manager: Manager) => {
                     name: `${manager.translator.t('命令行_一键禁用_文本')} ${group.name} ${manager.translator.t('命令行_分组_文本')}`,
                     callback: async () => {
                         const filteredPlugins = manager.settings.Plugins.filter(plugin => plugin.group === group.id);
-                        filteredPlugins.forEach(async plugin => {
+                        for (const plugin of filteredPlugins) {
                             await manager.appPlugins.disablePluginAndSave(plugin.id);
                             const mp = manager.settings.Plugins.find(p => p.id === plugin.id);
                             if (mp) mp.enabled = false;
                             await manager.savePluginAndExport(plugin.id);
-                        });
+                        }
                         Commands(app, manager);
                     }
                 });

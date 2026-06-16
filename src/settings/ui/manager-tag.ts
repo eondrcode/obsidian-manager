@@ -14,7 +14,7 @@ export default class ManagerTag extends BaseSetting {
     }
 
     main(): void {
-        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
         let id = '';
         let name = '';
         let color = this.manager.generateAutoColor(this.manager.settings.TAGS.map(t => t.color));
@@ -80,7 +80,7 @@ export default class ManagerTag extends BaseSetting {
                     if (!containsId && nextId !== '' && !this.isPresetTag(nextId)) {
                         if (color === '') color = this.manager.generateAutoColor(this.manager.settings.TAGS.map(t => t.color));
                         this.manager.settings.TAGS.push({ id: nextId, name: nextName, color });
-                        this.manager.saveSettings();
+                        void this.manager.saveSettings();
                         this.settingTab.tagDisplay();
                         Commands(this.app, this.manager);
                         new Notice(this.manager.translator.t('设置_标签设置_通知_一'));
@@ -117,7 +117,7 @@ export default class ManagerTag extends BaseSetting {
                 .setValue(tag.color)
                 .onChange((value) => {
                     tag.color = value;
-                    this.manager.saveSettings();
+                    void this.manager.saveSettings();
                     tagEl.setAttribute('style', this.manager.generateTagStyle(value, this.settings.TAG_STYLE));
                 })
             );
@@ -126,7 +126,7 @@ export default class ManagerTag extends BaseSetting {
                     .onChange((value) => {
                         tag.name = value;
                         tagEl.textContent = value || tag.id;
-                        this.manager.saveSettings();
+                        void this.manager.saveSettings();
                     });
                 cb.inputEl.addClass('manager-setting-tag__input');
                 cb.inputEl.addClass('manager-taxonomy-setting__input');
@@ -142,7 +142,7 @@ export default class ManagerTag extends BaseSetting {
                     const hasTestTag = this.settings.Plugins.some(plugin => plugin.tags && plugin.tags.includes(tag.id));
                     if (!hasTestTag) {
                         this.manager.settings.TAGS = this.manager.settings.TAGS.filter(t => t.id !== tag.id);
-                        this.manager.saveSettings();
+                        void this.manager.saveSettings();
                         this.settingTab.tagDisplay();
                         Commands(this.app, this.manager);
                         new Notice(this.manager.translator.t('设置_标签设置_通知_三'));

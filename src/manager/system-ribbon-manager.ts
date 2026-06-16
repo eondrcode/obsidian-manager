@@ -1,4 +1,4 @@
-import { App, Platform, TFile, debounce } from "obsidian";
+import { App, EventRef, Platform, TFile, debounce } from "obsidian";
 import Manager from "../main";
 
 export interface RibbonConfig {
@@ -10,16 +10,16 @@ export class SystemRibbonManager {
     private manager: Manager;
     private configPath: string;
     private isInternalUpdate = false;
-    private onConfigChange: () => void;
-    private fileWatcher: any;
+    private onConfigChange: () => void = () => undefined;
+    private fileWatcher: EventRef | null = null;
 
     constructor(app: App, manager: Manager) {
         this.app = app;
         this.manager = manager;
         // 自动判定配置文件路径
         this.configPath = Platform.isMobile
-            ? ".obsidian/workspace-mobile.json"
-            : ".obsidian/workspace.json"; // 默认路径，可能会根据 configDir 变化
+            ? `${this.app.vault.configDir}/workspace-mobile.json`
+            : `${this.app.vault.configDir}/workspace.json`; // 默认路径，可能会根据 configDir 变化
 
         // 更严谨的路径获取
         if (this.app.vault.configDir) {

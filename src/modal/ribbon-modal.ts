@@ -1,6 +1,7 @@
 import { App, Modal, Setting, setIcon, ButtonComponent } from "obsidian";
 import Manager from "main";
 import { RibbonItem } from "../data/types";
+import { confirmWithModal } from "../utils";
 
 export class RibbonModal extends Modal {
     manager: Manager;
@@ -15,12 +16,11 @@ export class RibbonModal extends Modal {
     dragOffsetX = 0;
     dragOffsetY = 0;
     activePointerId: number | null = null;
+    private handleDragEndEvent = (e: PointerEvent) => { void this.handleDragEnd(e); };
 
     constructor(app: App, manager: Manager) {
         super(app);
         this.manager = manager;
-        this.handleDragMove = this.handleDragMove.bind(this);
-        this.handleDragEnd = this.handleDragEnd.bind(this);
     }
 
     async onOpen() {
@@ -90,7 +90,7 @@ export class RibbonModal extends Modal {
     }
 
     private renderToolbar(containerEl: HTMLElement) {
-        const t = (k: any) => this.manager.translator.t(k);
+        const t = (k: string) => this.manager.translator.t(k);
         const toolbar = containerEl.createDiv("manager-hidden-toolbar ribbon-manager-toolbar");
         const toolbarText = toolbar.createDiv("manager-hidden-toolbar__text");
         toolbarText.createDiv({ cls: "manager-hidden-toolbar__title", text: t("Ribbon_功能编排_标题") });
@@ -104,13 +104,13 @@ export class RibbonModal extends Modal {
         resetBtn.setButtonText(t("通用_重置_文本"));
         resetBtn.setTooltip(t("Ribbon_重置_提示"));
         resetBtn.onClick(async () => {
-            if (!window.confirm(t("Ribbon_重置_确认"))) return;
+            if (!(await confirmWithModal(this.app, this.manager, t("Ribbon_重置_确认")))) return;
             await this.resetRibbonLayout();
         });
     }
 
     renderDraggableList(containerEl: HTMLElement) {
-        const t = (k: any) => this.manager.translator.t(k);
+        const t = (k: string) => this.manager.translator.t(k);
         const listContainer = containerEl.createDiv("draggable-list-container");
         const items = this.manager.settings.RIBBON_SETTINGS;
 
@@ -199,27 +199,31 @@ export class RibbonModal extends Modal {
         // 创建幽灵元素
         this.ghostEl = itemEl.cloneNode(true) as HTMLElement;
         this.ghostEl.addClass("drag-ghost");
-        document.body.appendChild(this.ghostEl);
-        this.ghostEl.style.width = `${rect.width}px`;
-        this.ghostEl.style.height = `${rect.height}px`;
+        activeDocument.body.appendChild(this.ghostEl);
+        this.ghostEl.setCssStyles({
+            width: `${rect.width}px`,
+            height: `${rect.height}px`,
+        });
 
         this.updateGhostPosition(e);
 
         // 创建占位符
-        this.placeholderEl = document.createElement("div");
+        this.placeholderEl = activeDocument.createElement("div");
         this.placeholderEl.className = "drag-gap-placeholder";
-        this.placeholderEl.style.height = `${rect.height}px`;
-        this.placeholderEl.style.marginBottom = "0";
+        this.placeholderEl.setCssStyles({
+            height: `${rect.height}px`,
+            marginBottom: "0",
+        });
 
         itemEl.parentNode!.insertBefore(this.placeholderEl, itemEl);
         itemEl.addClass("dragging");
 
-        document.addEventListener("pointermove", this.handleDragMove, { passive: false });
-        document.addEventListener("pointerup", this.handleDragEnd, { once: true });
-        document.addEventListener("pointercancel", this.handleDragEnd, { once: true });
+        activeDocument.addEventListener("pointermove", this.handleDragMove, { passive: false });
+        activeDocument.addEventListener("pointerup", this.handleDragEndEvent, { once: true });
+        activeDocument.addEventListener("pointercancel", this.handleDragEndEvent, { once: true });
     }
 
-    handleDragMove(e: PointerEvent) {
+    private handleDragMove = (e: PointerEvent) => {
         if (!this.ghostEl || !this.placeholderEl || !this.draggedItemEl) return;
         if (e.pointerId !== this.activePointerId) return;
 
@@ -250,11 +254,13 @@ export class RibbonModal extends Modal {
 
     updateGhostPosition(e: PointerEvent) {
         if (!this.ghostEl) return;
-        this.ghostEl.style.left = `${e.clientX - this.dragOffsetX}px`;
-        this.ghostEl.style.top = `${e.clientY - this.dragOffsetY}px`;
+        this.ghostEl.setCssStyles({
+            left: `${e.clientX - this.dragOffsetX}px`,
+            top: `${e.clientY - this.dragOffsetY}px`,
+        });
     }
 
-    async handleDragEnd(e: PointerEvent) {
+    private handleDragEnd = async (e: PointerEvent) => {
         if (!this.draggedItemEl || !this.placeholderEl) return;
 
         const listContainer = this.placeholderEl.parentNode!;
@@ -280,7 +286,7 @@ export class RibbonModal extends Modal {
         this.draggedItemEl.removeClass("dragging");
         const oldIndex = this.dragStartIndex;
 
-        document.removeEventListener("pointermove", this.handleDragMove);
+        activeDocument.removeEventListener("pointermove", this.handleDragMove);
         this.draggedItemEl = null;
         this.dragStartIndex = -1;
         this.activePointerId = null;

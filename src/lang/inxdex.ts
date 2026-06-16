@@ -19,7 +19,7 @@ export class Translator {
 		'es': 'Español',
 	};
 
-	private localeMap: { [k: string]: Partial<typeof zh_cn> } = {
+	private localeMap: { [k: string]: Partial<Record<keyof typeof zh_cn, string>> } = {
 		'zh-cn': zh_cn,
 		'en': en,
 		'ru': ru,
@@ -34,14 +34,16 @@ export class Translator {
 	}
 
 	// 方法用于获取翻译后的字符串
-	public t(str: keyof typeof zh_cn | string, vars?: Record<string, string | number | boolean | null | undefined>): string {
+	public t(str: keyof typeof zh_cn, vars?: Record<string, string | number | boolean | null | undefined>): string;
+	public t(str: string, vars?: Record<string, string | number | boolean | null | undefined>): string;
+	public t(str: string, vars?: Record<string, string | number | boolean | null | undefined>): string {
 		// 基准语言使用英文：缺失翻译时优先回退到英文，再回退到中文兜底
 		const language = this.normalizeLang(this.manager.settings.LANGUAGE || 'en');
 		const locale = this.localeMap[language] || en;
-		const base: any = en;
-		const fallback: any = zh_cn;
+		const base = en as Record<keyof typeof zh_cn, string>;
+		const fallback = zh_cn as Record<keyof typeof zh_cn, string>;
 		const key = str as keyof typeof zh_cn;
-		let text = (locale as any)[key] || base[key] || fallback[key] || String(str);
+		let text = locale[key] || base[key] || fallback[key] || String(str);
 		if (!vars) return text;
 		Object.entries(vars).forEach(([name, value]) => {
 			text = text.replace(new RegExp(`\\{${name}\\}`, 'g'), String(value ?? ''));

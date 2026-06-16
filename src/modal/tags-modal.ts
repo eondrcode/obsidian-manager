@@ -5,6 +5,7 @@ import { ManagerModal } from './manager-modal';
 import { ManagerPlugin, BPM_IGNORE_TAG } from 'src/data/types';
 import Commands from 'src/command';
 import { BPM_TAG_ID } from 'src/repo-resolver';
+import { getExtraButtonElement } from 'src/obsidian-internals';
 
 export class TagsModal extends Modal {
     settings: ManagerSettings;
@@ -26,7 +27,7 @@ export class TagsModal extends Modal {
     }
 
     private getExtraButtonEl(button: ExtraButtonComponent): HTMLElement | undefined {
-        return ((button as any).extraSettingsEl || (button as any).buttonEl) as HTMLElement | undefined;
+        return getExtraButtonElement(button);
     }
 
     private prepareIconButton(button: ExtraButtonComponent, label: string, className?: string) {
@@ -45,9 +46,9 @@ export class TagsModal extends Modal {
     }
 
     private async showHead() {
-        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
-        //@ts-ignore
-        const modalEl: HTMLElement = this.contentEl.parentElement;
+        const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const modalEl = this.contentEl.parentElement;
+        if (!modalEl) return;
         modalEl.addClass('manager-editor__container');
         modalEl.addClass('manager-tag-editor');
         modalEl.getElementsByClassName('modal-close-button')[0]?.remove();
@@ -74,7 +75,7 @@ export class TagsModal extends Modal {
     }
 
     private async showData() {
-        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
         // 预先生成缺省颜色，避免与现有标签颜色过近
         if (!this.defaultTagColor) {
             this.defaultTagColor = this.pickDistinctColor(this.settings.TAGS.map(t => t.color));
@@ -131,7 +132,7 @@ export class TagsModal extends Modal {
                     this.prepareIconButton(cb, t('通用_编辑项目_标签', { name: tag.name || tag.id }), 'manager-tag-editor__edit-button');
                     cb.onClick(() => {
                         this.selected = tag.id;
-                        this.reloadShowData();
+                        void this.reloadShowData();
                     });
                 })
                 itemEl.addToggle(toggle => {
@@ -152,7 +153,7 @@ export class TagsModal extends Modal {
                         }
                         await this.manager.savePluginAndExport(this.managerPlugin.id);
                         this.managerModal.refreshPluginCard(this.managerPlugin.id, { allowReload: true });
-                        this.reloadShowData();
+                        void this.reloadShowData();
                     });
                     toggle.toggleEl.addClass('manager-tag-editor__toggle');
                     toggle.toggleEl.setAttribute('aria-label', t(assigned ? '通用_移除项目_标签' : '通用_添加项目_标签', { name: tag.name || tag.id }));
@@ -163,7 +164,7 @@ export class TagsModal extends Modal {
                     .setValue(tag.color)
                     .onChange((value) => {
                         tag.color = value;
-                        this.manager.saveSettings();
+                        void this.manager.saveSettings();
                         tagEl.setAttribute('style', this.manager.generateTagStyle(value, this.settings.TAG_STYLE));
                     })
                 )
@@ -173,7 +174,7 @@ export class TagsModal extends Modal {
                     .onChange((value) => {
                         tag.name = value;
                         tagEl.textContent = value || tag.id;
-                        this.manager.saveSettings();
+                        void this.manager.saveSettings();
                     });
                     text.inputEl.addClass('manager-editor__item-input');
                     text.inputEl.addClass('manager-tag-editor__name-input');
@@ -190,8 +191,8 @@ export class TagsModal extends Modal {
                         const hasTestTag = this.settings.Plugins.some(plugin => plugin.tags && plugin.tags.includes(tag.id));
                         if (!hasTestTag) {
                             this.manager.settings.TAGS = this.manager.settings.TAGS.filter(t => t.id !== tag.id);
-                            this.manager.saveSettings();
-                            this.reloadShowData();
+                            void this.manager.saveSettings();
+                            void this.reloadShowData();
                             Commands(this.app, this.manager);
                             new Notice(this.manager.translator.t('设置_标签设置_通知_三'));
                         } else {
@@ -205,7 +206,7 @@ export class TagsModal extends Modal {
                     this.prepareIconButton(cb, t('通用_完成编辑_文本'), 'manager-tag-editor__save-button');
                     cb.onClick(() => {
                         this.selected = '';
-                        this.reloadShowData();
+                        void this.reloadShowData();
                         this.managerModal.refreshVisiblePluginCards();
                     });
                 })
@@ -269,9 +270,9 @@ export class TagsModal extends Modal {
                 const containsId = this.manager.settings.TAGS.some(tag => tag.id === nextId);
                 if (!containsId && nextId !== '' && nextId !== BPM_TAG_ID && nextId !== BPM_IGNORE_TAG) {
                     this.manager.settings.TAGS.push({ id: nextId, name: nextName, color });
-                    this.manager.saveSettings();
+                    void this.manager.saveSettings();
                     this.add = false;
-                    this.reloadShowData();
+                    void this.reloadShowData();
                     Commands(this.app, this.manager);
                     new Notice(this.manager.translator.t('设置_标签设置_通知_一'));
                 } else {
@@ -300,7 +301,7 @@ export class TagsModal extends Modal {
             cancelButton.createSpan({ text: t('通用_取消_文本') });
             cancelButton.addEventListener('click', () => {
                 this.add = false;
-                this.reloadShowData();
+                void this.reloadShowData();
             });
             const submitButton = actions.createEl('button', { cls: 'manager-tag-editor__create-action manager-tag-editor__create-action--primary' });
             submitButton.type = 'button';
@@ -319,7 +320,7 @@ export class TagsModal extends Modal {
             this.prepareIconButton(addButton, t('设置_标签设置_新增标签'), 'manager-tag-editor__save-button');
             addButton.onClick(() => {
                 this.add = true;
-                this.reloadShowData();
+                void this.reloadShowData();
             });
         }
     }
@@ -333,12 +334,14 @@ export class TagsModal extends Modal {
         modalElement.scrollTo(0, scrollTop);
     }
 
-    async onOpen() {
-        await this.showHead();
-        await this.showData();
+    onOpen() {
+        void (async () => {
+            await this.showHead();
+            await this.showData();
+        })();
     }
 
-    async onClose() {
+    onClose() {
         this.contentEl.empty();
     }
 

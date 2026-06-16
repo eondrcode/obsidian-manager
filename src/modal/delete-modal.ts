@@ -1,6 +1,7 @@
 import { App, ButtonComponent, ExtraButtonComponent, Modal, Setting, setIcon } from "obsidian";
 import { ManagerSettings } from "../settings/data";
 import Manager from "main";
+import { getExtraButtonElement } from "src/obsidian-internals";
 
 type DeleteTarget = {
     id?: string;
@@ -30,7 +31,7 @@ export class DeleteModal extends Modal {
     }
 
     private getExtraButtonEl(button: ExtraButtonComponent): HTMLElement | undefined {
-        return ((button as any).extraSettingsEl || (button as any).buttonEl) as HTMLElement | undefined;
+        return getExtraButtonElement(button);
     }
 
     private prepareIconButton(button: ExtraButtonComponent, label: string, className?: string) {
@@ -63,8 +64,8 @@ export class DeleteModal extends Modal {
     }
 
     private async showHead() {
-        //@ts-ignore
-        const modalEl: HTMLElement = this.contentEl.parentElement;
+        const modalEl = this.contentEl.parentElement;
+        if (!modalEl) return;
         modalEl.addClass("manager-delete__container");
         modalEl.getElementsByClassName("modal-close-button")[0]?.remove();
         this.titleEl.empty();
@@ -148,13 +149,15 @@ export class DeleteModal extends Modal {
         });
     }
 
-    async onOpen() {
-        await this.showHead();
-        await this.showData();
-        this.cancelButton?.buttonEl.focus();
+    onOpen() {
+        void (async () => {
+            await this.showHead();
+            await this.showData();
+            this.cancelButton?.buttonEl.focus();
+        })();
     }
 
-    async onClose() {
+    onClose() {
         this.contentEl.empty();
     }
 }

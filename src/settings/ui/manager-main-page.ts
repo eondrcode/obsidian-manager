@@ -1,6 +1,7 @@
 import { DropdownComponent, Setting } from "obsidian";
 import BaseSetting from "../base-setting";
 import { DEFAULT_MAIN_PAGE_ACTION_PLACEMENT, MAIN_PAGE_ACTION_IDS, MainPageActionId, MainPageActionPlacement } from "../data";
+import { getExtraButtonElement } from "src/obsidian-internals";
 
 type ActionConfig = {
     id: MainPageActionId;
@@ -52,7 +53,7 @@ export default class ManagerMainPage extends BaseSetting {
             setting.addExtraButton((button) => {
                 button.setIcon(action.icon);
                 button.setDisabled(true);
-                ((button as any).extraSettingsEl as HTMLElement | undefined)?.addClass("manager-main-page-action-setting__icon");
+                getExtraButtonElement(button)?.addClass("manager-main-page-action-setting__icon");
             });
 
             const dropdown = new DropdownComponent(setting.controlEl);
@@ -60,8 +61,8 @@ export default class ManagerMainPage extends BaseSetting {
             dropdown.setValue(this.getPlacement(action.id));
             dropdown.onChange((value) => {
                 this.settings.MAIN_PAGE_ACTION_PLACEMENT[action.id] = value as MainPageActionPlacement;
-                this.manager.saveSettings();
-                this.manager.managerModal?.reloadShowData();
+                void this.manager.saveSettings();
+                void this.manager.managerModal?.reloadShowData();
             });
         });
 
@@ -69,7 +70,7 @@ export default class ManagerMainPage extends BaseSetting {
             .filter((key) => !MAIN_PAGE_ACTION_IDS.includes(key as MainPageActionId));
         if (unknownKeys.length > 0) {
             unknownKeys.forEach((key) => delete this.settings.MAIN_PAGE_ACTION_PLACEMENT[key as MainPageActionId]);
-            this.manager.saveSettings();
+            void this.manager.saveSettings();
         }
     }
 

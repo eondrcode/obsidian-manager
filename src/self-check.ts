@@ -150,20 +150,20 @@ class TakeoverModal extends Modal {
     private manager: Manager;
     private takeoverCandidates: string[];
     private communityPlugins: string[];
-    private t: (key: any) => string;
+    private t: (key: string) => string;
 
     constructor(app: App, manager: Manager, takeoverCandidates: string[], communityPlugins: string[]) {
         super(app);
         this.manager = manager;
         this.takeoverCandidates = takeoverCandidates;
         this.communityPlugins = communityPlugins;
-        this.t = (key: any) => manager.translator.t(key);
+        this.t = (key: string) => manager.translator.t(key);
     }
 
     onOpen() {
         const { contentEl, titleEl } = this;
 
-        const modalEl = contentEl.parentElement as HTMLElement | null;
+        const modalEl = contentEl.parentElement;
         modalEl?.addClass('bpm-takeover-modal');
         modalEl?.querySelector('.modal-close-button')?.remove();
         titleEl.parentElement?.addClass('takeover-titlebar');

@@ -15,7 +15,7 @@ export class TroubleshootModal {
     private manager: Manager;
     private algorithm: TroubleshootAlgorithm;
     private state: TroubleshootState;
-    private t: (key: any) => string;
+    private t: (key: string) => string;
     private lastDescription = '';
 
     // 悬浮窗元素
@@ -32,7 +32,7 @@ export class TroubleshootModal {
         this.app = app;
         this.manager = manager;
         this.algorithm = new TroubleshootAlgorithm(app, manager);
-        this.t = (k: any) => manager.translator.t(k);
+        this.t = (k: string) => manager.translator.t(k);
 
         // 尝试从设置中恢复状态
         const savedState = manager.settings.TROUBLESHOOT_STATE;
@@ -49,7 +49,7 @@ export class TroubleshootModal {
             return;
         }
         this.createFloatingWindow();
-        this.render();
+        void this.render();
     }
 
     close() {
@@ -59,7 +59,7 @@ export class TroubleshootModal {
             this.headerEl = null;
             this.contentEl = null;
         }
-        this.saveState();
+        void this.saveState();
     }
 
     private async saveState() {
@@ -72,7 +72,7 @@ export class TroubleshootModal {
      */
     private createFloatingWindow() {
         // 创建容器
-        this.containerEl = document.body.createDiv({ cls: 'troubleshoot-floating-window' });
+        this.containerEl = activeDocument.body.createDiv({ cls: 'troubleshoot-floating-window' });
 
         // 创建头部（可拖动）
         this.headerEl = this.containerEl.createDiv({ cls: 'troubleshoot-floating-header' });
@@ -81,12 +81,7 @@ export class TroubleshootModal {
         this.contentEl = this.containerEl.createDiv({ cls: 'troubleshoot-floating-content' });
 
         // 设置初始位置（屏幕右下角）
-        this.containerEl.style.position = 'fixed';
-        this.containerEl.style.right = '20px';
-        this.containerEl.style.bottom = '20px';
-        this.containerEl.style.left = 'auto';
-        this.containerEl.style.top = 'auto';
-        this.containerEl.style.zIndex = '1000';
+        this.containerEl.addClass('troubleshoot-floating-window--initial');
 
         // 绑定拖动事件
         this.bindDragEvents();
@@ -112,10 +107,12 @@ export class TroubleshootModal {
             if (!this.isDragging || !this.containerEl) return;
 
             // 使用 left/top 定位
-            this.containerEl.style.left = `${e.clientX - this.dragOffsetX}px`;
-            this.containerEl.style.top = `${e.clientY - this.dragOffsetY}px`;
-            this.containerEl.style.right = 'auto';
-            this.containerEl.style.bottom = 'auto';
+            this.containerEl.setCssStyles({
+                left: `${e.clientX - this.dragOffsetX}px`,
+                top: `${e.clientY - this.dragOffsetY}px`,
+                right: 'auto',
+                bottom: 'auto',
+            });
         };
 
         const onMouseUp = () => {
@@ -124,8 +121,8 @@ export class TroubleshootModal {
         };
 
         this.headerEl.addEventListener('mousedown', onMouseDown);
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
+        activeDocument.addEventListener('mousemove', onMouseMove);
+        activeDocument.addEventListener('mouseup', onMouseUp);
 
         // 触摸设备支持
         this.headerEl.addEventListener('touchstart', (e) => {
@@ -137,16 +134,18 @@ export class TroubleshootModal {
             this.dragOffsetY = touch.clientY - rect.top;
         });
 
-        document.addEventListener('touchmove', (e) => {
+        activeDocument.addEventListener('touchmove', (e) => {
             if (!this.isDragging || !this.containerEl || e.touches.length !== 1) return;
             const touch = e.touches[0];
-            this.containerEl.style.left = `${touch.clientX - this.dragOffsetX}px`;
-            this.containerEl.style.top = `${touch.clientY - this.dragOffsetY}px`;
-            this.containerEl.style.right = 'auto';
-            this.containerEl.style.bottom = 'auto';
+            this.containerEl.setCssStyles({
+                left: `${touch.clientX - this.dragOffsetX}px`,
+                top: `${touch.clientY - this.dragOffsetY}px`,
+                right: 'auto',
+                bottom: 'auto',
+            });
         });
 
-        document.addEventListener('touchend', () => {
+        activeDocument.addEventListener('touchend', () => {
             this.isDragging = false;
         });
     }
@@ -271,7 +270,7 @@ export class TroubleshootModal {
         const percent = Math.round((this.state.currentStep / total) * 100);
 
         const progressBar = progressContainer.createDiv('troubleshoot-progress-bar');
-        progressBar.style.width = `${percent}%`;
+        progressBar.setCssStyles({ width: `${percent}%` });
         progressContainer.createSpan({ text: `${percent}%`, cls: 'troubleshoot-progress-text' });
 
         // 当前启用的插件列表（不省略，可滚动）
@@ -413,7 +412,7 @@ export class TroubleshootModal {
      */
     private confirmExit() {
         // 创建确认对话框（简单的 div）
-        const overlay = document.body.createDiv({ cls: 'troubleshoot-confirm-overlay' });
+        const overlay = activeDocument.body.createDiv({ cls: 'troubleshoot-confirm-overlay' });
         const dialog = overlay.createDiv({ cls: 'troubleshoot-confirm-dialog' });
 
         dialog.createEl('h4', { text: this.t('排查_退出确认_标题') });

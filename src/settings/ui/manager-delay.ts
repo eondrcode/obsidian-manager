@@ -7,7 +7,7 @@ export default class ManagerDelay extends BaseSetting {
     }
 
     main(): void {
-        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
         let id = '';
         let name = '';
         let time = 0;
@@ -73,7 +73,7 @@ export default class ManagerDelay extends BaseSetting {
                     const containsId = this.manager.settings.DELAYS.some(delay => delay.id === nextId);
                     if (!containsId && nextId !== '') {
                         this.manager.settings.DELAYS.push({ id: nextId, name: nextName, time });
-                        this.manager.saveSettings();
+                        void this.manager.saveSettings();
                         this.settingTab.delayDisplay();
                         new Notice(this.manager.translator.t('设置_延迟设置_通知_一'));
                     } else {
@@ -106,7 +106,7 @@ export default class ManagerDelay extends BaseSetting {
                 .setDynamicTooltip()
                 .onChange((value) => {
                     delay.time = value
-                    this.manager.saveSettings();
+                    void this.manager.saveSettings();
                     const preview = item.settingEl.querySelector('.manager-setting-delay__preview');
                     if (preview) preview.textContent = `${value}s`;
                 })
@@ -116,7 +116,7 @@ export default class ManagerDelay extends BaseSetting {
                 .setValue(delay.name)
                 .onChange((value) => {
                     delay.name = value;
-                    this.manager.saveSettings();
+                    void this.manager.saveSettings();
                     const nameEl = item.settingEl.querySelector('.manager-setting-delay__name');
                     if (nameEl) nameEl.textContent = value || delay.id;
                 })
@@ -129,7 +129,7 @@ export default class ManagerDelay extends BaseSetting {
                     const hasTestGroup = this.settings.Plugins.some(plugin => plugin.delay === delay.id);
                     if (!hasTestGroup) {
                         this.manager.settings.DELAYS = this.manager.settings.DELAYS.filter(t => t.id !== delay.id);
-                        this.manager.saveSettings();
+                        void this.manager.saveSettings();
                         this.settingTab.delayDisplay();
                         new Notice(this.manager.translator.t('设置_延迟设置_通知_三'));
                     } else {

@@ -696,7 +696,7 @@ export const buildManagerTransferPackage = async (
 	const selectedPluginIds = options.selectedPluginIds ? new Set(options.selectedPluginIds) : undefined;
 	const selectedThemeNames = options.selectedThemeNames ? new Set(options.selectedThemeNames) : undefined;
 	const selectedPluginConfigIds = options.selectedPluginConfigIds ? new Set(options.selectedPluginConfigIds) : undefined;
-	const manifests = Object.values(manager.appPlugins.manifests) as PluginManifest[];
+	const manifests = Object.values(manager.appPlugins.manifests);
 	const records = manifests
 		.filter((manifest) => manifest.id !== manager.manifest.id)
 		.filter((manifest) => !selectedPluginIds || selectedPluginIds.has(manifest.id))

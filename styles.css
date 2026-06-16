@@ -111,17 +111,12 @@ body.theme-dark {
     max-height: calc(100vh - 8vh - env(safe-area-inset-top, 0px));
     overflow: hidden;
     border-radius: 14px;
-    transform: none !important;
+    transform: none;
 }
 
 .manager-container--editing {
     box-shadow: 0 0 0 3px #f97316, 0 12px 30px rgba(0, 0, 0, 0.25);
     border: 2px solid #f97316;
-}
-
-.manager-container {
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--text-muted) 45%, transparent) transparent;
 }
 
 .manager-container::-webkit-scrollbar {
@@ -472,7 +467,7 @@ body.theme-dark {
 }
 
 .manager-section__content.is-collapsed {
-    display: none !important;
+    display: none;
 }
 
 .manager-section.is-collapsed {
@@ -650,7 +645,7 @@ body.theme-dark {
 }
 
 .manager-container--mobile .bpm-mobile-header__filters.is-collapsed {
-    display: none !important;
+    display: none;
 }
 
 .manager-container--mobile .bpm-mobile-header__filters .setting-item {
@@ -665,8 +660,6 @@ body.theme-dark {
 .manager-item-container {
     overflow: auto;
     padding: 8px;
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--text-muted) 45%, transparent) transparent;
 }
 
 .manager-item-container::-webkit-scrollbar {
@@ -1949,12 +1942,12 @@ body.theme-dark {
 
 .manager-container--mobile .bpm-mobile-header__filters.is-collapsed {
     overflow: hidden;
-    max-height: 0 !important;
-    opacity: 0 !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
-    margin: 0 !important;
-    border: none !important;
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin: 0;
+    border: none;
 }
 
 /* 筛选面板内部优化 */
@@ -2407,7 +2400,7 @@ body.theme-dark {
 
 .manager-container .manager-display-none,
 .manager-container .manager-section.manager-display-none {
-    display: none !important;
+    display: none;
 }
 
 .manager-container .manager-section.manager-section--actions {
@@ -2539,7 +2532,6 @@ body.theme-dark {
     height: 34px;
     overflow-x: auto;
     overflow-y: hidden;
-    scrollbar-width: none;
 }
 
 .manager-toolbar__tools::-webkit-scrollbar {
@@ -2687,14 +2679,6 @@ body.theme-dark {
     background: var(--bpm-surface);
     overflow: hidden;
     transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
-}
-
-.manager-filter-field:has(.manager-multiselect-filter) {
-    overflow: visible;
-}
-
-.manager-filter-field:has(.manager-multiselect-filter.is-open) {
-    z-index: 30;
 }
 
 .manager-filter-field--select {
@@ -3183,7 +3167,6 @@ body.theme-dark {
     border-radius: var(--bpm-radius);
     background: color-mix(in srgb, var(--bpm-muted) 82%, var(--bpm-card));
     overflow-x: auto;
-    scrollbar-width: none;
 }
 
 .manager-repo-page__toolbar .manager-repo-page__switcher {
@@ -3726,12 +3709,12 @@ body.theme-dark {
 }
 
 .manager-install__version-select {
-    appearance: none !important;
-    -webkit-appearance: none !important;
+    appearance: none;
+    -webkit-appearance: none;
     padding-right: 30px;
     background-image:
         linear-gradient(45deg, transparent 50%, currentColor 50%),
-        linear-gradient(135deg, currentColor 50%, transparent 50%) !important;
+        linear-gradient(135deg, currentColor 50%, transparent 50%);
     background-position:
         calc(100% - 15px) 50%,
         calc(100% - 10px) 50%;
@@ -3844,8 +3827,6 @@ body.theme-dark {
     overflow-y: auto;
     overflow-x: hidden;
     padding: 1px 2px 1px 1px;
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--text-muted) 36%, transparent) transparent;
 }
 
 .manager-install__history-list::-webkit-scrollbar {
@@ -5342,7 +5323,7 @@ body.theme-dark {
 .manager-container .manager-item-container>.manager-item:first-child,
 .manager-container .manager-install>.manager-install__setting:first-child,
 .manager-container .manager-section .setting-item:first-child {
-    border-top: 1px solid var(--bpm-border) !important;
+    border-top: 1px solid var(--bpm-border);
 }
 
 .manager-container:not(.manager-container--mobile) .manager-item-container .manager-install>.setting-item.manager-install__setting,
@@ -5698,6 +5679,10 @@ body.theme-dark {
 }
 
 .manager-plugin-card__note {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    color: var(--text-accent);
     align-items: center;
     justify-content: center;
     padding: 2px;
@@ -6066,8 +6051,8 @@ body.theme-dark {
     min-height: 34px;
     border: 1px solid var(--bpm-border);
     border-radius: var(--bpm-radius-sm);
-    background: #fff !important;
-    color: #111 !important;
+    background: #fff;
+    color: #111;
     box-shadow: none;
 }
 
@@ -6102,7 +6087,7 @@ body.theme-dark {
 }
 
 .manager-container .manager-plugin-card__body--empty {
-    display: none !important;
+    display: none;
 }
 
 .manager-container .manager-item__name-desc {
@@ -7097,6 +7082,13 @@ body.theme-dark {
     z-index: 1000;
 }
 
+.troubleshoot-floating-window--initial {
+    right: 20px;
+    bottom: 20px;
+    left: auto;
+    top: auto;
+}
+
 .troubleshoot-floating-header {
     display: flex;
     align-items: center;
@@ -7598,7 +7590,7 @@ body.theme-dark {
     justify-content: space-between;
     gap: 14px;
     min-width: 0;
-    padding: var(--bpm-item-padding) !important;
+    padding: var(--bpm-item-padding);
     border: 1px solid var(--bpm-border);
     border-radius: var(--bpm-radius);
     background: var(--bpm-card);
@@ -7794,12 +7786,12 @@ body.theme-dark {
 }
 
 .ribbon-manager-control-visibility button {
-    appearance: none !important;
-    background: none !important;
-    border: none !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
+    appearance: none;
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    margin: 0;
     width: 100%;
     height: 100%;
     cursor: pointer;
@@ -8405,12 +8397,12 @@ body.theme-dark {
 }
 
 .manager-tag-editor__create-color {
-    width: 100% !important;
-    min-width: 0 !important;
+    width: 100%;
+    min-width: 0;
 }
 
 .manager-tag-editor__create-input {
-    width: 100% !important;
+    width: 100%;
 }
 
 .manager-tag-editor__create-actions {
@@ -8422,13 +8414,13 @@ body.theme-dark {
 }
 
 .manager-tag-editor__create-action {
-    display: inline-flex !important;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 5px;
-    width: auto !important;
-    min-width: 0 !important;
-    padding: 0 10px !important;
+    width: auto;
+    min-width: 0;
+    padding: 0 10px;
     font-size: 12px;
     font-weight: 650;
     white-space: nowrap;
@@ -8442,9 +8434,9 @@ body.theme-dark {
 
 .manager-tag-editor__create-action--primary,
 .manager-tag-editor__create-action--primary:hover {
-    border-color: color-mix(in srgb, var(--interactive-accent) 52%, var(--bpm-border)) !important;
-    background: color-mix(in srgb, var(--interactive-accent) 15%, var(--bpm-card)) !important;
-    color: var(--text-accent) !important;
+    border-color: color-mix(in srgb, var(--interactive-accent) 52%, var(--bpm-border));
+    background: color-mix(in srgb, var(--interactive-accent) 15%, var(--bpm-card));
+    color: var(--text-accent);
 }
 
 .manager-setting-tag__container {
@@ -8465,7 +8457,7 @@ body.theme-dark {
 .manager-container--editing .manager-plugin-card .manager-item__name-desc[contenteditable="true"] {
     min-height: 28px;
     padding: 4px 7px;
-    border: 1px dashed color-mix(in srgb, var(--interactive-accent) 55%, var(--bpm-border)) !important;
+    border: 1px dashed color-mix(in srgb, var(--interactive-accent) 55%, var(--bpm-border));
     border-radius: var(--bpm-radius-sm);
     background: var(--bpm-card);
     outline: none;
@@ -8473,7 +8465,7 @@ body.theme-dark {
 
 .manager-container--editing .manager-plugin-card .manager-item__name-title[contenteditable="true"]:focus,
 .manager-container--editing .manager-plugin-card .manager-item__name-desc[contenteditable="true"]:focus {
-    border-style: solid !important;
+    border-style: solid;
     box-shadow: 0 0 0 2px var(--bpm-ring);
 }
 
@@ -10167,8 +10159,8 @@ body.theme-dark {
 
 .manager-tag-editor__create-color,
 .manager-tag-editor__create-input {
-    width: 100% !important;
-    min-width: 0 !important;
+    width: 100%;
+    min-width: 0;
 }
 
 .manager-tag-editor__create-actions {
@@ -10180,13 +10172,13 @@ body.theme-dark {
 }
 
 .manager-tag-editor__create-action {
-    display: inline-flex !important;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 5px;
-    width: auto !important;
-    min-width: 0 !important;
-    padding: 0 10px !important;
+    width: auto;
+    min-width: 0;
+    padding: 0 10px;
     font-size: 12px;
     font-weight: 650;
     white-space: nowrap;
@@ -10202,9 +10194,9 @@ body.theme-dark {
 .manager-tag-editor__create-action--primary:hover,
 .manager-tag-editor__save-button,
 .manager-tag-editor__save-button:hover {
-    border-color: color-mix(in srgb, var(--interactive-accent) 52%, var(--bpm-border)) !important;
-    background: color-mix(in srgb, var(--interactive-accent) 15%, var(--bpm-card)) !important;
-    color: var(--text-accent) !important;
+    border-color: color-mix(in srgb, var(--interactive-accent) 52%, var(--bpm-border));
+    background: color-mix(in srgb, var(--interactive-accent) 15%, var(--bpm-card));
+    color: var(--text-accent);
 }
 
 @media (max-width: 640px) {
@@ -10254,7 +10246,7 @@ body.theme-dark {
 .manager-tag-editor__item.setting-item {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(92px, auto);
-    column-gap: 14px;
+    gap: 14px;
     align-items: center;
     padding: 11px 12px 11px 14px;
     border-left-width: 1px;
@@ -10345,7 +10337,7 @@ body.theme-dark {
 .manager-tag-editor__add-trigger.setting-item {
     display: grid;
     grid-template-columns: minmax(0, 1fr) var(--bpm-control-size);
-    column-gap: 14px;
+    gap: 14px;
     align-items: center;
     padding: 11px 12px 11px 14px;
 }
@@ -10431,8 +10423,7 @@ body.theme-dark {
 .manager-taxonomy-setting__header {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    column-gap: 14px;
-    row-gap: 10px;
+    gap: 10px 14px;
     align-items: center;
     min-height: 0;
     padding: 12px 14px;
@@ -10532,7 +10523,7 @@ body.theme-dark {
 .manager-taxonomy-setting__row.setting-item {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    column-gap: 14px;
+    gap: 14px;
     align-items: center;
     min-height: 52px;
     margin: 0;

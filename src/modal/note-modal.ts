@@ -10,6 +10,7 @@ import { ManagerSettings } from "../settings/data";
 import Manager from "main";
 import { ManagerPlugin } from "src/data/types";
 import { ManagerModal } from "./manager-modal";
+import { getExtraButtonElement } from "src/obsidian-internals";
 
 export class NoteModal extends Modal {
     settings: ManagerSettings;
@@ -37,7 +38,7 @@ export class NoteModal extends Modal {
     }
 
     private getExtraButtonEl(button: ExtraButtonComponent): HTMLElement | undefined {
-        return ((button as any).extraSettingsEl || (button as any).buttonEl) as HTMLElement | undefined;
+        return getExtraButtonElement(button);
     }
 
     private prepareIconButton(button: ExtraButtonComponent, label: string, className?: string) {
@@ -128,8 +129,8 @@ export class NoteModal extends Modal {
     }
 
     private async showHead() {
-        //@ts-ignore
-        const modalEl: HTMLElement = this.contentEl.parentElement;
+        const modalEl = this.contentEl.parentElement;
+        if (!modalEl) return;
         modalEl.addClass("manager-note__container");
         modalEl.getElementsByClassName("modal-close-button")[0]?.remove();
         this.titleEl.empty();
@@ -214,14 +215,16 @@ export class NoteModal extends Modal {
         modalElement.scrollTo(0, scrollTop);
     }
 
-    async onOpen() {
-        await this.showHead();
-        await this.showData();
-        this.textArea?.inputEl.focus();
+    onOpen() {
+        void (async () => {
+            await this.showHead();
+            await this.showData();
+            this.textArea?.inputEl.focus();
+        })();
     }
 
-    async onClose() {
-        await this.flushPendingSave();
+    onClose() {
+        void this.flushPendingSave();
         if (this.saveTimer) window.clearTimeout(this.saveTimer);
         this.contentEl.empty();
     }

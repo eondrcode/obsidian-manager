@@ -1,6 +1,7 @@
 import { App, ExtraButtonComponent, Modal, Notice, setIcon, Setting } from "obsidian";
 import Manager from "main";
 import { ReleaseVersion, fetchReleaseVersions } from "src/github-install";
+import { getExtraButtonElement } from "src/obsidian-internals";
 
 export class UpdateModal extends Modal {
     private manager: Manager;
@@ -23,12 +24,12 @@ export class UpdateModal extends Modal {
 
     async onOpen() {
         const { contentEl } = this;
-        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
         const manifest = this.manager.appPlugins.manifests?.[this.pluginId];
         contentEl.empty();
         this.selectedVersion = this.defaultVersion || manifest?.version || (this.versions[0]?.version ?? "");
 
-        const modalEl = contentEl.parentElement as HTMLElement | null;
+        const modalEl = contentEl.parentElement;
         modalEl?.addClass("manager-editor__container");
         modalEl?.addClass("manager-version-picker");
         modalEl?.getElementsByClassName("modal-close-button")[0]?.remove();
@@ -50,7 +51,7 @@ export class UpdateModal extends Modal {
         const closeButton = new ExtraButtonComponent(titleBar.controlEl);
         closeButton.setIcon("x");
         closeButton.setTooltip(t("通用_取消_文本"));
-        const closeEl = ((closeButton as any).extraSettingsEl || (closeButton as any).buttonEl) as HTMLElement | undefined;
+        const closeEl = getExtraButtonElement(closeButton);
         closeEl?.setAttribute("aria-label", t("通用_取消_文本"));
         closeButton.onClick(() => this.close());
 
@@ -137,7 +138,7 @@ export class UpdateModal extends Modal {
 
     private renderVersionList(versionList: ReleaseVersion[], localVersion: string) {
         if (!this.versionListEl) return;
-        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
         this.versionListEl.empty();
         versionList.forEach((release) => {
             const item = this.versionListEl!.createEl("button", { cls: "manager-version-picker__item" });

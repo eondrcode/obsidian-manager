@@ -12,7 +12,7 @@ import ManagerMainPage from './ui/manager-main-page';
 class ManagerSettingTab extends PluginSettingTab {
     manager: Manager;
     app: App;
-    contentEl: HTMLDivElement;
+    contentEl!: HTMLDivElement;
 
     constructor(app: App, manager: Manager) {
         super(app, manager);

@@ -14,14 +14,14 @@ export class TroubleshootPanel {
     private state: TroubleshootState = cloneState(INITIAL_TROUBLESHOOT_STATE);
     private lastDescription = "";
     private onStateChange?: RenderCallback;
-    private t: (key: any) => string;
+    private t: (key: string) => string;
 
     constructor(app: App, manager: Manager, onStateChange?: RenderCallback) {
         this.app = app;
         this.manager = manager;
         this.algorithm = new TroubleshootAlgorithm(app, manager);
         this.onStateChange = onStateChange;
-        this.t = (key: any) => manager.translator.t(key);
+        this.t = (key: string) => manager.translator.t(key);
     }
 
     display(containerEl: HTMLElement) {

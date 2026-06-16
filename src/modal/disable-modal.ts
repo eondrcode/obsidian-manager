@@ -1,22 +1,20 @@
 import { App, ExtraButtonComponent, Modal, Setting } from 'obsidian';
-import { ManagerSettings } from '../settings/data';
 import Manager from 'main';
 
 export class DisableModal extends Modal {
-    settings: ManagerSettings;
     manager: Manager;
 
-    private deleteCallback: () => void;
+    private deleteCallback: () => void | Promise<void>;
 
-    constructor(app: App, manager: Manager, deleteCallback: () => void) {
+    constructor(app: App, manager: Manager, deleteCallback: () => void | Promise<void>) {
         super(app);
         this.manager = manager;
         this.deleteCallback = deleteCallback;
     }
 
     private async showHead() {
-        //@ts-ignore
-        const modalEl: HTMLElement = this.contentEl.parentElement;
+        const modalEl = this.contentEl.parentElement;
+        if (!modalEl) return;
         modalEl.addClass('manager-editor__container');
         modalEl.getElementsByClassName('modal-close-button')[0]?.remove();
         this.titleEl.parentElement?.addClass('manager-container__header');
@@ -42,7 +40,7 @@ export class DisableModal extends Modal {
             .setCta()
             .setButtonText(this.manager.translator.t('一键_启禁'))
             .onClick(() => {
-                this.deleteCallback();
+                void this.deleteCallback();
                 this.close();
             })
         );
@@ -54,12 +52,14 @@ export class DisableModal extends Modal {
         );
     }
 
-    async onOpen() {
-        await this.showHead();
-        await this.showData();
+    onOpen() {
+        void (async () => {
+            await this.showHead();
+            await this.showData();
+        })();
     }
 
-    async onClose() {
+    onClose() {
         this.contentEl.empty();
     }
 }

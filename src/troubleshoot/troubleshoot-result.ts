@@ -2,7 +2,7 @@
  * 插件冲突排查 - 结果显示模态框
  */
 
-import { App, ButtonComponent, Modal, Notice, Setting, setIcon, normalizePath } from 'obsidian';
+import { App, ButtonComponent, Modal, Notice, Setting, TFile, setIcon, normalizePath } from 'obsidian';
 import Manager from 'main';
 import { TroubleshootState, INITIAL_TROUBLESHOOT_STATE, cloneState } from './troubleshoot-state';
 import { TroubleshootAlgorithm } from './troubleshoot-algorithm';
@@ -11,21 +11,21 @@ export class TroubleshootResultModal extends Modal {
     private manager: Manager;
     private algorithm: TroubleshootAlgorithm;
     private state: TroubleshootState;
-    private t: (key: any) => string;
+    private t: (key: string) => string;
 
     constructor(app: App, manager: Manager, state: TroubleshootState) {
         super(app);
         this.manager = manager;
         this.algorithm = new TroubleshootAlgorithm(app, manager);
         this.state = state;
-        this.t = (k: any) => manager.translator.t(k);
+        this.t = (k: string) => manager.translator.t(k);
     }
 
-    async onOpen() {
-        await this.render();
+    onOpen() {
+        void this.render();
     }
 
-    async onClose() {
+    onClose() {
         // 清理状态
     }
 
@@ -34,8 +34,8 @@ export class TroubleshootResultModal extends Modal {
         contentEl.empty();
         titleEl.empty();
 
-        // @ts-ignore
-        const modalEl: HTMLElement = contentEl.parentElement;
+        const modalEl = contentEl.parentElement;
+        if (!modalEl) return;
         modalEl.addClass('troubleshoot-result-modal');
 
         // 移除默认的关闭按钮
@@ -281,8 +281,7 @@ ${this.state.originalEnabledPlugins.map(id => `- ${this.getPluginName(id)} (\`${
 
             // 打开报告文件
             const file = this.app.vault.getAbstractFileByPath(filePath);
-            if (file) {
-                // @ts-ignore
+            if (file instanceof TFile) {
                 await this.app.workspace.getLeaf().openFile(file);
             }
         } catch (e) {

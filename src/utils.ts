@@ -1,35 +1,89 @@
-import { Notice, Platform } from 'obsidian';
-import Manager from 'main';
+import { App, ButtonComponent, Modal, Notice, Platform, Setting } from "obsidian";
+import { shell } from "electron";
+import Manager from "main";
 
-/**
- * 打开文件或文件夹的操作系统命令。
- * @param i18n - 国际化对象，用于显示操作结果的通知。
- * @param dir - 要打开的文件夹路径。
- * @description 根据操作系统执行相应的命令来打开文件夹。在Windows上使用'start'命令，在Mac上使用'open'命令。
- * 如果操作成功，显示成功通知；如果失败，显示错误通知。
- */
-export const managerOpen = (dir: string, manager: Manager) => {
-	if (Platform.isMobileApp) {
-		new Notice(manager.translator.t("通用_移动端不支持打开文件夹_提示"));
-		return;
-	}
-	try {
-		// 延迟加载避免移动端加载 Node 模块
-		// eslint-disable-next-line @typescript-eslint/no-var-requires
-		const { exec } = require('child_process');
-		if (Platform.isDesktop || Platform.isWin) {
-			exec(`start "" "${dir}"`, (error: any) => {
-				if (error) { new Notice(manager.translator.t('通用_失败_文本')); } else { new Notice(manager.translator.t('通用_成功_文本')); }
-			});
-			return;
-		}
-		if (Platform.isMacOS) {
-			exec(`open ${dir}`, (error: any) => {
-				if (error) { new Notice(manager.translator.t('通用_失败_文本')); } else { new Notice(manager.translator.t('通用_成功_文本')); }
-			});
-		}
-	} catch (e) {
-		console.error("打开目录失败", e);
-		new Notice(manager.translator.t('通用_失败_文本'));
-	}
+type ConfirmModalOptions = {
+    title?: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+};
+
+class ManagerConfirmModal extends Modal {
+    private readonly manager: Manager;
+    private readonly options: ConfirmModalOptions;
+    private readonly resolve: (confirmed: boolean) => void;
+    private resolved = false;
+
+    constructor(app: App, manager: Manager, options: ConfirmModalOptions, resolve: (confirmed: boolean) => void) {
+        super(app);
+        this.manager = manager;
+        this.options = options;
+        this.resolve = resolve;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        const t = (key: string) => this.manager.translator.t(key);
+        const modalEl = contentEl.parentElement;
+        modalEl?.addClass("manager-confirm-modal");
+        modalEl?.querySelector(".modal-close-button")?.remove();
+        this.titleEl.parentElement?.addClass("manager-container__header");
+        this.titleEl.setText(this.options.title || t("通用_确认_文本"));
+
+        contentEl.empty();
+        contentEl.addClass("manager-item-container");
+        contentEl.createDiv({ cls: "manager-confirm-modal__message", text: this.options.message });
+
+        const actionBar = new Setting(contentEl).setClass("manager-delete__action");
+        actionBar.nameEl.empty();
+        actionBar.descEl.empty();
+        actionBar.addButton((button) => {
+            button
+                .setButtonText(this.options.cancelText || t("通用_取消_文本"))
+                .onClick(() => this.finish(false));
+        });
+        actionBar.addButton((button: ButtonComponent) => {
+            button
+                .setCta()
+                .setButtonText(this.options.confirmText || "OK")
+                .onClick(() => this.finish(true));
+            button.buttonEl.focus();
+        });
+    }
+
+    onClose() {
+        this.contentEl.empty();
+        this.finish(false);
+    }
+
+    private finish(confirmed: boolean) {
+        if (this.resolved) return;
+        this.resolved = true;
+        this.resolve(confirmed);
+        this.close();
+    }
 }
+
+export const confirmWithModal = (app: App, manager: Manager, options: ConfirmModalOptions | string): Promise<boolean> => {
+    const modalOptions = typeof options === "string" ? { message: options } : options;
+    return new Promise((resolve) => {
+        new ManagerConfirmModal(app, manager, modalOptions, resolve).open();
+    });
+};
+
+export const managerOpen = (dir: string, manager: Manager) => {
+    if (Platform.isMobileApp) {
+        new Notice(manager.translator.t("通用_移动端不支持打开文件夹_提示"));
+        return;
+    }
+
+    shell.openPath(dir)
+        .then((error) => {
+            new Notice(manager.translator.t(error ? "通用_失败_文本" : "通用_成功_文本"));
+        })
+        .catch((error) => {
+            console.error("打开目录失败", error);
+            new Notice(manager.translator.t("通用_失败_文本"));
+        });
+};

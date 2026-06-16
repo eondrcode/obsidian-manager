@@ -14,6 +14,8 @@ import { performSelfCheck } from './self-check';
 import { SystemRibbonManager } from './manager/system-ribbon-manager';
 import { RibbonItem } from './data/types';
 import { markSourceInstalledRelease, sourceHasUpdate as sourceHasConfiguredUpdate, syncSourceReleaseCheck } from './source-release';
+import { ObsidianAppWithInternals, ObsidianPluginRegistry, RibbonNativeItem, WindowWithMoment, WorkspaceWithRibbon } from './obsidian-internals';
+import { RibbonModal } from './modal/ribbon-modal';
 
 type UpdateSource = 'official' | 'github' | 'unknown';
 interface UpdateStatus {
@@ -42,17 +44,18 @@ type SecretStorageLike = {
     removeSecret?: (id: string) => void;
 };
 
-export default class Manager extends Plugin {
-    public settings: ManagerSettings;
-    public managerModal: ManagerModal;
-    public ribbonModal: any; // RibbonModal 引用 (any to avoid cyclic import or just use class logic)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    public appPlugins: any;
-    public appWorkspace: Workspace;
-    public translator: Translator; 
+type CommunityPluginStatsEntry = Record<string, number | string | undefined>;
 
-    public agreement: Agreement;
-    public repoResolver: RepoResolver;
+export default class Manager extends Plugin {
+    public settings!: ManagerSettings;
+    public managerModal: ManagerModal | null = null;
+    public ribbonModal: RibbonModal | null = null;
+    public appPlugins!: ObsidianPluginRegistry;
+    public appWorkspace!: Workspace;
+    public translator!: Translator; 
+
+    public agreement!: Agreement;
+    public repoResolver!: RepoResolver;
     public systemRibbonManager?: SystemRibbonManager;
     public updateStatus: Record<string, UpdateStatus> = {};
     private updateProgressNotice: Notice | null = null;
@@ -64,8 +67,7 @@ export default class Manager extends Plugin {
     private dragObserverCleanup: (() => void) | null = null;
 
     public async onload() {
-        // @ts-ignore
-        this.appPlugins = this.app.plugins;
+        this.appPlugins = (this.app as ObsidianAppWithInternals).plugins;
         this.appWorkspace = this.app.workspace;
 
         console.log(`%c ${this.manifest.name} %c v${this.manifest.version} `, `padding: 2px; border-radius: 2px 0 0 2px; color: #fff; background: #5B5B5B;`, `padding: 2px; border-radius: 0 2px 2px 0; color: #fff; background: #409EFF;`);
@@ -117,34 +119,38 @@ export default class Manager extends Plugin {
         this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), () => { this.managerModal = new ManagerModal(this.app, this); this.managerModal.open(); });
         // 初始化设置界面
         this.addSettingTab(new ManagerSettingTab(this.app, this));
-        this.settings.DELAY ? this.enableDelay() : this.disableDelay();
+        if (this.settings.DELAY) {
+            this.enableDelay();
+        } else {
+            this.disableDelay();
+        }
         Commands(this.app, this);
 
         this.agreement = new Agreement(this);
-        this.startupCheckForUpdates();
-        this.startupMaintainBetaSources();
+        void this.startupCheckForUpdates();
+        void this.startupMaintainBetaSources();
 
-        this.registerObsidianProtocolHandler("BPM-plugin-install", async (params: ObsidianProtocolData) => {
-            await this.agreement.parsePluginInstall(params);
+        this.registerObsidianProtocolHandler("BPM-plugin-install", (params: ObsidianProtocolData) => {
+            void this.agreement.parsePluginInstall(params);
         });
-        this.registerObsidianProtocolHandler("BPM-plugin-github", async (params: ObsidianProtocolData) => {
-            await this.agreement.parsePluginGithub(params);
+        this.registerObsidianProtocolHandler("BPM-plugin-github", (params: ObsidianProtocolData) => {
+            void this.agreement.parsePluginGithub(params);
         });
 
         this.app.workspace.onLayoutReady(() => {
             this.startRibbonRuntimeFeatures();
             // 延迟启动自检，确保 Obsidian 初始化完成，避免自动接管被覆盖
-            setTimeout(() => {
+            window.setTimeout(() => {
                 if (this.isRibbonManagerEnabled()) this.cleanRibbonItems(); // 启动后清理一次
                 if (this.settings.DELAY) performSelfCheck(this);
             }, 2000);
         });
     }
 
-    public async onunload() {
+    public onunload() {
         this.stopRibbonRuntimeFeatures();
 
-        if (this.settings.DELAY) this.disableDelaysForAllPlugins();
+        if (this.settings.DELAY) void this.disableDelaysForAllPlugins();
 
         // 临走前再清理一次
         if (this.isRibbonManagerEnabled()) this.cleanRibbonItems();
@@ -166,7 +172,21 @@ export default class Manager extends Plugin {
             }
         };
 
-        const handlePointerUp = async (e: PointerEvent) => {
+        const handlePointerUp = (e: PointerEvent) => {
+            void this.handleRibbonPointerUp(e);
+        };
+
+        // 使用 capture 捕获事件，确保不被 Obsidian 内部拦截
+        activeDocument.addEventListener('pointerdown', handlePointerDown, true);
+        activeDocument.addEventListener('pointerup', handlePointerUp, true);
+
+        this.dragObserverCleanup = () => {
+            activeDocument.removeEventListener('pointerdown', handlePointerDown, true);
+            activeDocument.removeEventListener('pointerup', handlePointerUp, true);
+        };
+    }
+
+    private async handleRibbonPointerUp(e: PointerEvent) {
             if (!this.isRibbonManagerEnabled()) {
                 this.isRibbonDragging = false;
                 this.draggedRibbonItem = null;
@@ -179,7 +199,7 @@ export default class Manager extends Plugin {
             }
 
             // 获取 Ribbon 容器位置
-            const container = document.querySelector('.side-dock-actions');
+            const container = activeDocument.querySelector('.side-dock-actions');
             if (container) {
                 const rect = container.getBoundingClientRect();
                 // 允许一定的误差范围（缓冲区的宽度/高度），可以设大一点，比如 50px
@@ -208,16 +228,6 @@ export default class Manager extends Plugin {
 
             this.isRibbonDragging = false;
             this.draggedRibbonItem = null;
-        };
-
-        // 使用 capture 捕获事件，确保不被 Obsidian 内部拦截
-        document.addEventListener('pointerdown', handlePointerDown, true);
-        document.addEventListener('pointerup', handlePointerUp, true);
-
-        this.dragObserverCleanup = () => {
-            document.removeEventListener('pointerdown', handlePointerDown, true);
-            document.removeEventListener('pointerup', handlePointerUp, true);
-        };
     }
 
     private async hideRibbonItemByLabel(label: string) {
@@ -231,10 +241,8 @@ export default class Manager extends Plugin {
 
         // 如果 settings 里还没同步名字，尝试反查 app.workspace.leftRibbon
         if (!targetId) {
-            // @ts-ignore
-            const ribbonItems = this.app.workspace.leftRibbon?.items || [];
-            // @ts-ignore
-            const nativeItem = ribbonItems.find((i: any) => i.title === label || i.name === label);
+            const ribbonItems = (this.app.workspace as WorkspaceWithRibbon).leftRibbon?.items || [];
+            const nativeItem = ribbonItems.find((i): i is RibbonNativeItem => Boolean(i && (i.title === label || i.name === label)));
             if (nativeItem) targetId = nativeItem.id;
         }
 
@@ -281,7 +289,7 @@ export default class Manager extends Plugin {
     }
 
     private clearRibbonStyleOverrides() {
-        document
+        activeDocument
             .querySelectorAll<HTMLElement>('[data-bpm-ribbon-managed="true"], [data-bpm-menu-managed="true"]')
             .forEach((element) => this.clearManagedElementStyle(element));
     }
@@ -721,7 +729,7 @@ export default class Manager extends Plugin {
                 delay: "",
                 note: "",
             });
-            this.saveSettings();
+            void this.saveSettings();
             return;
         }
         existing.name = existing.name || this.manifest.name;
@@ -731,7 +739,7 @@ export default class Manager extends Plugin {
     }
 
     private reloadIfCurrentModal() {
-        try { this.managerModal?.reloadShowData(); } catch { /* ignore */ }
+        try { void this.managerModal?.reloadShowData(); } catch { /* ignore */ }
         try {
             // 直接刷新 UI，不需要重新从文件加载，因为内存状态这一刻是最新的
             this.ribbonModal?.display();
@@ -743,8 +751,7 @@ export default class Manager extends Plugin {
      * 防止原生方法遍历时 crash
      */
     public cleanRibbonItems() {
-        // @ts-ignore
-        const ribbon = this.app.workspace.leftRibbon as any;
+        const ribbon = (this.app.workspace as WorkspaceWithRibbon).leftRibbon;
         if (!ribbon || !ribbon.items || !Array.isArray(ribbon.items)) return;
 
         let cleaned = false;
@@ -783,13 +790,13 @@ export default class Manager extends Plugin {
     }
 
     // 为所有插件启动延迟
-    public enableDelaysForAllPlugins() {
+    public async enableDelaysForAllPlugins() {
         // 获取所有插件
         const plugins = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id) as PluginManifest[];
         // 同步插件
         this.synchronizePlugins(plugins);
 
-        this.getDelayManagedPluginManifests().forEach(async (plugin: PluginManifest) => {
+        for (const plugin of this.getDelayManagedPluginManifests()) {
             // 插件状态
             const isEnabled = this.appPlugins.enabledPlugins.has(plugin.id);
             if (isEnabled) {
@@ -801,21 +808,21 @@ export default class Manager extends Plugin {
                 const mp = this.settings.Plugins.find(p => p.id === plugin.id);
                 if (mp) mp.enabled = true;
                 // 4. 保存状态
-                this.saveSettings();
+                await this.saveSettings();
             } else {
                 // 1. 切换配置文件
                 const mp = this.settings.Plugins.find(p => p.id === plugin.id);
                 if (mp) mp.enabled = false;
                 // 2. 保存状态
-                this.saveSettings();
+                await this.saveSettings();
             }
-        });
+        }
     }
 
     // 为所有插件关闭延迟
-    public disableDelaysForAllPlugins() {
+    public async disableDelaysForAllPlugins() {
         const plugins = this.getDelayManagedPluginManifests();
-        plugins.forEach(async (pm: PluginManifest) => {
+        for (const pm of plugins) {
             const plugin = this.settings.Plugins.find(p => p.id === pm.id)
             if (plugin) {
                 if (plugin.enabled) {
@@ -823,7 +830,7 @@ export default class Manager extends Plugin {
                     await this.appPlugins.enablePluginAndSave(pm.id);
                 }
             }
-        });
+        }
     }
 
     // 延时启动指定插件
@@ -834,7 +841,7 @@ export default class Manager extends Plugin {
         if (plugin && plugin.enabled) {
             const delay = this.settings.DELAYS.find(item => item.id === plugin.delay);
             const time = delay ? delay.time : 0;
-            setTimeout(() => { this.appPlugins.enablePlugin(id); }, time * 1000);
+            window.setTimeout(() => { void this.appPlugins.enablePlugin(id); }, time * 1000);
         }
     }
 
@@ -873,7 +880,7 @@ export default class Manager extends Plugin {
         // BPM 自身保持启用且不允许延迟
         this.ensureSelfPluginRecord();
         // 保存设置
-        this.saveSettings();
+        void this.saveSettings();
     }
 
     // 工具函数
@@ -925,14 +932,13 @@ export default class Manager extends Plugin {
     // 获取 Obsidian 当前语言（兼容旧版类型定义）
     public getAppLanguage(): string {
         // 优先使用 app.i18n.locale / language
-        // @ts-ignore
-        const anyApp = this.app as any;
+        const appWithInternals = this.app as ObsidianAppWithInternals;
         const langCandidates: (string | undefined)[] = [
-            anyApp?.i18n?.locale,
-            anyApp?.i18n?.lang,
-            anyApp?.i18n?.language,
-            (window as any)?.moment?.locale?.(),
-            (navigator as any)?.language,
+            appWithInternals.i18n?.locale,
+            appWithInternals.i18n?.lang,
+            appWithInternals.i18n?.language,
+            (window as WindowWithMoment).moment?.locale?.(),
+            navigator.language,
         ];
         const picked = langCandidates.find((l) => typeof l === "string" && l.length > 0) || "en";
         const lower = picked.toLowerCase().replace('_', '-');
@@ -1078,11 +1084,11 @@ export default class Manager extends Plugin {
         const url = "https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugin-stats.json";
         try {
             const res = await requestUrl({ url });
-            const json = res.json as Record<string, any>;
+            const json = res.json as Record<string, CommunityPluginStatsEntry>;
             const map: Record<string, string> = {};
             Object.entries(json || {}).forEach(([id, entry]) => {
                 if (entry && typeof entry === "object") {
-                    const latest = this.getLatestVersionFromStats(entry as Record<string, any>);
+                    const latest = this.getLatestVersionFromStats(entry);
                     if (latest) map[id] = latest;
                 }
             });
@@ -1093,7 +1099,7 @@ export default class Manager extends Plugin {
         }
     }
 
-    private getLatestVersionFromStats(entry: Record<string, any>): string | null {
+    private getLatestVersionFromStats(entry: CommunityPluginStatsEntry): string | null {
         const versions = Object.keys(entry || {}).filter(k => k !== "downloads" && k !== "updated");
         if (versions.length === 0) return null;
         let latest = versions[0];
@@ -1232,14 +1238,14 @@ export default class Manager extends Plugin {
         }
 
         if (Platform.isMobile) {
-            document
+            activeDocument
                 .querySelectorAll<HTMLElement>(".menu-scroll")
                 .forEach((menuScroll) => this.processMenuItems(menuScroll));
             return;
         }
 
         const ribbonElements = Array.from(
-            document.querySelectorAll<HTMLElement>(".side-dock-actions div.clickable-icon.side-dock-ribbon-action")
+            activeDocument.querySelectorAll<HTMLElement>(".side-dock-actions div.clickable-icon.side-dock-ribbon-action")
         );
 
         ribbonElements.forEach((element) => {
@@ -1305,7 +1311,7 @@ export default class Manager extends Plugin {
                 this.processMenuItems(targetNode);
             }
         });
-        this.menuObserver.observe(document.body, {
+        this.menuObserver.observe(activeDocument.body, {
             childList: true,
             subtree: true,
         });
@@ -1317,12 +1323,12 @@ export default class Manager extends Plugin {
         // [修复] 移动端 Obsidian 菜单项包裹在 .menu-group 中
         // 必须在 .menu-group 内排序，否则会破坏样式布局
         let containerElement: HTMLElement = menuScrollElement;
-        const menuGroup = menuScrollElement.querySelector(".menu-group");
+        const menuGroup = menuScrollElement.querySelector<HTMLElement>(".menu-group");
         if (menuGroup) {
-            containerElement = menuGroup as HTMLElement;
+            containerElement = menuGroup;
         }
 
-        const menuItems = Array.from(containerElement.querySelectorAll(".menu-item")) as HTMLElement[];
+        const menuItems = Array.from(containerElement.querySelectorAll<HTMLElement>(".menu-item"));
         if (menuItems.length === 0) return;
 
         const ribbonSettings = this.settings.RIBBON_SETTINGS || [];
@@ -1383,7 +1389,7 @@ export default class Manager extends Plugin {
 
         // 5. 如果需要，执行重排
         if (needSort) {
-            const fragment = document.createDocumentFragment();
+            const fragment = activeDocument.createDocumentFragment();
             itemsWithOrder.forEach(({ item }) => fragment.appendChild(item));
             containerElement.appendChild(fragment);
         }
@@ -1416,8 +1422,7 @@ export default class Manager extends Plugin {
             let item = itemMap.get(id);
             if (!item) {
                 // 尝试从 workspace 查找名称，或者使用 ID
-                // @ts-ignore
-                const nativeItem = this.app.workspace.leftRibbon?.items?.find((i: any) => i.id === id);
+                const nativeItem = (this.app.workspace as WorkspaceWithRibbon).leftRibbon?.items?.find((i): i is RibbonNativeItem => Boolean(i && i.id === id));
                 const name = nativeItem?.title || nativeItem?.ariaLabel || id;
                 const icon = nativeItem?.icon || "help-circle";
                 item = {
@@ -1440,19 +1445,20 @@ export default class Manager extends Plugin {
         // 保留它们，放在最后？
         // 暂时只同步文件里存在的。
         // NEW: 检查 app.workspace.leftRibbon.items 是否有遗漏的（即原生文件里还没记录的新插件）
-        // @ts-ignore
-        const memoryItems = this.app.workspace.leftRibbon?.items || [];
+        const memoryItems = (this.app.workspace as WorkspaceWithRibbon).leftRibbon?.items || [];
         const seenIds = new Set(orderedIds);
 
-        memoryItems.forEach((mItem: any) => {
+        memoryItems.forEach((mItem) => {
             if (!mItem) return;
-            if (!seenIds.has(mItem.id)) {
+            const itemId = mItem.id;
+            if (!itemId) return;
+            if (!seenIds.has(itemId)) {
                 // 这是一个新出现的项，追加到末尾
                 const item: RibbonItem = {
-                    id: mItem.id,
-                    name: mItem.title || mItem.ariaLabel || mItem.id,
+                    id: itemId,
+                    name: mItem.title || mItem.ariaLabel || itemId,
                     icon: mItem.icon || "help-circle",
-                    visible: true, // 默认为显示
+                    visible: true,
                     order: newItems.length
                 };
                 newItems.push(item);

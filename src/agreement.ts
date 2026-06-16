@@ -2,7 +2,14 @@ import ShareMyPlugin from "main";
 import { Notice, ObsidianProtocolData, debounce, requestUrl } from "obsidian";
 
 // 导出一个全局的 communityPlugins 变量，可在其他模块中使用
-export let communityPlugins: any;
+export type CommunityPluginInfo = {
+    id: string;
+    name?: string;
+    repo?: string;
+    [key: string]: string | undefined;
+};
+
+export const communityPlugins: Record<string, CommunityPluginInfo> = {};
 
 /**
  * 插件安装器类，负责处理插件的安装和解析安装参数等操作
@@ -13,7 +20,7 @@ export default class Agreement {
     // 引用 ShareMyPlugin 实例，方便访问主插件的属性和方法
     plugin: ShareMyPlugin;
     // 存储社区插件信息的对象，键为插件 ID，值为插件详细信息
-    communityPlugins: Record<string, { [key: string]: string }> = {};
+    communityPlugins: Record<string, CommunityPluginInfo> = {};
     // 标记是否已经加载了社区插件列表
     loaded = false;
     // 防抖函数，用于定时刷新社区插件列表，每小时执行一次
@@ -28,7 +35,7 @@ export default class Agreement {
         const pluginList = res.json;
         // if (!pluginList.ok) { new Notice(`[插件管理器] 无法连接到Github(跳转主页及下载不可用)`); }
         // 创建一个空对象，用于存储以插件 ID 为键的插件信息
-        const keyedPluginList: Record<string, any> = {};
+        const keyedPluginList: Record<string, CommunityPluginInfo> = {};
         // 遍历插件列表，将每个插件的信息存储到 keyedPluginList 中
         for (const item of pluginList) keyedPluginList[item.id] = item;
         // 将处理后的插件列表赋值给 communityPlugins 属性
@@ -141,7 +148,7 @@ export default class Agreement {
             github: params.github ?? "",
         };
         // 调用 installPlugin 方法安装插件
-        this.pluginInstall(args.id, args.version, args.enable);
+        await this.pluginInstall(args.id, args.version, args.enable);
     }
 
     /**

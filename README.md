@@ -1,6 +1,6 @@
 <div align="center">
 
-# Better Plugins Manager
+# Better Add-on Manager
 
 **A more capable plugin manager for Obsidian.**
 
@@ -55,7 +55,7 @@ Keep plugin-heavy Obsidian vaults fast and manageable with delayed startup, batc
 
 ## 🎯 What is BPM?
 
-**Better Plugins Manager (BPM)** is a control center for Obsidian community plugins, designed for vaults that rely on many plugins and need more than simple enable/disable toggles.
+**Better Add-on Manager (BPM)** is a control center for Obsidian community plugins, designed for vaults that rely on many plugins and need more than simple enable/disable toggles.
 
 It helps you keep startup responsive, organize plugins by workflow, install plugins from GitHub releases, and isolate conflicts when something breaks.
 
@@ -164,7 +164,7 @@ The Conflict Diagnosis tab guides plugin conflict testing step by step, keeping 
 Recommended for most users.
 
 1. Open **Obsidian Settings → Community Plugins**.
-2. Search for **Better Plugins Manager**.
+2. Search for **Better Add-on Manager**.
 3. Install and enable the plugin.
 
 ### Manual Install
@@ -174,7 +174,7 @@ Use this when you want to install a GitHub release directly.
 1. Download the [latest release](https://github.com/eondrcode/obsidian-manager/releases).
 2. Copy `main.js`, `manifest.json`, and `styles.css` into `.obsidian/plugins/better-plugins-manager/`.
 3. Restart Obsidian.
-4. Enable **Better Plugins Manager** from **Settings → Community Plugins**.
+4. Enable **Better Add-on Manager** from **Settings → Community Plugins**.
 
 ---
 
@@ -266,8 +266,8 @@ BPM settings are split into focused pages:
 |---------|--------------|-------------|
 | **Open the plugin manager** | Always available | Opens the BPM main interface |
 | **Troubleshoot plugin conflicts** | Always available | Starts the conflict diagnosis workflow |
-| **Enable/Disable [Plugin Name]** | Optional setting | Registers one command per plugin for direct toggling |
-| **One-click Enable/Disable [Group Name]** | Optional setting | Registers group-level commands for batch toggling |
+| **Enable/Disable selected plugin** | Optional setting | Registers one command per plugin for direct toggling |
+| **One-click Enable/Disable selected group** | Optional setting | Registers group-level commands for batch toggling |
 
 ---
 

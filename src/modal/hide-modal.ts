@@ -13,6 +13,7 @@ import { ManagerSettings, TagFilterOperator } from "../settings/data";
 
 import Manager from "main";
 import { ManagerModal } from "./manager-modal";
+import { AppSettingsLike, ObsidianAppWithInternals } from "src/obsidian-internals";
 
 export class HideModal extends Modal {
     manager: Manager;
@@ -28,7 +29,7 @@ export class HideModal extends Modal {
     // 搜索内容
     searchText = "";
     // 搜索结果
-    searchEl: SearchComponent;
+    searchEl!: SearchComponent;
     delay = "";
     tag = "";
     tagOperator: TagFilterOperator = "contains";
@@ -57,10 +58,9 @@ export class HideModal extends Modal {
 
     constructor(app: App, manager: Manager, managerModal: ManagerModal, plugins: PluginManifest[]) {
         super(app);
-        // @ts-ignore
-        this.appSetting = this.app.setting;
-        // @ts-ignore
-        this.appPlugins = this.app.plugins;
+        const appWithInternals = this.app as ObsidianAppWithInternals;
+        this.appSetting = appWithInternals.setting as AppSettingsLike;
+        this.appPlugins = appWithInternals.plugins;
         this.manager = manager;
         this.managerModal = managerModal;
         this.settings = manager.settings;
@@ -68,8 +68,8 @@ export class HideModal extends Modal {
     }
 
     public async showHead() {
-        //@ts-ignore
-        const modalEl: HTMLElement = this.contentEl.parentElement;
+        const modalEl = this.contentEl.parentElement;
+        if (!modalEl) return;
         modalEl.addClass("manager-container");
         // 靠上
         if (!this.settings.CENTER) modalEl.addClass("manager-container__top");
@@ -102,7 +102,7 @@ export class HideModal extends Modal {
         const filterDropdown = new DropdownComponent(searchBar.controlEl);
         filterDropdown.addOptions(filterOptions);
         filterDropdown.setValue(this.filter);
-        filterDropdown.onChange((value) => { this.filter = value; this.reloadShowData(); });
+        filterDropdown.onChange((value) => { this.filter = value; void this.reloadShowData(); });
 
         // [搜索行] 分组选择列表
         const groupCounts = this.settings.Plugins.reduce((acc: { [key: string]: number }, plugin) => { const groupId = plugin.group || ""; acc[groupId] = (acc[groupId] || 0) + 1; return acc; }, { "": 0 });
@@ -122,12 +122,12 @@ export class HideModal extends Modal {
         groupOperatorDropdown.selectEl.setAttribute("aria-label", this.manager.translator.t("筛选_分组取反_标签"));
         groupOperatorDropdown.onChange((value) => {
             this.groupOperator = value === "not-contains" ? "not-contains" : "contains";
-            this.reloadShowData();
+            void this.reloadShowData();
         });
         const groupsDropdown = new DropdownComponent(searchBar.controlEl);
         this.addOrderedOptions(groupsDropdown, groups);
         groupsDropdown.setValue(this.group);
-        groupsDropdown.onChange((value) => { this.group = value; this.reloadShowData(); });
+        groupsDropdown.onChange((value) => { this.group = value; void this.reloadShowData(); });
 
         // [搜索行] 标签选择列表
         const tagCounts: { [key: string]: number } = this.settings.Plugins.reduce((acc, plugin) => { plugin.tags.forEach((tag) => { acc[tag] = (acc[tag] || 0) + 1; }); return acc; }, {} as { [key: string]: number });
@@ -143,13 +143,13 @@ export class HideModal extends Modal {
         tagOperatorDropdown.selectEl.setAttribute("aria-label", this.manager.translator.t("筛选_标签取反_标签"));
         tagOperatorDropdown.onChange((value) => {
             this.tagOperator = value === "not-contains" ? "not-contains" : "contains";
-            this.reloadShowData();
+            void this.reloadShowData();
         });
 
         const tagsDropdown = new DropdownComponent(searchBar.controlEl);
         this.addOrderedOptions(tagsDropdown, tags);
         tagsDropdown.setValue(this.tag);
-        tagsDropdown.onChange((value) => { this.tag = value; this.reloadShowData(); });
+        tagsDropdown.onChange((value) => { this.tag = value; void this.reloadShowData(); });
 
         // [搜索行] 延迟选择列表
         if (this.settings.DELAY) {
@@ -166,17 +166,17 @@ export class HideModal extends Modal {
             delayOperatorDropdown.selectEl.setAttribute("aria-label", this.manager.translator.t("筛选_延迟取反_标签"));
             delayOperatorDropdown.onChange((value) => {
                 this.delayOperator = value === "not-contains" ? "not-contains" : "contains";
-                this.reloadShowData();
+                void this.reloadShowData();
             });
             const delaysDropdown = new DropdownComponent(searchBar.controlEl);
             this.addOrderedOptions(delaysDropdown, delays);
             delaysDropdown.setValue(this.delay || "");
-            delaysDropdown.onChange((value) => { this.delay = value; this.reloadShowData(); });
+            delaysDropdown.onChange((value) => { this.delay = value; void this.reloadShowData(); });
         }
 
         // [搜索行] 搜索框
         this.searchEl = new SearchComponent(searchBar.controlEl);
-        this.searchEl.onChange((value: string) => { this.searchText = value; this.reloadShowData(); });
+        this.searchEl.onChange((value: string) => { this.searchText = value; void this.reloadShowData(); });
     }
 
     public async showData() {
@@ -273,7 +273,7 @@ export class HideModal extends Modal {
                     } else {
                         this.settings.HIDES = this.settings.HIDES.filter(id => id !== plugin.id);
                     }
-                    this.manager.saveSettings();
+                    void this.manager.saveSettings();
                     this.managerModal.refreshPluginCard(plugin.id, { allowReload: true });
                 });
             }
@@ -285,16 +285,18 @@ export class HideModal extends Modal {
         const modalElement: HTMLElement = this.contentEl;
         scrollTop = modalElement.scrollTop;
         modalElement.empty();
-        this.showData();
+        await this.showData();
         modalElement.scrollTo(0, scrollTop);
     }
 
-    public async onOpen() {
-        await this.showHead();
-        await this.showData();
+    public onOpen() {
+        void (async () => {
+            await this.showHead();
+            await this.showData();
+        })();
     }
 
-    public async onClose() {
+    public onClose() {
         this.contentEl.empty();
     }
 }

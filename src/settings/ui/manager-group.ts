@@ -8,7 +8,7 @@ export default class ManagerGroup extends BaseSetting {
     }
 
     main(): void {
-        const t = (k: any, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
         let id = '';
         let name = '';
         let color = this.manager.generateAutoColor(this.manager.settings.GROUPS.map(g => g.color));
@@ -70,7 +70,7 @@ export default class ManagerGroup extends BaseSetting {
                     if (!containsId && nextId !== '') {
                         if (color === '') color = this.manager.generateAutoColor(this.manager.settings.GROUPS.map(g => g.color));
                         this.manager.settings.GROUPS.push({ id: nextId, name: nextName, color });
-                        this.manager.saveSettings();
+                        void this.manager.saveSettings();
                         this.settingTab.groupDisplay();
                         Commands(this.app, this.manager);
                         new Notice(this.manager.translator.t('设置_分组设置_通知_一'));
@@ -103,7 +103,7 @@ export default class ManagerGroup extends BaseSetting {
                 .setValue(group.color)
                 .onChange((value) => {
                     group.color = value;
-                    this.manager.saveSettings();
+                    void this.manager.saveSettings();
                     tagEl.setAttribute('style', this.manager.generateTagStyle(value, this.settings.GROUP_STYLE));
                 })
             )
@@ -112,7 +112,7 @@ export default class ManagerGroup extends BaseSetting {
                 .onChange((value) => {
                     group.name = value;
                     tagEl.textContent = value || group.id;
-                    this.manager.saveSettings();
+                    void this.manager.saveSettings();
                 })
                 .inputEl.addClass('manager-taxonomy-setting__input')
             )
@@ -123,7 +123,7 @@ export default class ManagerGroup extends BaseSetting {
                     const hasTestGroup = this.settings.Plugins.some(plugin => plugin.group === group.id);
                     if (!hasTestGroup) {
                         this.manager.settings.GROUPS = this.manager.settings.GROUPS.filter(t => t.id !== group.id);
-                        this.manager.saveSettings();
+                        void this.manager.saveSettings();
                         this.settingTab.groupDisplay();
                         Commands(this.app, this.manager);
                         new Notice(this.manager.translator.t('设置_分组设置_通知_三'));

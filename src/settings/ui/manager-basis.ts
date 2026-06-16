@@ -22,7 +22,7 @@ export default class ManagerBasis extends BaseSetting {
         languageDropdown.setValue(this.settings.LANGUAGE);
         languageDropdown.onChange((value) => {
             this.settings.LANGUAGE = value;
-            this.manager.saveSettings();
+            void this.manager.saveSettings();
             this.settingTab.basisDisplay();
             Commands(this.app, this.manager);
             this.settingTab.display(); // 重新渲染整个设置界面
@@ -43,7 +43,7 @@ export default class ManagerBasis extends BaseSetting {
             if (!value && managerModal) {
                 managerModal.usePersistedFiltersAsSessionFilters();
             }
-            this.manager.saveSettings();
+            void this.manager.saveSettings();
         });
 
         heading('设置_基础设置_分组_启动接管');
@@ -55,8 +55,12 @@ export default class ManagerBasis extends BaseSetting {
         DelayToggle.setValue(this.settings.DELAY);
         DelayToggle.onChange((value) => {
             this.settings.DELAY = value;
-            this.manager.saveSettings();
-            value ? this.manager.enableDelaysForAllPlugins() : this.manager.disableDelaysForAllPlugins();
+            void this.manager.saveSettings();
+            if (value) {
+                void this.manager.enableDelaysForAllPlugins();
+            } else {
+                void this.manager.disableDelaysForAllPlugins();
+            }
             this.settingTab.display(); // 重新渲染整个设置界面
             this.display(); // 保持当前内容区的刷新
         });
@@ -70,7 +74,7 @@ export default class ManagerBasis extends BaseSetting {
         autoTakeoverToggle.onChange((value) => {
             if (!this.settings.DELAY) return;
             this.settings.AUTO_TAKEOVER = value;
-            this.manager.saveSettings();
+            void this.manager.saveSettings();
         });
 
         heading('设置_基础设置_分组_更新来源');
@@ -82,7 +86,7 @@ export default class ManagerBasis extends BaseSetting {
         startupCheckToggle.setValue(this.settings.STARTUP_CHECK_UPDATES);
         startupCheckToggle.onChange((value) => {
             this.settings.STARTUP_CHECK_UPDATES = value;
-            this.manager.saveSettings();
+            void this.manager.saveSettings();
         });
 
         const sourceStartupCheckBar = new Setting(this.containerEl)
@@ -92,7 +96,7 @@ export default class ManagerBasis extends BaseSetting {
         sourceStartupCheckToggle.setValue(this.settings.SOURCE_STARTUP_CHECK_UPDATES);
         sourceStartupCheckToggle.onChange((value) => {
             this.settings.SOURCE_STARTUP_CHECK_UPDATES = value;
-            this.manager.saveSettings();
+            void this.manager.saveSettings();
         });
 
         const sourceAutoUpdateBar = new Setting(this.containerEl)
@@ -102,7 +106,7 @@ export default class ManagerBasis extends BaseSetting {
         sourceAutoUpdateToggle.setValue(this.settings.SOURCE_AUTO_UPDATE);
         sourceAutoUpdateToggle.onChange((value) => {
             this.settings.SOURCE_AUTO_UPDATE = value;
-            this.manager.saveSettings();
+            void this.manager.saveSettings();
         });
 
         heading('设置_基础设置_分组_界面展示');
@@ -114,8 +118,8 @@ export default class ManagerBasis extends BaseSetting {
         hideBpmTagToggle.setValue(this.settings.HIDE_BPM_TAG);
         hideBpmTagToggle.onChange((value) => {
             this.settings.HIDE_BPM_TAG = value;
-            this.manager.saveSettings();
-            this.manager.managerModal?.reloadShowData();
+            void this.manager.saveSettings();
+            void this.manager.managerModal?.reloadShowData();
         });
 
         const ribbonManagerBar = new Setting(this.containerEl)
@@ -138,7 +142,7 @@ export default class ManagerBasis extends BaseSetting {
         CommandItemToggle.setValue(this.settings.COMMAND_ITEM);
         CommandItemToggle.onChange((value) => {
             this.settings.COMMAND_ITEM = value;
-            this.manager.saveSettings();
+            void this.manager.saveSettings();
             Commands(this.app, this.manager);
         });
 
@@ -149,7 +153,7 @@ export default class ManagerBasis extends BaseSetting {
         CommandGroupToggle.setValue(this.settings.COMMAND_GROUP);
         CommandGroupToggle.onChange((value) => {
             this.settings.COMMAND_GROUP = value;
-            this.manager.saveSettings();
+            void this.manager.saveSettings();
             Commands(this.app, this.manager);
         });
 
@@ -162,7 +166,7 @@ export default class ManagerBasis extends BaseSetting {
         debugToggle.setValue(this.settings.DEBUG);
         debugToggle.onChange((value) => {
             this.settings.DEBUG = value;
-            this.manager.saveSettings();
+            void this.manager.saveSettings();
         });
 
         const tokenBar = new Setting(this.containerEl)
