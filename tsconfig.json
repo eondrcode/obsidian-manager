@@ -2,11 +2,11 @@
   "compilerOptions": {
     "inlineSourceMap": true,
     "inlineSources": true,
-    "module": "ESNext",
+    "module": "Node16",
     "target": "ES6",
     "allowJs": true,
     "noImplicitAny": true,
-    "moduleResolution": "bundler",
+    "moduleResolution": "node16",
     "paths": {
       "main": [
         "./src/main"
