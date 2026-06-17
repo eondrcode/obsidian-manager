@@ -44,7 +44,6 @@ export default class ManagerDelay extends BaseSetting {
         createItem.addSlider(cb => cb
                 .setLimits(0, 100, 1)
                 .setValue(time)
-                .setDynamicTooltip()
                 .onChange((value) => {
                     time = value;
                 })
@@ -103,7 +102,6 @@ export default class ManagerDelay extends BaseSetting {
             item.addSlider(cb => cb
                 .setLimits(0, 100, 1)
                 .setValue(delay.time)
-                .setDynamicTooltip()
                 .onChange((value) => {
                     delay.time = value
                     void this.manager.saveSettings();

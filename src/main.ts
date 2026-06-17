@@ -142,7 +142,7 @@ export default class Manager extends Plugin {
             // 延迟启动自检，确保 Obsidian 初始化完成，避免自动接管被覆盖
             window.setTimeout(() => {
                 if (this.isRibbonManagerEnabled()) this.cleanRibbonItems(); // 启动后清理一次
-                if (this.settings.DELAY) performSelfCheck(this);
+                if (this.settings.DELAY) void performSelfCheck(this);
             }, 2000);
         });
     }
@@ -485,7 +485,7 @@ export default class Manager extends Plugin {
     }
 
     public async checkUpdatesWithNotice(): Promise<Record<string, UpdateStatus>> {
-        const manifests = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id) as PluginManifest[];
+        const manifests = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id);
         const progress = this.showUpdateProgress(manifests.length);
         let processed = 0;
         try {
@@ -505,7 +505,7 @@ export default class Manager extends Plugin {
     private async startupCheckForUpdates() {
         if (!this.settings.STARTUP_CHECK_UPDATES) return;
         try {
-            const manifests = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id) as PluginManifest[];
+            const manifests = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id);
             const progress = this.showUpdateProgress(manifests.length);
             let processed = 0;
             const status = await this.checkUpdates({
@@ -767,7 +767,7 @@ export default class Manager extends Plugin {
 
     // 关闭延时 调用
     public disableDelay() {
-        const plugins = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id) as PluginManifest[];
+        const plugins = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id);
         this.synchronizePlugins(plugins);
     }
 
@@ -778,11 +778,11 @@ export default class Manager extends Plugin {
 
     private getDelayManagedPluginManifests(): PluginManifest[] {
         return Object.values(this.appPlugins.manifests)
-            .filter((pm: PluginManifest) => pm.id !== this.manifest.id && !this.isBpmIgnoredPlugin(pm.id)) as PluginManifest[];
+            .filter((pm: PluginManifest) => pm.id !== this.manifest.id && !this.isBpmIgnoredPlugin(pm.id));
     }
 
     public enableDelay() {
-        const plugins = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id) as PluginManifest[];
+        const plugins = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id);
         // 同步插件
         this.synchronizePlugins(plugins);
         // 开始延时启动插件
@@ -792,7 +792,7 @@ export default class Manager extends Plugin {
     // 为所有插件启动延迟
     public async enableDelaysForAllPlugins() {
         // 获取所有插件
-        const plugins = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id) as PluginManifest[];
+        const plugins = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id);
         // 同步插件
         this.synchronizePlugins(plugins);
 
@@ -973,7 +973,7 @@ export default class Manager extends Plugin {
 
     // 检测插件更新：官方 + GitHub（BPM 或用户指定仓库）
     public async checkUpdates(opts?: { onProgress?: (id?: string) => void; isCancelled?: () => boolean }): Promise<Record<string, UpdateStatus>> {
-        const manifests = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id) as PluginManifest[];
+        const manifests = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id);
         const officialMap = await this.fetchOfficialStats();
         const statusMap: Record<string, UpdateStatus> = {};
 

@@ -21,6 +21,10 @@ class ManagerSettingTab extends PluginSettingTab {
     }
 
     display(): void {
+        this.renderSettings();
+    }
+
+    renderSettings(): void {
         const { containerEl } = this;
         containerEl.empty();
         containerEl.addClass('manager-setting__container');
@@ -54,12 +58,12 @@ class ManagerSettingTab extends PluginSettingTab {
             });
         });
     }
-    basisDisplay() { this.contentEl.empty(); new ManagerBasis(this).display(); }
-    mainPageDisplay() { this.contentEl.empty(); new ManagerMainPage(this).display(); }
-    styleDisplay() { this.contentEl.empty(); new ManagerStyle(this).display(); }
-    delayDisplay() { this.contentEl.empty(); new ManagerDelay(this).display(); }
-    groupDisplay() { this.contentEl.empty(); new ManagerGroup(this).display(); }
-    tagDisplay() { this.contentEl.empty(); new ManagerTag(this).display(); }
+    basisDisplay() { this.contentEl.empty(); new ManagerBasis(this).render(); }
+    mainPageDisplay() { this.contentEl.empty(); new ManagerMainPage(this).render(); }
+    styleDisplay() { this.contentEl.empty(); new ManagerStyle(this).render(); }
+    delayDisplay() { this.contentEl.empty(); new ManagerDelay(this).render(); }
+    groupDisplay() { this.contentEl.empty(); new ManagerGroup(this).render(); }
+    tagDisplay() { this.contentEl.empty(); new ManagerTag(this).render(); }
 }
 
 export { ManagerSettingTab };

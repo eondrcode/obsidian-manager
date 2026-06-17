@@ -52,7 +52,7 @@ export default class Agreement {
         // 保存 ShareMyPlugin 实例
         this.plugin = SMPL;
         // 调用 fetchCommunityPlugins 方法获取社区插件列表
-        this.fetchCommunityPlugins();
+        void this.fetchCommunityPlugins();
     }
 
     /**

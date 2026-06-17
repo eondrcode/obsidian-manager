@@ -202,6 +202,17 @@ GitHub Release를 직접 설치하고 싶을 때 사용합니다.
 
 ---
 
+## 보안 및 공개 사항
+
+BPM은 로컬 Obsidian 플러그인 관리자이지만 일부 기능은 외부 서비스나 브라우저 API를 의도적으로 사용합니다.
+
+- **외부 네트워크 요청**: BPM은 커뮤니티 플러그인 메타데이터 가져오기, 저장소 확인, release 확인, GitHub에서 플러그인/테마 설치 또는 업데이트처럼 사용자에게 보이는 플러그인 관리 기능에서만 GitHub에 접속합니다. 이러한 요청은 `github.com`, `api.github.com`, `raw.githubusercontent.com`을 사용할 수 있습니다. 또한 사용자가 관련 버튼을 클릭할 때만 `github.com` 저장소 페이지와 `www.bilibili.com` 프로젝트 튜토리얼 링크를 엽니다.
+- **클립보드 접근**: BPM은 사용자가 플러그인의 **Copy ID**를 클릭할 때만 시스템 클립보드에 씁니다.
+- **Vault 파일 접근**: BPM은 관리, 마이그레이션, 백업, 가져오기/내보내기, 문제 해결을 위해 플러그인/테마 메타데이터, 선택한 플러그인 설정 파일, Transfer Pack, legacy export 폴더를 읽습니다. vault 노트를 원격 서비스로 업로드하지 않습니다.
+- **Base64 인코딩/디코딩**: BPM은 로컬 Transfer Pack JSON 데이터 안에서 바이너리/텍스트 파일을 패킹하고 복원하기 위해서만 런타임에 `btoa`/`atob`를 사용합니다. API key, URL, 원격 코드, 실행 payload를 숨기기 위한 용도로 사용하지 않습니다.
+- **스캔 제한**: 플러그인 카탈로그나 marketplace에서 malware, obfuscation, network scanning을 사용할 수 없다고 표시하면 설치 전에 이 저장소의 소스 코드와 release assets를 검토하세요. BPM은 의도적으로 소스를 난독화하지 않습니다.
+
+---
 ## 🔍 Conflict Diagnosis 튜토리얼
 
 커뮤니티 플러그인을 활성화한 뒤 문제가 생겼고 원인을 구조적으로 좁히고 싶다면 **Conflict Diagnosis** 를 사용하세요.

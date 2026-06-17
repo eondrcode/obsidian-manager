@@ -13,7 +13,7 @@ import { ManagerSettings, TagFilterOperator } from "../settings/data";
 
 import Manager from "main";
 import { ManagerModal } from "./manager-modal";
-import { AppSettingsLike, ObsidianAppWithInternals } from "src/obsidian-internals";
+import { ObsidianAppWithInternals } from "src/obsidian-internals";
 
 export class HideModal extends Modal {
     manager: Manager;
@@ -59,7 +59,7 @@ export class HideModal extends Modal {
     constructor(app: App, manager: Manager, managerModal: ManagerModal, plugins: PluginManifest[]) {
         super(app);
         const appWithInternals = this.app as ObsidianAppWithInternals;
-        this.appSetting = appWithInternals.setting as AppSettingsLike;
+        this.appSetting = appWithInternals.setting;
         this.appPlugins = appWithInternals.plugins;
         this.manager = manager;
         this.managerModal = managerModal;

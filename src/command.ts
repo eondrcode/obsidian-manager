@@ -20,7 +20,7 @@ const Commands = (app: App, manager: Manager) => {
     if (manager.settings.DELAY) {
         // 单行命令
         if (manager.settings.COMMAND_ITEM) {
-            const plugins: PluginManifest[] = Object.values(manager.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== manager.manifest.id) as PluginManifest[];
+            const plugins: PluginManifest[] = Object.values(manager.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== manager.manifest.id);
             plugins.forEach(plugin => {
                 const mp = manager.settings.Plugins.find(mp => mp.id === plugin.id);
                 if (mp) {
@@ -82,7 +82,7 @@ const Commands = (app: App, manager: Manager) => {
     } else {
         // 单行命令
         if (manager.settings.COMMAND_ITEM) {
-            const plugins: PluginManifest[] = Object.values(manager.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== manager.manifest.id) as PluginManifest[];
+            const plugins: PluginManifest[] = Object.values(manager.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== manager.manifest.id);
             plugins.forEach(plugin => {
                 const enabled = manager.appPlugins.enabledPlugins.has(plugin.id);
                 manager.addCommand({

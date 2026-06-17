@@ -8,6 +8,11 @@ type DeleteTarget = {
     name?: string;
 };
 
+type DestructiveButtonComponent = ButtonComponent & {
+    setDestructive?: () => ButtonComponent;
+    setWarning?: () => ButtonComponent;
+};
+
 export class DeleteModal extends Modal {
     settings: ManagerSettings;
     manager: Manager;
@@ -138,8 +143,10 @@ export class DeleteModal extends Modal {
         });
         actionBar.addButton((button) => {
             this.confirmButton = button;
+            const destructiveButton = button as DestructiveButtonComponent;
+            if (destructiveButton.setDestructive) destructiveButton.setDestructive();
+            else destructiveButton["setWarning"]?.();
             button
-                .setWarning()
                 .setIcon("trash-2")
                 .setButtonText(this.t("卸载_卸载"))
                 .setTooltip(this.t("卸载_卸载确认", { name: pluginName }))

@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
 
 # Better Add-on Manager
 
@@ -199,6 +199,19 @@ After enabling the plugin, open BPM in either way:
 - **Left-click** primary controls to toggle, edit, install, import, or run an action.
 - **Right-click** a plugin item to open its context menu.
 - **Hover** toolbar buttons to see tooltips; on touch devices, use long press where supported.
+
+---
+
+
+## Security and Disclosure
+
+BPM is a local Obsidian plugin manager, but some features intentionally use external services or browser APIs:
+
+- **External network requests**: BPM contacts GitHub only for user-visible plugin management features such as fetching community plugin metadata, resolving repositories, checking releases, and installing or updating plugins/themes from GitHub. These requests may use `github.com`, `api.github.com`, and `raw.githubusercontent.com`. BPM also opens `github.com` repository pages and the project tutorial link on `www.bilibili.com` only when the user clicks the related buttons.
+- **Clipboard access**: BPM writes to the system clipboard only when the user clicks **Copy ID** for a plugin.
+- **Vault file access**: BPM reads plugin/theme metadata, selected plugin configuration files, transfer packages, and legacy export folders for management, migration, backup, import/export, and troubleshooting features. It does not upload vault notes to a remote service.
+- **Base64 encoding/decoding**: BPM uses runtime `btoa`/`atob` only to pack and restore binary/text files inside local Transfer Pack JSON data. It is not used to hide API keys, URLs, remote code, or executable payloads.
+- **Scanning limitations**: If a plugin catalog or marketplace reports that malware, obfuscation, or network scanning is unavailable, review the source code in this repository and the release assets before installing. BPM does not intentionally obfuscate its source.
 
 ---
 

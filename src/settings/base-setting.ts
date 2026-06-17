@@ -19,5 +19,6 @@ export default abstract class BaseSetting {
 	}
 
 	public abstract main(): void;
-	public display(): void { this.main() }
+	public render(): void { this.main() }
+	public display(): void { this.render() }
 }

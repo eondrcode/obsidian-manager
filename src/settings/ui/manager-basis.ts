@@ -12,11 +12,11 @@ export default class ManagerBasis extends BaseSetting {
                 .setName(this.manager.translator.t(key));
         };
 
-        heading('设置_基础设置_分组_常规');
+        heading("设置_基础设置_分组_常规");
 
         const languageBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_语言_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_语言_描述'));
+            .setName(this.manager.translator.t("设置_基础设置_语言_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_语言_描述"));
         const languageDropdown = new DropdownComponent(languageBar.controlEl);
         languageDropdown.addOptions(this.manager.translator.language);
         languageDropdown.setValue(this.settings.LANGUAGE);
@@ -25,13 +25,13 @@ export default class ManagerBasis extends BaseSetting {
             void this.manager.saveSettings();
             this.settingTab.basisDisplay();
             Commands(this.app, this.manager);
-            this.settingTab.display(); // 重新渲染整个设置界面
-            this.display(); // 保持当前内容区的刷新
+            this.settingTab.renderSettings();
+            this.render();
         });
 
         const persistenceBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_筛选持久化_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_筛选持久化_描述'));
+            .setName(this.manager.translator.t("设置_基础设置_筛选持久化_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_筛选持久化_描述"));
         const persistenceToggle = new ToggleComponent(persistenceBar.controlEl);
         persistenceToggle.setValue(this.settings.PERSISTENCE);
         persistenceToggle.onChange((value) => {
@@ -46,11 +46,11 @@ export default class ManagerBasis extends BaseSetting {
             void this.manager.saveSettings();
         });
 
-        heading('设置_基础设置_分组_启动接管');
+        heading("设置_基础设置_分组_启动接管");
 
         const DelayBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_延时启动_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_延时启动_描述'));
+            .setName(this.manager.translator.t("设置_基础设置_延时启动_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_延时启动_描述"));
         const DelayToggle = new ToggleComponent(DelayBar.controlEl);
         DelayToggle.setValue(this.settings.DELAY);
         DelayToggle.onChange((value) => {
@@ -61,13 +61,13 @@ export default class ManagerBasis extends BaseSetting {
             } else {
                 void this.manager.disableDelaysForAllPlugins();
             }
-            this.settingTab.display(); // 重新渲染整个设置界面
-            this.display(); // 保持当前内容区的刷新
+            this.settingTab.renderSettings();
+            this.render();
         });
 
         const autoTakeoverBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_自动接管_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_自动接管_描述'));
+            .setName(this.manager.translator.t("设置_基础设置_自动接管_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_自动接管_描述"));
         const autoTakeoverToggle = new ToggleComponent(autoTakeoverBar.controlEl);
         autoTakeoverToggle.setValue(this.settings.AUTO_TAKEOVER);
         autoTakeoverToggle.setDisabled(!this.settings.DELAY);
@@ -77,11 +77,11 @@ export default class ManagerBasis extends BaseSetting {
             void this.manager.saveSettings();
         });
 
-        heading('设置_基础设置_分组_更新来源');
+        heading("设置_基础设置_分组_更新来源");
 
         const startupCheckBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_启动检查更新_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_启动检查更新_描述'));
+            .setName(this.manager.translator.t("设置_基础设置_启动检查更新_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_启动检查更新_描述"));
         const startupCheckToggle = new ToggleComponent(startupCheckBar.controlEl);
         startupCheckToggle.setValue(this.settings.STARTUP_CHECK_UPDATES);
         startupCheckToggle.onChange((value) => {
@@ -90,8 +90,8 @@ export default class ManagerBasis extends BaseSetting {
         });
 
         const sourceStartupCheckBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_来源启动检查更新_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_来源启动检查更新_描述'));
+            .setName(this.manager.translator.t("设置_基础设置_来源启动检查更新_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_来源启动检查更新_描述"));
         const sourceStartupCheckToggle = new ToggleComponent(sourceStartupCheckBar.controlEl);
         sourceStartupCheckToggle.setValue(this.settings.SOURCE_STARTUP_CHECK_UPDATES);
         sourceStartupCheckToggle.onChange((value) => {
@@ -100,8 +100,8 @@ export default class ManagerBasis extends BaseSetting {
         });
 
         const sourceAutoUpdateBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_来源自动更新_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_来源自动更新_描述'));
+            .setName(this.manager.translator.t("设置_基础设置_来源自动更新_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_来源自动更新_描述"));
         const sourceAutoUpdateToggle = new ToggleComponent(sourceAutoUpdateBar.controlEl);
         sourceAutoUpdateToggle.setValue(this.settings.SOURCE_AUTO_UPDATE);
         sourceAutoUpdateToggle.onChange((value) => {
@@ -109,11 +109,11 @@ export default class ManagerBasis extends BaseSetting {
             void this.manager.saveSettings();
         });
 
-        heading('设置_基础设置_分组_界面展示');
+        heading("设置_基础设置_分组_界面展示");
 
         const hideBpmTagBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_隐藏BPM标签_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_隐藏BPM标签_描述'));
+            .setName(this.manager.translator.t("设置_基础设置_隐藏BPM标签_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_隐藏BPM标签_描述"));
         const hideBpmTagToggle = new ToggleComponent(hideBpmTagBar.controlEl);
         hideBpmTagToggle.setValue(this.settings.HIDE_BPM_TAG);
         hideBpmTagToggle.onChange((value) => {
@@ -123,8 +123,8 @@ export default class ManagerBasis extends BaseSetting {
         });
 
         const ribbonManagerBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_边栏编排_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_边栏编排_描述'));
+            .setName(this.manager.translator.t("设置_基础设置_边栏编排_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_边栏编排_描述"));
         const ribbonManagerToggle = new ToggleComponent(ribbonManagerBar.controlEl);
         ribbonManagerToggle.setValue(this.settings.RIBBON_MANAGER_ENABLED !== false);
         ribbonManagerToggle.onChange(async (value) => {
@@ -133,11 +133,11 @@ export default class ManagerBasis extends BaseSetting {
             await this.manager.refreshRibbonManagerFeature();
         });
 
-        heading('设置_基础设置_分组_命令');
+        heading("设置_基础设置_分组_命令");
 
         const CommandItemBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_单独命令_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_单独命令_描述'));
+            .setName(this.manager.translator.t("设置_基础设置_单独命令_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_单独命令_描述"));
         const CommandItemToggle = new ToggleComponent(CommandItemBar.controlEl);
         CommandItemToggle.setValue(this.settings.COMMAND_ITEM);
         CommandItemToggle.onChange((value) => {
@@ -147,8 +147,8 @@ export default class ManagerBasis extends BaseSetting {
         });
 
         const CommandGroupBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_分组命令_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_分组命令_描述'));
+            .setName(this.manager.translator.t("设置_基础设置_分组命令_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_分组命令_描述"));
         const CommandGroupToggle = new ToggleComponent(CommandGroupBar.controlEl);
         CommandGroupToggle.setValue(this.settings.COMMAND_GROUP);
         CommandGroupToggle.onChange((value) => {
@@ -157,11 +157,11 @@ export default class ManagerBasis extends BaseSetting {
             Commands(this.app, this.manager);
         });
 
-        heading('设置_基础设置_分组_开发网络');
+        heading("设置_基础设置_分组_开发网络");
 
         const debugBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_调试模式_标题'))
-            .setDesc(this.manager.translator.t('设置_基础设置_调试模式_描述'));
+            .setName(this.manager.translator.t("设置_基础设置_调试模式_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_调试模式_描述"));
         const debugToggle = new ToggleComponent(debugBar.controlEl);
         debugToggle.setValue(this.settings.DEBUG);
         debugToggle.onChange((value) => {
@@ -170,8 +170,8 @@ export default class ManagerBasis extends BaseSetting {
         });
 
         const tokenBar = new Setting(this.containerEl)
-            .setName(this.manager.translator.t('设置_基础设置_GITHUB_TOKEN_标题'))
-            .setDesc(`${this.manager.translator.t('设置_基础设置_GITHUB_TOKEN_描述')} (${this.manager.translator.t('设置_基础设置_GITHUB_TOKEN_权限')})`);
+            .setName(this.manager.translator.t("设置_基础设置_GITHUB_TOKEN_标题"))
+            .setDesc(`${this.manager.translator.t("设置_基础设置_GITHUB_TOKEN_描述")} (${this.manager.translator.t("设置_基础设置_GITHUB_TOKEN_权限")})`);
         tokenBar.settingEl.addClass("manager-secret-token-setting");
         const tokenStatus = tokenBar.descEl.createDiv({
             cls: "manager-secret-token-setting__status",
@@ -180,24 +180,24 @@ export default class ManagerBasis extends BaseSetting {
         const tokenInput = new TextComponent(tokenBar.controlEl);
         tokenInput.inputEl.type = "password";
         tokenInput.inputEl.autocomplete = "off";
-        tokenInput.setPlaceholder(this.manager.hasGithubToken() ? "••••••••" : "ghp_xxx");
+        tokenInput.setPlaceholder(this.manager.hasGithubToken() ? "********" : "ghp_xxx");
 
         let clearTokenButton: ButtonComponent | null = null;
         const saveTokenButton = new ButtonComponent(tokenBar.controlEl);
-        saveTokenButton.setButtonText(this.manager.translator.t('设置_基础设置_GITHUB_TOKEN_保存'));
+        saveTokenButton.setButtonText(this.manager.translator.t("设置_基础设置_GITHUB_TOKEN_保存"));
         saveTokenButton.setCta();
         saveTokenButton.onClick(async () => {
             const token = tokenInput.getValue().trim();
             if (!token) return;
             await this.manager.setGithubToken(token);
             tokenInput.setValue("");
-            tokenInput.setPlaceholder("••••••••");
+            tokenInput.setPlaceholder("********");
             tokenStatus.setText(this.getGithubTokenStatusText());
             clearTokenButton?.setDisabled(false);
         });
 
         clearTokenButton = new ButtonComponent(tokenBar.controlEl);
-        clearTokenButton.setButtonText(this.manager.translator.t('设置_基础设置_GITHUB_TOKEN_清除'));
+        clearTokenButton.setButtonText(this.manager.translator.t("设置_基础设置_GITHUB_TOKEN_清除"));
         clearTokenButton.setDisabled(!this.manager.hasGithubToken());
         clearTokenButton.onClick(async () => {
             await this.manager.clearGithubToken();
@@ -208,17 +208,16 @@ export default class ManagerBasis extends BaseSetting {
         });
 
         void this.manager.getGithubToken().then(() => {
-            tokenInput.setPlaceholder(this.manager.hasGithubToken() ? "••••••••" : "ghp_xxx");
+            tokenInput.setPlaceholder(this.manager.hasGithubToken() ? "********" : "ghp_xxx");
             tokenStatus.setText(this.getGithubTokenStatusText());
             clearTokenButton?.setDisabled(!this.manager.hasGithubToken());
         });
-
     }
 
     private getGithubTokenStatusText(): string {
-        if (!this.manager.hasGithubToken()) return this.manager.translator.t('设置_基础设置_GITHUB_TOKEN_状态_未设置');
+        if (!this.manager.hasGithubToken()) return this.manager.translator.t("设置_基础设置_GITHUB_TOKEN_状态_未设置");
         return this.manager.supportsSecretStorage()
-            ? this.manager.translator.t('设置_基础设置_GITHUB_TOKEN_状态_安全存储')
-            : this.manager.translator.t('设置_基础设置_GITHUB_TOKEN_状态_兼容存储');
+            ? this.manager.translator.t("设置_基础设置_GITHUB_TOKEN_状态_安全存储")
+            : this.manager.translator.t("设置_基础设置_GITHUB_TOKEN_状态_兼容存储");
     }
 }

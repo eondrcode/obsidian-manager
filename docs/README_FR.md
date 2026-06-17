@@ -202,6 +202,17 @@ Après activation du plugin, ouvrez BPM de l'une des deux façons :
 
 ---
 
+## Sécurité et divulgation
+
+BPM est un gestionnaire local de plugins Obsidian, mais certaines fonctions utilisent volontairement des services externes ou des API du navigateur :
+
+- **Requêtes réseau externes** : BPM contacte GitHub uniquement pour des fonctions visibles de gestion de plugins, comme récupérer les métadonnées des plugins communautaires, résoudre des dépôts, vérifier les releases et installer ou mettre à jour des plugins/thèmes depuis GitHub. Ces requêtes peuvent utiliser `github.com`, `api.github.com` et `raw.githubusercontent.com`. BPM ouvre aussi les pages de dépôts `github.com` et le lien du tutoriel du projet sur `www.bilibili.com` uniquement lorsque l'utilisateur clique sur les boutons concernés.
+- **Accès au presse-papiers** : BPM écrit dans le presse-papiers système uniquement lorsque l'utilisateur clique sur **Copy ID** pour un plugin.
+- **Accès aux fichiers du vault** : BPM lit les métadonnées des plugins/thèmes, les fichiers de configuration sélectionnés, les paquets de transfert et les anciens dossiers d'export pour la gestion, la migration, la sauvegarde, l'import/export et le dépannage. Il n'envoie pas les notes du vault à un service distant.
+- **Encodage/décodage Base64** : BPM utilise `btoa`/`atob` à l'exécution uniquement pour empaqueter et restaurer des fichiers binaires/texte dans les données JSON locales de Transfer Pack. Ce mécanisme ne sert pas à masquer des clés API, URL, code distant ou payloads exécutables.
+- **Limites de scan** : Si un catalogue ou marketplace indique que le scan malware, obfuscation ou réseau est indisponible, vérifiez le code source de ce dépôt et les assets de release avant installation. BPM n'obfusque pas volontairement son code source.
+
+---
 ## 🔍 Tutoriel Conflict Diagnosis
 
 Utilisez **Conflict Diagnosis** quand un problème apparaît après activation de plugins communautaires et que vous devez réduire la cause de façon structurée.

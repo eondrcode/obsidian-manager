@@ -90,7 +90,7 @@ export class UpdateModal extends Modal {
         this.selectedVersion = hasDefaultVersion
             ? this.defaultVersion!
             : hasLocalVersion
-                ? manifest!.version
+                ? manifest.version
                 : (versionList[0]?.version ?? "");
         summaryStats.empty();
         const releaseCount = summaryStats.createSpan({ cls: "manager-version-picker__summary-stat" });

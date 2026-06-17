@@ -1297,7 +1297,7 @@ export class ManagerModal extends Modal {
             this.invalidatePluginCaches();
             void this.reloadShowData();
             Commands(this.app, this.manager);
-            this.manager.synchronizePlugins(Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manager.manifest.id) as PluginManifest[]);
+            this.manager.synchronizePlugins(Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manager.manifest.id));
             new Notice(this.manager.translator.t("卸载_通知_一"));
         }, { id: plugin.id, name: plugin.name }).open();
     }
@@ -1370,11 +1370,23 @@ export class ManagerModal extends Modal {
     private async openPluginHotkeys(pluginId: string) {
         await this.appSetting.open();
         await this.appSetting.openTabById("hotkeys");
-        const tab = await this.appSetting.activeTab;
+        const tab = this.appSetting.activeTab;
         if (!tab) return;
         tab.searchComponent.inputEl.value = pluginId;
         tab.updateHotkeyVisibility();
         tab.searchComponent.inputEl.blur();
+    }
+
+    private openSettingsTab(tabId: string) {
+        void (async () => {
+            await this.appSetting.open();
+            await this.appSetting.openTabById(tabId);
+        })();
+    }
+
+    private copyPluginId(pluginId: string) {
+        void navigator.clipboard.writeText(pluginId);
+        new Notice(this.manager.translator.t("通知_ID已复制"));
     }
 
     private async openPluginMarket() {
@@ -1382,7 +1394,7 @@ export class ManagerModal extends Modal {
         await this.appSetting.openTabById("community-plugins");
         window.setTimeout(() => {
             const tab = this.appSetting.activeTab;
-            const marketButton = tab?.containerEl?.querySelector("button.mod-cta") as HTMLButtonElement | null | undefined;
+            const marketButton = tab?.containerEl?.querySelector<HTMLButtonElement>("button.mod-cta");
             marketButton?.click();
         }, 50);
     }
@@ -1818,7 +1830,7 @@ export class ManagerModal extends Modal {
         manager.synchronizePlugins(
             Object.values(this.appPlugins.manifests).filter(
                 (pm: PluginManifest) => pm.id !== manager.manifest.id
-            ) as PluginManifest[]
+            )
         );
 
         // this.manager.registerEvent(
@@ -2011,7 +2023,7 @@ export class ManagerModal extends Modal {
                 this.manager.synchronizePlugins(
                     Object.values(this.appPlugins.manifests).filter(
                         (pm: PluginManifest) => pm.id !== this.manager.manifest.id
-                    ) as PluginManifest[]
+                    )
                 );
                 await this.reloadShowData();
             } catch (e) {
@@ -2129,8 +2141,7 @@ export class ManagerModal extends Modal {
         settingsButton.setTooltip(this.manager.translator.t("管理器_插件设置_描述"));
         this.bindLongPressTooltip(settingsButton.buttonEl, this.manager.translator.t("管理器_插件设置_描述"));
         settingsButton.onClick(() => {
-            this.appSetting.open();
-            this.appSetting.openTabById(this.manager.manifest.id);
+            this.openSettingsTab(this.manager.manifest.id);
             // this.close();
         });
 
@@ -2387,7 +2398,7 @@ export class ManagerModal extends Modal {
                 this.manager.synchronizePlugins(
                     Object.values(this.appPlugins.manifests).filter(
                         (pm: PluginManifest) => pm.id !== this.manager.manifest.id
-                    ) as PluginManifest[]
+                    )
                 );
                 await this.reloadShowData();
             }));
@@ -2421,8 +2432,7 @@ export class ManagerModal extends Modal {
             }));
             // 插件设置
             menu.addItem((item) => item.setTitle(t("管理器_插件设置_描述")).setIcon("settings").onClick(() => {
-                this.appSetting.open();
-                this.appSetting.openTabById(this.manager.manifest.id);
+                this.openSettingsTab(this.manager.manifest.id);
             }));
             menu.addItem((item) => item.setTitle(t("管理器_GITHUB_描述")).setIcon("github").onClick(() => {
                 window.open("https://github.com/eondrcode/obsidian-manager");
@@ -2645,8 +2655,7 @@ export class ManagerModal extends Modal {
 
         // 设置按钮
         const settingsBtn = createFooterBtn("settings", t("管理器_插件设置_描述"), () => {
-            this.appSetting.open();
-            this.appSetting.openTabById(this.manager.manifest.id);
+            this.openSettingsTab(this.manager.manifest.id);
         });
         footer.appendChild(settingsBtn);
 
@@ -2903,8 +2912,7 @@ export class ManagerModal extends Modal {
                             .setIcon("settings")
                             .setDisabled(!currentIsEnabled)
                             .onClick(() => {
-                                this.appSetting.open();
-                                this.appSetting.openTabById(plugin.id);
+                                this.openSettingsTab(plugin.id);
                             })
                     );
                 }
@@ -2966,8 +2974,7 @@ export class ManagerModal extends Modal {
                     item.setTitle(this.manager.translator.t("菜单_复制ID_标题"))
                         .setIcon("copy")
                         .onClick(() => {
-                            navigator.clipboard.writeText(plugin.id);
-                            new Notice(this.manager.translator.t("通知_ID已复制"));
+                            this.copyPluginId(plugin.id);
                         })
                 );
                 if (hasConfigMenuItems) hasContextMenuItems = true;
@@ -3338,8 +3345,7 @@ export class ManagerModal extends Modal {
                                 .setIcon("settings")
                                 .setDisabled(!currentIsEnabled)
                                 .onClick(() => {
-                                    this.appSetting.open();
-                                    this.appSetting.openTabById(plugin.id);
+                                    this.openSettingsTab(plugin.id);
                                 }));
                             hasCurrentGroup = true;
                         }
@@ -3412,8 +3418,7 @@ export class ManagerModal extends Modal {
                                 .setTitle(this.manager.translator.t("菜单_复制ID_标题"))
                                 .setIcon("copy")
                                 .onClick(() => {
-                                    navigator.clipboard.writeText(plugin.id);
-                                    new Notice(this.manager.translator.t("通知_ID已复制"));
+                                    this.copyPluginId(plugin.id);
                                 }));
                         }
                         menu.showAtMouseEvent(event);
@@ -3483,8 +3488,7 @@ export class ManagerModal extends Modal {
                     copyIdButton.setIcon("copy");
                     copyIdButton.setTooltip(this.manager.translator.t("菜单_复制ID_标题"));
                     copyIdButton.onClick(() => {
-                        navigator.clipboard.writeText(plugin.id);
-                        new Notice(this.manager.translator.t("通知_ID已复制"));
+                        this.copyPluginId(plugin.id);
                     });
                 }
 
@@ -3519,9 +3523,14 @@ export class ManagerModal extends Modal {
                     openPluginSetting.setTooltip(this.manager.translator.t("管理器_打开设置_描述"));
                     openPluginSetting.onClick(() => {
                         openPluginSetting?.setDisabled(true);
-                        this.appSetting.open();
-                        this.appSetting.openTabById(plugin.id);
-                        openPluginSetting?.setDisabled(false);
+                        void (async () => {
+                            try {
+                                await this.appSetting.open();
+                                await this.appSetting.openTabById(plugin.id);
+                            } finally {
+                                openPluginSetting?.setDisabled(false);
+                            }
+                        })();
                     });
                     openPluginSettingEl = getExtraButtonElement(openPluginSetting);
                     if (!isEnabled) {
@@ -5098,12 +5107,14 @@ export class ManagerModal extends Modal {
         versionSetting.addDropdown((dd) => {
             versionSelectEl = dd.selectEl;
             dd.addOption("", t("管理器_安装_版本_默认最新"));
-            this.installVersions.forEach((v) => dd.addOption(v.version, getReleaseOptionLabel(v)));
+            this.installVersions.forEach((v) => {
+                dd.addOption(v.version, getReleaseOptionLabel(v));
+            });
             dd.setValue(this.installVersion);
             dd.onChange((v) => {
                 this.installVersion = v;
                 if (versionInputEl) versionInputEl.value = v;
-                updateReleaseInfo();
+                void updateReleaseInfo();
             });
             dd.selectEl.addClass("manager-install__version-select");
         });

@@ -1,6 +1,6 @@
 import Manager from "main";
 import { BPM_TAG_ID, ensureBpmTagExists } from "src/repo-resolver";
-import { normalizePath, parseYaml, stringifyYaml, TFile } from "obsidian";
+import { normalizePath, parseYaml, stringifyYaml } from "obsidian";
 
 /**
  * 单个迁移任务。
@@ -100,11 +100,27 @@ const buildMarkdownWithFrontmatter = (frontmatter: Record<string, unknown>, body
 };
 
 /** 判断文件是否位于导出目录内。 */
-const isInsideExportDir = (file: TFile, exportDir: string): boolean => {
-	const normalizedFilePath = normalizePath(file.path);
-	const normalizedExportDir = normalizePath(exportDir);
-	if (normalizedExportDir === "." || normalizedExportDir === "/") return true;
-	return normalizedFilePath === normalizedExportDir || normalizedFilePath.startsWith(`${normalizedExportDir}/`);
+const listMarkdownFilesInFolder = async (manager: Manager, folderPath: string): Promise<string[]> => {
+	const adapter = manager.app.vault.adapter;
+	const normalizedFolder = normalizePath(folderPath);
+	const result: string[] = [];
+	let listed;
+
+	try {
+		listed = await adapter.list(normalizedFolder);
+	} catch {
+		return result;
+	}
+
+	for (const filePath of listed.files) {
+		if (filePath.toLowerCase().endsWith(".md")) result.push(filePath);
+	}
+
+	for (const childFolder of listed.folders) {
+		result.push(...await listMarkdownFilesInFolder(manager, childFolder));
+	}
+
+	return result;
 };
 
 /**
@@ -157,16 +173,14 @@ const migrate031 = async (manager: Manager): Promise<boolean> => {
  * 删除后不会丢失用户可编辑数据。
  */
 const migrate032 = async (manager: Manager): Promise<void> => {
-	const exportDir = manager.settings.EXPORT_DIR;
-	if (!exportDir) return;
+	const exportDir = (manager.settings as unknown as Record<string, unknown>)["EXPORT_DIR"];
+	if (typeof exportDir !== "string" || !exportDir) return;
 
-	const exportedMarkdownFiles = manager.app.vault
-		.getMarkdownFiles()
-		.filter((file) => isInsideExportDir(file, exportDir));
+	const exportedMarkdownFiles = await listMarkdownFilesInFolder(manager, exportDir);
 
-	for (const file of exportedMarkdownFiles) {
+	for (const filePath of exportedMarkdownFiles) {
 		try {
-			const oldContent = await manager.app.vault.read(file);
+			const oldContent = await manager.app.vault.adapter.read(filePath);
 			const parsed = parseFrontmatter(oldContent);
 			const frontmatter = parsed.frontmatter;
 
@@ -175,11 +189,11 @@ const migrate032 = async (manager: Manager): Promise<void> => {
 			delete frontmatter["bpm_ro_updated"];
 			const nextContent = buildMarkdownWithFrontmatter(frontmatter, parsed.body);
 			if (nextContent !== oldContent) {
-				await manager.app.vault.adapter.write(file.path, nextContent);
+				await manager.app.vault.adapter.write(filePath, nextContent);
 			}
 		} catch (e) {
 			if (manager.settings.DEBUG) {
-				console.warn("[BPM] Failed to migrate exported plugin note", file.path, e);
+				console.warn("[BPM] Failed to migrate exported plugin note", filePath, e);
 			}
 		}
 	}
