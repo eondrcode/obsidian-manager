@@ -1218,6 +1218,18 @@ body.theme-dark {
     box-shadow: 0 0 0 2px var(--bpm-ring);
 }
 
+.manager-delete__confirm-button {
+    border-color: color-mix(in srgb, var(--text-error) 42%, var(--background-modifier-border));
+    background: var(--text-error);
+    color: var(--text-on-accent);
+}
+
+.manager-delete__confirm-button:hover {
+    border-color: var(--text-error);
+    background: color-mix(in srgb, var(--text-error) 86%, var(--background-primary));
+    color: var(--text-on-accent);
+}
+
 .manager-delete__confirm-button.is-loading svg {
     animation: bpm-spin 0.9s linear infinite;
 }
