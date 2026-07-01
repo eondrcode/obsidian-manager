@@ -1,6 +1,7 @@
 import BaseSetting from "../base-setting";
 import { ButtonComponent, DropdownComponent, Setting, ToggleComponent, TextComponent } from "obsidian";
 import Commands from "src/command";
+import { githubProxyEnabled } from "src/github-url";
 // import { GROUP_STYLE, ITEM_STYLE, TAG_STYLE } from "src/data/data";
 
 export default class ManagerBasis extends BaseSetting {
@@ -109,6 +110,27 @@ export default class ManagerBasis extends BaseSetting {
             void this.manager.saveSettings();
         });
 
+        let tokenBar: Setting | null = null;
+        const githubProxyBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t("设置_基础设置_GITHUB_PROXY_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_GITHUB_PROXY_描述"));
+        const githubProxyInput = new TextComponent(githubProxyBar.controlEl);
+        githubProxyInput.setPlaceholder(this.manager.translator.t("设置_基础设置_GITHUB_PROXY_占位符"));
+        githubProxyInput.setValue(this.settings.GITHUB_PROXY || "");
+        githubProxyInput.onChange((value) => {
+            const wasProxyEnabled = githubProxyEnabled(this.manager);
+            this.settings.GITHUB_PROXY = value.trim();
+            void this.manager.saveSettings();
+            const isProxyEnabled = githubProxyEnabled(this.manager);
+            if (isProxyEnabled) {
+                tokenBar?.settingEl.remove();
+                tokenBar = null;
+            } else if (wasProxyEnabled) {
+                this.render();
+            }
+        });
+        githubProxyInput.inputEl.addEventListener("blur", () => this.render());
+
         heading("设置_基础设置_分组_界面展示");
 
         const hideBpmTagBar = new Setting(this.containerEl)
@@ -169,7 +191,9 @@ export default class ManagerBasis extends BaseSetting {
             void this.manager.saveSettings();
         });
 
-        const tokenBar = new Setting(this.containerEl)
+        if (githubProxyEnabled(this.manager)) return;
+
+        tokenBar = new Setting(this.containerEl)
             .setName(this.manager.translator.t("设置_基础设置_GITHUB_TOKEN_标题"))
             .setDesc(`${this.manager.translator.t("设置_基础设置_GITHUB_TOKEN_描述")} (${this.manager.translator.t("设置_基础设置_GITHUB_TOKEN_权限")})`);
         tokenBar.settingEl.addClass("manager-secret-token-setting");

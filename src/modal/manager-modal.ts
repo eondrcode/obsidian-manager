@@ -32,6 +32,7 @@ import { installPluginFromGithub, installThemeFromGithub, fetchReleaseVersions, 
 import { BPM_TAG_ID } from "src/repo-resolver";
 import { normalizePath } from "obsidian";
 import { UpdateModal } from "./update-modal";
+import { openPluginUpdateCheckModal } from "./update-check-modal";
 import { RibbonModal } from "./ribbon-modal";
 import {
     applyManagerTransferPackage,
@@ -48,7 +49,7 @@ import {
     ManagerTransferTheme,
     parseManagerTransferPackage,
 } from "../import-export";
-import { markSourceInstalledRelease, sourceHasUpdate as sourceHasConfiguredUpdate, syncSourceReleaseCheck } from "../source-release";
+import { markSourceInstalledRelease, sourceHasUpdate as sourceHasConfiguredUpdate, syncSourceReleaseCheck } from "../source-release"; 
 import {
     createSharedVaultLinks,
     forgetSharedVault,
@@ -80,6 +81,7 @@ type PluginUpdateViewStatus = {
     remoteVersion?: string | null;
     repo?: string | null;
     versions?: ReleaseVersion[];
+    message?: string;
     error?: string;
 };
 
@@ -862,12 +864,26 @@ export class ManagerModal extends Modal {
     private async runPluginUpdateCheck(trigger?: ButtonComponent | HTMLButtonElement) {
         if (this.isCheckingPluginUpdates) return;
 
+        this.isCheckingPluginUpdates = true;
+        const config = await openPluginUpdateCheckModal(this.app, this.manager, this.manager.getPluginUpdateCheckOptions());
+        if (!config) {
+            this.isCheckingPluginUpdates = false;
+            return;
+        }
+        try {
+            await this.manager.setPluginUpdateCheckOptions(config);
+        } catch (error) {
+            this.isCheckingPluginUpdates = false;
+            console.error("[BPM] save update check config failed", error);
+            new Notice(this.manager.translator.t("通知_检查更新失败"));
+            return;
+        }
+
         const label = this.manager.translator.t("管理器_检查更新_描述");
         const busyLabel = this.manager.translator.t("通知_检测更新中文案");
         const buttonEl = trigger instanceof ButtonComponent ? trigger.buttonEl : trigger;
         const wasDisabled = buttonEl instanceof HTMLButtonElement ? buttonEl.disabled : false;
 
-        this.isCheckingPluginUpdates = true;
         buttonEl?.addClass("is-loading");
         buttonEl?.setAttribute("aria-busy", "true");
 
@@ -881,8 +897,11 @@ export class ManagerModal extends Modal {
         }
 
         try {
-            const status = await this.manager.checkUpdatesWithNotice();
-            this.refreshVisiblePluginCards();
+            const status = await this.manager.checkUpdatesWithNotice({
+                ...config,
+                onChecked: (pluginId) => this.refreshCheckedPluginUpdateUi(pluginId),
+            });
+            this.updateStats();
             const count = this.getPluginUpdateCount(status);
             new Notice(this.manager.translator.t("通知_检查更新完成").replace("{count}", `${count}`));
         } catch (error) {
@@ -930,6 +949,8 @@ export class ManagerModal extends Modal {
             if (!status) status = {};
             status.repo = repo;
             status.versions = versions;
+            status.error = "";
+            status.message = "";
             const stableVersion = versions.find((release) => !release.prerelease)?.version;
             status.remoteVersion = stableVersion || versions[0]?.version || status.remoteVersion || null;
             this.manager.updateStatus[pluginId] = {
@@ -955,6 +976,7 @@ export class ManagerModal extends Modal {
 
     private addPluginDownloadButton(controlEl: HTMLElement, pluginId: string, updateInfo: PluginUpdateViewStatus, prepend = false) {
         if (!updateInfo.remoteVersion) return;
+        if (this.getPluginUpdateProblem(updateInfo)) return;
         if (!this.isMainPageActionOnItem("downloadUpdate")) return;
         const downloadBtn = new ExtraButtonComponent(controlEl);
         downloadBtn.setIcon("download");
@@ -966,21 +988,43 @@ export class ManagerModal extends Modal {
         if (prepend && downloadEl) controlEl.prepend(downloadEl);
     }
 
+    private getPluginUpdateProblem(updateInfo?: PluginUpdateViewStatus | null): string {
+        return updateInfo?.error || updateInfo?.message || "";
+    }
+
+    private appendPluginUpdateProblem(versionWrap: HTMLElement, updateInfo: PluginUpdateViewStatus) {
+        const message = this.getPluginUpdateProblem(updateInfo);
+        if (!message) return;
+        const isError = Boolean(updateInfo.error);
+        const label = this.manager.translator.t(isError ? "更新_检测错误标签" : "更新_无法检测标签");
+        const problem = createSpan({
+            text: label,
+            cls: ["manager-item__name-update-problem", isError ? "is-error" : "is-warning"],
+        });
+        problem.setAttribute("role", "status");
+        problem.setAttribute("title", this.manager.translator.t("更新_检测错误提示", { message }));
+        versionWrap.appendChild(problem);
+    }
+
     private refreshSinglePluginUpdateUi(pluginId: string) {
         const card = Array.from(this.contentEl.querySelectorAll<HTMLElement>(".manager-plugin-card[data-plugin-id]"))
             .find((el) => el.getAttribute("data-plugin-id") === pluginId);
         if (!card) return;
 
         const updateInfo = this.manager.updateStatus?.[pluginId] as PluginUpdateViewStatus | undefined;
+        const updateProblem = this.getPluginUpdateProblem(updateInfo);
         const hasUpdate = Boolean(updateInfo?.hasUpdate);
-        const hasRemoteVersion = Boolean(updateInfo?.hasUpdate && updateInfo.remoteVersion);
+        const hasRemoteVersion = Boolean(updateInfo?.hasUpdate && updateInfo.remoteVersion && !updateProblem);
 
         card.toggleClass("has-update", hasUpdate);
+        card.toggleClass("has-update-problem", Boolean(updateProblem));
 
         const versionWrap = card.querySelector<HTMLElement>(".manager-item__versions");
-        versionWrap?.querySelectorAll(".manager-item__name-remote-arrow, .manager-item__name-remote")
+        versionWrap?.querySelectorAll(".manager-item__name-remote-arrow, .manager-item__name-remote, .manager-item__name-update-problem")
             .forEach((el) => el.remove());
-        if (versionWrap && hasRemoteVersion && updateInfo?.remoteVersion) {
+        if (versionWrap && updateInfo && updateProblem) {
+            this.appendPluginUpdateProblem(versionWrap, updateInfo);
+        } else if (versionWrap && hasRemoteVersion && updateInfo?.remoteVersion) {
             const arrow = createSpan({ text: "→", cls: ["manager-item__name-remote-arrow"] });
             const remote = createSpan({ text: updateInfo.remoteVersion, cls: ["manager-item__name-remote"] });
             versionWrap.appendChild(arrow);
@@ -1223,6 +1267,18 @@ export class ManagerModal extends Modal {
         this.updateStats();
     }
 
+    private refreshCheckedPluginUpdateUi(pluginId: string) {
+        if (this.activePage !== "plugins" || this.installMode) return;
+        const statusValues = this.getStatusFilterValues();
+        const statusChangesCardMembership = statusValues.includes("has-update")
+            || this.getStatusFilterOperator() === "not-contains";
+        if (statusChangesCardMembership) {
+            this.refreshPluginCard(pluginId, { allowReload: true });
+            return;
+        }
+        this.refreshSinglePluginUpdateUi(pluginId);
+    }
+
     public refreshVisiblePluginCards() {
         const statusValues = this.getStatusFilterValues();
         if (statusValues.includes("has-update") || this.getStatusFilterOperator() === "not-contains") {
@@ -1403,7 +1459,7 @@ export class ManagerModal extends Modal {
         const progress = this.showInlineProgress(this.manager.translator.t("通知_检测更新中文案"), pluginId);
         progress.update(0, 1, pluginId);
         try {
-            const status = await this.manager.checkUpdateForPlugin(pluginId);
+            const status = await this.manager.checkUpdateForPlugin(pluginId, this.manager.getPluginUpdateCheckOptions());
             progress.update(1, 1, pluginId);
             this.refreshSinglePluginUpdateUi(pluginId);
             this.updateStats();
@@ -2761,6 +2817,8 @@ export class ManagerModal extends Modal {
             if (!ManagerPlugin) continue;
             const isSelf = plugin.id === this.manager.manifest.id;
             const isEnabled = this.isPluginEnabledForDisplay(plugin.id, ManagerPlugin);
+            const currentUpdateInfo = this.manager.updateStatus?.[plugin.id] as PluginUpdateViewStatus | undefined;
+            const updateProblem = this.getPluginUpdateProblem(currentUpdateInfo);
             if (!this.matchesStatusFilter(ManagerPlugin, plugin, isEnabled, statusFilter, statusOperator, hiddenPluginIds)) continue;
             if (!this.matchesSingleValueFilter(ManagerPlugin.group, groupFilter, groupOperator)) continue;
             if (!this.matchesTagFilter(ManagerPlugin.tags, tagFilter, tagOperator)) continue;
@@ -2787,7 +2845,8 @@ export class ManagerModal extends Modal {
             itemEl.settingEl.toggleClass("is-enabled", isEnabled);
             itemEl.settingEl.toggleClass("is-disabled", !isEnabled);
             itemEl.settingEl.toggleClass("is-self", isSelf);
-            itemEl.settingEl.toggleClass("has-update", Boolean(this.manager.updateStatus?.[plugin.id]?.hasUpdate));
+            itemEl.settingEl.toggleClass("has-update", Boolean(currentUpdateInfo?.hasUpdate));
+            itemEl.settingEl.toggleClass("has-update-problem", Boolean(updateProblem));
             itemEl.settingEl.toggleClass("is-bpm-ignored", ManagerPlugin.tags.includes(BPM_IGNORE_TAG));
             itemEl.settingEl.toggleClass("is-hidden-layout", hiddenPluginIds.has(plugin.id));
             itemEl.settingEl.toggleClass("is-bulk-selected", this.bulkSelectedPluginIds.has(plugin.id));
@@ -2842,8 +2901,7 @@ export class ManagerModal extends Modal {
                     );
                     hasContextMenuItems = true;
                 }
-                const currentUpdateInfo = this.manager.updateStatus?.[plugin.id] as PluginUpdateViewStatus | undefined;
-                if (this.isMainPageActionInMenu("downloadUpdate") && currentUpdateInfo?.hasUpdate && currentUpdateInfo.remoteVersion) {
+                if (this.isMainPageActionInMenu("downloadUpdate") && currentUpdateInfo?.hasUpdate && currentUpdateInfo.remoteVersion && !this.getPluginUpdateProblem(currentUpdateInfo)) {
                     menu.addItem((item) =>
                         item.setTitle(this.manager.translator.t("管理器_下载更新_描述"))
                             .setIcon("download")
@@ -3150,8 +3208,10 @@ export class ManagerModal extends Modal {
                     void this.openPluginVersionList(plugin.id, this.manager.updateStatus?.[plugin.id] as PluginUpdateViewStatus | undefined);
                 });
             }
-            const updateInfo = this.manager.updateStatus?.[plugin.id];
-            if (updateInfo?.hasUpdate && updateInfo.remoteVersion) {
+            const updateInfo = currentUpdateInfo;
+            if (updateInfo && updateProblem) {
+                this.appendPluginUpdateProblem(versionWrap, updateInfo);
+            } else if (updateInfo?.hasUpdate && updateInfo.remoteVersion) {
                 const arrow = createSpan({ text: "→", cls: ["manager-item__name-remote-arrow"] });
                 versionWrap.appendChild(arrow);
                 const remote = createSpan({ text: `${updateInfo.remoteVersion}`, cls: ["manager-item__name-remote"] });
@@ -3278,7 +3338,7 @@ export class ManagerModal extends Modal {
                             hasCurrentGroup = true;
                         }
                         const currentUpdateInfo = this.manager.updateStatus?.[plugin.id] as PluginUpdateViewStatus | undefined;
-                        if (this.isMainPageActionInMenu("downloadUpdate") && currentUpdateInfo?.hasUpdate && currentUpdateInfo.remoteVersion) {
+                        if (this.isMainPageActionInMenu("downloadUpdate") && currentUpdateInfo?.hasUpdate && currentUpdateInfo.remoteVersion && !this.getPluginUpdateProblem(currentUpdateInfo)) {
                             menu.addItem((item) => item
                                 .setTitle(this.manager.translator.t("管理器_下载更新_描述"))
                                 .setIcon("download")
@@ -4292,6 +4352,11 @@ export class ManagerModal extends Modal {
         return dateText ? `${version} · ${dateText}` : version;
     }
 
+    private normalizeSourceUpdateDelayDays(value: unknown): number | undefined {
+        const days = Math.floor(Number(value));
+        return Number.isFinite(days) && days > 0 ? days : undefined;
+    }
+
     private getSourceLocalVersion(source: BetaSource): string {
         if (source.type === "plugin") {
             const pluginId = this.getPluginIdByRepo(source.repo) || source.id;
@@ -4385,6 +4450,7 @@ export class ManagerModal extends Modal {
             autoUpdate: source.autoUpdate ?? false,
             mode: source.mode || "latest",
             updateCheckMode: source.updateCheckMode || "release",
+            updateDelayDays: this.normalizeSourceUpdateDelayDays(source.updateDelayDays),
         };
         if (existing) {
             Object.assign(existing, next);
@@ -4420,6 +4486,7 @@ export class ManagerModal extends Modal {
             new Notice(this.manager.translator.t("来源_未获取可安装版本_提示"));
             return false;
         }
+        if (!reinstall && this.getSourceLocalVersion(source) && !this.sourceHasUpdate(source)) return false;
         const ok = source.type === "plugin"
             ? await installPluginFromGithub(this.manager, source.repo, targetVersion, true)
             : await installThemeFromGithub(this.manager, source.repo, targetVersion);
@@ -4746,6 +4813,27 @@ export class ManagerModal extends Modal {
             updateCheckDropdown.selectEl.addClass("manager-source-item__check-mode");
             updateCheckDropdown.selectEl.setAttribute("aria-label", t("来源_检测方式"));
 
+            const delayWrap = strategyWrap.createDiv("manager-source-item__delay");
+            delayWrap.createSpan({ cls: "manager-source-item__delay-label", text: t("来源_更新延迟_标签") });
+            const delayInput = new TextComponent(delayWrap);
+            delayInput.setPlaceholder("0");
+            delayInput.setValue(source.updateDelayDays ? String(source.updateDelayDays) : "");
+            delayInput.inputEl.addClass("manager-source-item__delay-input");
+            delayInput.inputEl.setAttribute("type", "number");
+            delayInput.inputEl.setAttribute("min", "0");
+            delayInput.inputEl.setAttribute("step", "1");
+            delayInput.inputEl.setAttribute("aria-label", t("来源_更新延迟_标签"));
+            delayInput.inputEl.setAttribute("title", t("来源_更新延迟_说明"));
+            delayInput.onChange(async (value) => {
+                source.updateDelayDays = this.normalizeSourceUpdateDelayDays(value);
+                await this.manager.saveSettings();
+            });
+            delayInput.inputEl.addEventListener("blur", () => {
+                void this.checkBetaSource(source).then(() => {
+                    if (this.activePage === "sources") this.renderContent();
+                });
+            });
+
             if (source.mode === "frozen") {
                 const frozenInput = new TextComponent(strategyWrap);
                 frozenInput.setPlaceholder("tag");
@@ -4804,7 +4892,9 @@ export class ManagerModal extends Modal {
             const updateBtn = new ButtonComponent(actionGroup);
             updateBtn.setIcon("download");
             prepareActionButton(updateBtn, t("来源_更新_按钮"));
-            updateBtn.setDisabled(!source.latestReleaseTag && !source.latestVersion && localVersion === notInstalledText);
+            updateBtn.setDisabled(localVersion === notInstalledText
+                ? !source.latestReleaseTag && !source.latestVersion
+                : !hasUpdate);
             updateBtn.onClick(async () => {
                 updateBtn.setDisabled(true);
                 await this.updateBetaSource(source);

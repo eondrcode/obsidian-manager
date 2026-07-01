@@ -1,5 +1,5 @@
 import { normalizePath, ObsidianProtocolData, Plugin, PluginManifest, Workspace } from 'obsidian';
-import { DEFAULT_SETTINGS, ManagerSettings } from './settings/data';
+import { DEFAULT_SETTINGS, ManagerSettings, PluginUpdateCheckMode } from './settings/data';
 import { ManagerSettingTab } from './settings';
 import { Translator } from './lang/inxdex';
 import { ManagerModal } from './modal/manager-modal';
@@ -16,19 +16,37 @@ import { RibbonItem } from './data/types';
 import { markSourceInstalledRelease, sourceHasUpdate as sourceHasConfiguredUpdate, syncSourceReleaseCheck } from './source-release';
 import { ObsidianAppWithInternals, ObsidianPluginRegistry, RibbonNativeItem, WindowWithMoment, WorkspaceWithRibbon } from './obsidian-internals';
 import { RibbonModal } from './modal/ribbon-modal';
+import { githubProxyEnabled, resolveGithubUrl } from './github-url';
 
 type UpdateSource = 'official' | 'github' | 'unknown';
 interface UpdateStatus {
     source: UpdateSource;
     localVersion?: string;
     remoteVersion?: string | null;
+    remotePublishedAt?: string;
     hasUpdate?: boolean;
     message?: string;
     error?: string;
     checkedAt?: number;
     repo?: string | null;
     versions?: ReleaseVersion[];
+    checkMode?: PluginUpdateCheckMode;
+    updateDelayDays?: number;
 }
+
+interface PluginUpdateCheckOptions {
+    updateCheckMode?: PluginUpdateCheckMode;
+    updateDelayDays?: number;
+}
+
+interface PluginUpdateCheckNoticeOptions extends PluginUpdateCheckOptions {
+    onChecked?: (id: string) => void;
+}
+
+type PluginUpdateCheckRunOptions = PluginUpdateCheckOptions & {
+    onProgress?: (id?: string) => void;
+    isCancelled?: () => boolean;
+};
 
 const EONDR_PLUGIN_RULES = [
     { id: "i18n", repo: "eondrcode/obsidian-i18n" },
@@ -411,6 +429,8 @@ export default class Manager extends Plugin {
     }
 
     public async getGithubToken(): Promise<string | undefined> {
+        if (githubProxyEnabled(this)) return undefined;
+
         const storage = this.getSecretStorage();
         const stored = storage?.getSecret?.(GITHUB_TOKEN_SECRET_ID)?.trim();
         if (stored) return stored;
@@ -431,10 +451,12 @@ export default class Manager extends Plugin {
     }
 
     public hasGithubToken(): boolean {
+        if (githubProxyEnabled(this)) return false;
         return Boolean(this.getSecretStorage()?.getSecret?.(GITHUB_TOKEN_SECRET_ID)?.trim() || this.settings.GITHUB_TOKEN?.trim());
     }
 
     public async setGithubToken(token: string): Promise<void> {
+        if (githubProxyEnabled(this)) return;
         const nextToken = token.trim();
         const storage = this.getSecretStorage();
         if (storage) {
@@ -484,15 +506,31 @@ export default class Manager extends Plugin {
         };
     }
 
-    public async checkUpdatesWithNotice(): Promise<Record<string, UpdateStatus>> {
+    public getPluginUpdateCheckOptions(): Required<PluginUpdateCheckOptions> {
+        return {
+            updateCheckMode: this.normalizePluginUpdateCheckMode(this.settings.PLUGIN_UPDATE_CHECK_MODE),
+            updateDelayDays: this.normalizePluginUpdateDelayDays(this.settings.PLUGIN_UPDATE_DELAY_DAYS),
+        };
+    }
+
+    public async setPluginUpdateCheckOptions(options: PluginUpdateCheckOptions): Promise<void> {
+        this.settings.PLUGIN_UPDATE_CHECK_MODE = this.normalizePluginUpdateCheckMode(options.updateCheckMode);
+        this.settings.PLUGIN_UPDATE_DELAY_DAYS = this.normalizePluginUpdateDelayDays(options.updateDelayDays);
+        await this.saveSettings();
+    }
+
+    public async checkUpdatesWithNotice(options: PluginUpdateCheckNoticeOptions = {}): Promise<Record<string, UpdateStatus>> {
+        const { onChecked, ...checkOptions } = options;
         const manifests = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id);
         const progress = this.showUpdateProgress(manifests.length);
         let processed = 0;
         try {
             const res = await this.checkUpdates({
+                ...checkOptions,
                 onProgress: (id?: string) => {
                     processed++;
                     progress.update(processed, id);
+                    if (id) onChecked?.(id);
                 },
                 isCancelled: () => progress.isCancelled()
             });
@@ -520,7 +558,7 @@ export default class Manager extends Plugin {
             progress.dispose();
         } catch (e) {
             if (this.settings.DEBUG) console.error("[BPM] startup check updates failed", e);
-            if (!this.hasGithubToken()) {
+            if (!githubProxyEnabled(this) && !this.hasGithubToken()) {
                 new Notice(this.translator.t("通知_检查更新失败_建议Token"));
             }
         }
@@ -621,12 +659,15 @@ export default class Manager extends Plugin {
                 }
 
                 if (!targetVersion) continue;
+                const configuredTargetVersion = source.mode === "frozen"
+                    ? source.frozenVersion || source.latestReleaseTag || source.latestVersion || ""
+                    : source.latestReleaseTag || source.latestVersion || "";
                 if (source.type === "plugin") {
                     const pluginId = this.getBetaSourcePluginId(source);
                     const localVersion = (this.appPlugins.manifests[pluginId] as PluginManifest | undefined)?.version || source.localVersion || "";
                     source.localVersion = localVersion;
                     const needsUpdate = sourceHasConfiguredUpdate(source);
-                    if (needsUpdate) {
+                    if (needsUpdate && targetVersion === configuredTargetVersion) {
                         const ok = await installPluginFromGithub(this, source.repo, targetVersion, true);
                         if (ok) {
                             this.getBetaSourcePluginId(source);
@@ -636,7 +677,7 @@ export default class Manager extends Plugin {
                     }
                 } else {
                     const needsUpdate = sourceHasConfiguredUpdate(source);
-                    if (needsUpdate) {
+                    if (needsUpdate && targetVersion === configuredTargetVersion) {
                         const ok = await installThemeFromGithub(this, source.repo, targetVersion);
                         if (ok) markSourceInstalledRelease(source, targetVersion, targetPublishedAt, targetVersion);
                     }
@@ -959,8 +1000,16 @@ export default class Manager extends Plugin {
 
     // 版本比较：>0 表示 a>b
     private compareVersions(a = "0.0.0", b = "0.0.0"): number {
-        const pa = a.split(".").map(Number);
-        const pb = b.split(".").map(Number);
+        const normalize = (value: string) => value
+            .trim()
+            .replace(/^v(?=\d)/i, "")
+            .split(/[.+-]/)
+            .map((part) => {
+                const parsed = Number.parseInt(part, 10);
+                return Number.isFinite(parsed) ? parsed : 0;
+            });
+        const pa = normalize(a);
+        const pb = normalize(b);
         const len = Math.max(pa.length, pb.length);
         for (let i = 0; i < len; i++) {
             const ai = pa[i] || 0;
@@ -971,11 +1020,72 @@ export default class Manager extends Plugin {
         return 0;
     }
 
+    private normalizePluginUpdateCheckMode(value?: string | null): PluginUpdateCheckMode {
+        return value === "version" ? "version" : "release";
+    }
+
+    private normalizePluginUpdateDelayDays(value: unknown): number {
+        const days = Math.floor(Number(value));
+        return Number.isFinite(days) && days > 0 ? days : 0;
+    }
+
+    private resolvePluginUpdateCheckOptions(options?: PluginUpdateCheckOptions): Required<PluginUpdateCheckOptions> {
+        return {
+            updateCheckMode: this.normalizePluginUpdateCheckMode(options?.updateCheckMode ?? this.settings.PLUGIN_UPDATE_CHECK_MODE),
+            updateDelayDays: this.normalizePluginUpdateDelayDays(options?.updateDelayDays ?? this.settings.PLUGIN_UPDATE_DELAY_DAYS),
+        };
+    }
+
+    private applyPluginUpdateStatus(
+        st: UpdateStatus,
+        pm: PluginManifest,
+        repo: string | null,
+        versions: ReleaseVersion[],
+        fallbackRemoteVersion: string | null | undefined,
+        options: Required<PluginUpdateCheckOptions>
+    ) {
+        const localVersion = pm.version || "0.0.0";
+        const remoteFallback = fallbackRemoteVersion || null;
+        st.localVersion = localVersion;
+        st.repo = repo;
+        st.versions = versions;
+        st.checkMode = options.updateCheckMode;
+        st.updateDelayDays = options.updateDelayDays;
+
+        if (versions.length > 0 && repo) {
+            const source: BetaSource = {
+                id: pm.id,
+                repo,
+                type: "plugin",
+                mode: "latest",
+                includePrerelease: false,
+                updateCheckMode: options.updateCheckMode,
+                updateDelayDays: options.updateDelayDays || undefined,
+                autoUpdate: false,
+                enabled: true,
+                localVersion,
+                latestVersion: remoteFallback || undefined,
+                latestReleaseTag: remoteFallback || undefined,
+            };
+            const releaseCheck = syncSourceReleaseCheck(source, versions, localVersion);
+            st.remoteVersion = releaseCheck.target?.tag || null;
+            st.remotePublishedAt = releaseCheck.target?.publishedAt;
+            st.hasUpdate = sourceHasConfiguredUpdate(source);
+            return;
+        }
+
+        st.remoteVersion = remoteFallback;
+        st.hasUpdate = remoteFallback ? this.compareVersions(remoteFallback, localVersion) > 0 : false;
+        if (!st.remoteVersion) st.message = this.translator.t("更新_未获取到远端版本");
+    }
+
     // 检测插件更新：官方 + GitHub（BPM 或用户指定仓库）
-    public async checkUpdates(opts?: { onProgress?: (id?: string) => void; isCancelled?: () => boolean }): Promise<Record<string, UpdateStatus>> {
+    public async checkUpdates(opts?: PluginUpdateCheckRunOptions): Promise<Record<string, UpdateStatus>> {
         const manifests = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id);
         const officialMap = await this.fetchOfficialStats();
         const statusMap: Record<string, UpdateStatus> = {};
+        const updateOptions = this.resolvePluginUpdateCheckOptions(opts);
+        this.updateStatus = statusMap;
 
         if (this.settings.DEBUG) console.log("[BPM] checkUpdates start, total manifests:", manifests.length);
         for (const pm of manifests) {
@@ -987,12 +1097,15 @@ export default class Manager extends Plugin {
                 const official = officialMap[pm.id];
                 if (official) {
                     st.source = 'official';
-                    st.remoteVersion = official;
-                    st.repo = await this.repoResolver.resolveRepo(pm.id);
-                    if (st.repo) {
-                        st.versions = await this.fetchGithubVersions(st.repo);
+                    try {
+                        st.repo = await this.repoResolver.resolveRepo(pm.id);
+                    } catch {
+                        st.repo = null;
                     }
-                    st.hasUpdate = this.compareVersions(official, localVersion) > 0;
+                    if (st.repo) {
+                        st.versions = await this.fetchGithubVersions(st.repo, updateOptions.updateCheckMode === "release");
+                    }
+                    this.applyPluginUpdateStatus(st, pm, st.repo || null, st.versions || [], official, updateOptions);
                     if (this.settings.DEBUG) console.log("[BPM] update official match", pm.id, localVersion, "->", st.remoteVersion);
                 } else {
                     // 2) GitHub：BPM 安装或有仓库映射 / 用户填写
@@ -1007,11 +1120,11 @@ export default class Manager extends Plugin {
                     if (repo) {
                         st.source = 'github';
                         st.repo = repo;
-                        st.versions = await this.fetchGithubVersions(repo);
+                        st.versions = await this.fetchGithubVersions(repo, updateOptions.updateCheckMode === "release");
                         // 选择一个默认的远端版本：优先最新稳定，否则第一个
                         const pick = st.versions?.find(v => !v.prerelease) ?? st.versions?.[0] ?? null;
-                        st.remoteVersion = pick?.version ?? await this.fetchGithubManifestVersion(repo);
-                        st.hasUpdate = st.remoteVersion ? this.compareVersions(st.remoteVersion, localVersion) > 0 : false;
+                        const remoteVersion = pick?.version ?? await this.fetchGithubManifestVersion(repo);
+                        this.applyPluginUpdateStatus(st, pm, repo, st.versions || [], remoteVersion, updateOptions);
                         if (!st.remoteVersion) st.message = this.translator.t("更新_未获取到远端版本");
                         if (this.settings.DEBUG) console.log("[BPM] update github match", pm.id, repo, localVersion, "->", st.remoteVersion);
                     } else {
@@ -1031,24 +1144,24 @@ export default class Manager extends Plugin {
         return statusMap;
     }
 
-    public async checkUpdateForPlugin(pluginId: string): Promise<UpdateStatus | null> {
+    public async checkUpdateForPlugin(pluginId: string, options?: PluginUpdateCheckOptions): Promise<UpdateStatus | null> {
         const pm = this.appPlugins.manifests[pluginId] as PluginManifest | undefined;
         if (!pm) return null;
         const localVersion = pm.version || "0.0.0";
         const st: UpdateStatus = { source: "unknown", localVersion, checkedAt: Date.now() };
+        const updateOptions = this.resolvePluginUpdateCheckOptions(options);
         try {
             const officialMap = await this.fetchOfficialStats();
             const official = officialMap[pm.id];
             if (official) {
                 st.source = "official";
-                st.remoteVersion = official;
                 try {
                     st.repo = await this.repoResolver.resolveRepo(pm.id);
-                    if (st.repo) st.versions = await this.fetchGithubVersions(st.repo);
+                    if (st.repo) st.versions = await this.fetchGithubVersions(st.repo, updateOptions.updateCheckMode === "release");
                 } catch {
-                    // ignore
+                    if (updateOptions.updateCheckMode === "release") throw new Error(this.translator.t("更新_未获取到远端版本"));
                 }
-                st.hasUpdate = this.compareVersions(official, localVersion) > 0;
+                this.applyPluginUpdateStatus(st, pm, st.repo || null, st.versions || [], official, updateOptions);
                 this.updateStatus[pm.id] = st;
                 if (this.settings.DEBUG) console.log("[BPM] single update official", pm.id, localVersion, "->", st.remoteVersion);
                 return st;
@@ -1061,10 +1174,10 @@ export default class Manager extends Plugin {
             if (repo) {
                 st.source = "github";
                 st.repo = repo;
-                st.versions = await this.fetchGithubVersions(repo);
+                st.versions = await this.fetchGithubVersions(repo, updateOptions.updateCheckMode === "release");
                 const pick = st.versions?.find(v => !v.prerelease) ?? st.versions?.[0] ?? null;
-                st.remoteVersion = pick?.version ?? await this.fetchGithubManifestVersion(repo);
-                st.hasUpdate = st.remoteVersion ? this.compareVersions(st.remoteVersion, localVersion) > 0 : false;
+                const remoteVersion = pick?.version ?? await this.fetchGithubManifestVersion(repo);
+                this.applyPluginUpdateStatus(st, pm, repo, st.versions || [], remoteVersion, updateOptions);
                 if (!st.remoteVersion) st.message = this.translator.t("更新_未获取到远端版本");
                 if (this.settings.DEBUG) console.log("[BPM] single update github", pm.id, repo, localVersion, "->", st.remoteVersion);
             } else {
@@ -1083,7 +1196,7 @@ export default class Manager extends Plugin {
     private async fetchOfficialStats(): Promise<Record<string, string>> {
         const url = "https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugin-stats.json";
         try {
-            const res = await requestUrl({ url });
+            const res = await requestUrl({ url: resolveGithubUrl(this, url) });
             const json = res.json as Record<string, CommunityPluginStatsEntry>;
             const map: Record<string, string> = {};
             Object.entries(json || {}).forEach(([id, entry]) => {
@@ -1118,11 +1231,12 @@ export default class Manager extends Plugin {
 
         // 1) 尝试最新 release 的 manifest.json
         try {
-            const release = await requestUrl({ url: `https://api.github.com/repos/${repo}/releases/latest`, headers });
+            const releaseUrl = `https://api.github.com/repos/${repo}/releases/latest`;
+            const release = await requestUrl({ url: resolveGithubUrl(this, releaseUrl), headers });
             const assets = (release.json?.assets || []) as { name: string; browser_download_url: string }[];
             const manifestAsset = assets.find(a => a.name === "manifest.json");
             if (manifestAsset?.browser_download_url) {
-                const manifestRes = await requestUrl({ url: manifestAsset.browser_download_url, headers });
+                const manifestRes = await requestUrl({ url: resolveGithubUrl(this, manifestAsset.browser_download_url), headers });
                 const manifest = manifestRes.json as { version?: string };
                 if (manifest?.version) return manifest.version;
             }
@@ -1138,7 +1252,7 @@ export default class Manager extends Plugin {
         ];
         for (const url of candidates) {
             try {
-                const res = await requestUrl({ url, headers });
+                const res = await requestUrl({ url: resolveGithubUrl(this, url), headers });
                 const manifest = res.json as { version?: string };
                 if (manifest?.version) return manifest.version;
             } catch {
@@ -1148,11 +1262,12 @@ export default class Manager extends Plugin {
         return null;
     }
 
-    private async fetchGithubVersions(repoInput: string): Promise<ReleaseVersion[]> {
+    private async fetchGithubVersions(repoInput: string, throwOnError = false): Promise<ReleaseVersion[]> {
         try {
             return await fetchReleaseVersions(this, repoInput);
         } catch (e) {
             console.error("[BPM] fetchGithubVersions error", repoInput, e);
+            if (throwOnError) throw e;
             return [];
         }
     }

@@ -37,6 +37,39 @@ const releaseToRef = (release: ReleaseVersion, index: number): SourceReleaseRef 
 	index,
 });
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const normalizeUpdateDelayDays = (source: BetaSource): number => {
+	const value = Number(source.updateDelayDays);
+	if (!Number.isFinite(value) || value <= 0) return 0;
+	return Math.floor(value);
+};
+
+const parseReleaseDate = (value?: string): number | null => {
+	if (!value) return null;
+	const time = new Date(value).getTime();
+	return Number.isNaN(time) ? null : time;
+};
+
+const releaseIsMatureEnough = (source: BetaSource, release: ReleaseVersion, now = Date.now()): boolean => {
+	const delayDays = normalizeUpdateDelayDays(source);
+	if (delayDays <= 0) return true;
+	if (!release.publishedAt) return true;
+
+	const publishedAt = new Date(release.publishedAt).getTime();
+	if (Number.isNaN(publishedAt)) return true;
+	return publishedAt <= now - delayDays * DAY_MS;
+};
+
+const sourceTargetIsMatureEnough = (source: BetaSource): boolean => {
+	const delayDays = normalizeUpdateDelayDays(source);
+	if (delayDays <= 0) return true;
+
+	const targetDate = parseReleaseDate(source.latestReleasePublishedAt || source.latestPublishedAt);
+	if (targetDate === null) return true;
+	return targetDate <= Date.now() - delayDays * DAY_MS;
+};
+
 export const findReleaseByTag = (versions: ReleaseVersion[], tag?: string | null): SourceReleaseRef | null => {
 	const cleaned = cleanReleaseTag(tag);
 	if (!cleaned) return null;
@@ -58,7 +91,8 @@ export const pickSourceTargetRelease = (source: BetaSource, versions: ReleaseVer
 		};
 	}
 
-	const release = (source.includePrerelease ? versions : versions.filter((item) => !item.prerelease))[0];
+	const release = (source.includePrerelease ? versions : versions.filter((item) => !item.prerelease))
+		.find((item) => releaseIsMatureEnough(source, item));
 	if (!release) return null;
 	return releaseToRef(release, versions.indexOf(release));
 };
@@ -123,12 +157,6 @@ export const markSourceInstalledRelease = (
 	source.localVersion = localVersion || source.localVersion || tag;
 };
 
-const parseReleaseDate = (value?: string): number | null => {
-	if (!value) return null;
-	const time = new Date(value).getTime();
-	return Number.isNaN(time) ? null : time;
-};
-
 const compareVersionTags = (a = "0.0.0", b = "0.0.0"): number => {
 	const pa = a.replace(/^v/i, "").split(".").map(Number);
 	const pb = b.replace(/^v/i, "").split(".").map(Number);
@@ -154,6 +182,7 @@ export const sourceHasVersionUpdate = (source: BetaSource): boolean => {
 	const localVersion = cleanReleaseTag(source.localVersion || source.installedReleaseTag);
 
 	if (!targetVersion || !localVersion) return false;
+	if (!sourceTargetIsMatureEnough(source)) return false;
 	return source.mode === "frozen"
 		? !releaseTagsMatch(targetVersion, localVersion)
 		: compareVersionTags(targetVersion, localVersion) > 0;
@@ -167,6 +196,7 @@ export const sourceHasReleaseUpdate = (source: BetaSource): boolean => {
 
 	if (!targetTag || !installedTag) return false;
 	if (releaseTagsMatch(targetTag, installedTag)) return false;
+	if (!sourceTargetIsMatureEnough(source)) return false;
 
 	if (source.mode === "frozen") return true;
 

@@ -74,6 +74,7 @@ export interface ManagerTransferPlugin {
 		frozenVersion?: string;
 		includePrerelease?: boolean;
 		updateCheckMode?: BetaSource["updateCheckMode"];
+		updateDelayDays?: number;
 		autoUpdate: boolean;
 		localVersion?: string;
 		latestVersion?: string;
@@ -102,6 +103,7 @@ export interface ManagerTransferTheme {
 		frozenVersion?: string;
 		includePrerelease?: boolean;
 		updateCheckMode?: BetaSource["updateCheckMode"];
+		updateDelayDays?: number;
 		autoUpdate: boolean;
 		localVersion?: string;
 		latestVersion?: string;
@@ -617,6 +619,7 @@ export const collectInstalledThemes = async (
 						frozenVersion: source.frozenVersion,
 						includePrerelease: source.includePrerelease,
 						updateCheckMode: source.updateCheckMode,
+						updateDelayDays: source.updateDelayDays,
 						autoUpdate: source.autoUpdate,
 						localVersion: source.localVersion,
 						latestVersion: source.latestVersion,
@@ -675,6 +678,7 @@ const buildTransferPlugin = async (
 			frozenVersion: source.frozenVersion,
 			includePrerelease: source.includePrerelease,
 			updateCheckMode: source.updateCheckMode,
+			updateDelayDays: source.updateDelayDays,
 			autoUpdate: source.autoUpdate,
 			localVersion: source.localVersion,
 			latestVersion: source.latestVersion,
@@ -1251,6 +1255,7 @@ export const applyManagerTransferPackage = async (
 					frozenVersion: theme.source?.frozenVersion,
 					includePrerelease: theme.source?.includePrerelease,
 					updateCheckMode: theme.source?.updateCheckMode,
+					updateDelayDays: theme.source?.updateDelayDays,
 					autoUpdate: Boolean(theme.source?.autoUpdate),
 					enabled: true,
 					localVersion: theme.source?.localVersion || theme.version,

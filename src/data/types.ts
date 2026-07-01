@@ -55,6 +55,7 @@ export interface BetaSource {
 	frozenVersion?: string;
 	includePrerelease?: boolean;
 	updateCheckMode?: "release" | "version";
+	updateDelayDays?: number;
 	autoUpdate: boolean;
 	enabled: boolean;
 	localVersion?: string;

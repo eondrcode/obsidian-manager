@@ -1,5 +1,6 @@
 import { normalizePath, requestUrl } from "obsidian";
 import Manager from "main";
+import { resolveGithubUrl } from "./github-url";
 
 /** BPM 自动标记的标签 id。该 id 写入 settings 后不能随显示语言变化。 */
 export const BPM_TAG_ID = "bpm-install";
@@ -148,7 +149,7 @@ export class RepoResolver {
 	/** 真正发起网络请求；外层 fetchCommunityList() 负责并发复用和重试窗口。 */
 	private async requestCommunityList(): Promise<RepoMap> {
 		try {
-			const res = await requestUrl({ url: COMMUNITY_PLUGINS_URL, throw: false });
+			const res = await requestUrl({ url: resolveGithubUrl(this.manager, COMMUNITY_PLUGINS_URL), throw: false });
 			if (res.status >= 400) {
 				if (this.manager.settings.DEBUG) {
 					console.warn("[BPM] Community plugin list request failed", res.status);

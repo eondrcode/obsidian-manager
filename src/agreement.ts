@@ -1,5 +1,6 @@
 import ShareMyPlugin from "main";
 import { Notice, ObsidianProtocolData, debounce, requestUrl } from "obsidian";
+import { resolveGithubUrl } from "./github-url";
 
 // 导出一个全局的 communityPlugins 变量，可在其他模块中使用
 export type CommunityPluginInfo = {
@@ -31,7 +32,8 @@ export default class Agreement {
      */
     async fetchCommunityPlugins() {
         // 从指定的 URL 获取社区插件列表的 JSON 数据
-        const res = await requestUrl("https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json");
+        const url = "https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json";
+        const res = await requestUrl(resolveGithubUrl(this.plugin, url));
         const pluginList = res.json;
         // if (!pluginList.ok) { new Notice(`[插件管理器] 无法连接到Github(跳转主页及下载不可用)`); }
         // 创建一个空对象，用于存储以插件 ID 为键的插件信息
@@ -116,7 +118,8 @@ export default class Agreement {
         // 如果需要安装插件
         if (installFlag) {
             // 从 GitHub 仓库获取插件的 manifest.json 文件
-            const manifestRes = await requestUrl(`https://raw.githubusercontent.com/${repo}/HEAD/manifest.json`);
+            const manifestUrl = `https://raw.githubusercontent.com/${repo}/HEAD/manifest.json`;
+            const manifestRes = await requestUrl(resolveGithubUrl(this.plugin, manifestUrl));
             const manifest = manifestRes.json;
             // 如果版本为 "latest" 或空字符串，则使用 manifest 中的版本
             if (version.toLowerCase() === "latest" || version === "") version = manifest.version;

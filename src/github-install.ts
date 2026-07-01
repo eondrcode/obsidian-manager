@@ -3,6 +3,7 @@ import type { PluginManifest, RequestUrlResponse } from "obsidian";
 import Manager from "main";
 import type { ManagerPlugin } from "./data/types";
 import { BPM_TAG_ID } from "./repo-resolver";
+import { resolveGithubUrl } from "./github-url";
 
 /**
  * GitHub release 资源描述。
@@ -127,15 +128,15 @@ const enrichError = (res: RequestUrlResponse, msg?: string): GithubRequestError 
  * requestUrl 默认会在 400+ 时直接 throw；这里显式设置 throw: false，
  * 让我们能保留 GitHub rate limit 等响应头，后续错误提示会更准确。
  */
-const fetchJson = async <T>(url: string, token?: string): Promise<T> => {
-	const res = await requestUrl({ url, headers: buildHeaders(token), throw: false });
+const fetchJson = async <T>(manager: Manager, url: string, token?: string): Promise<T> => {
+	const res = await requestUrl({ url: resolveGithubUrl(manager, url), headers: buildHeaders(token), throw: false });
 	if (res.status >= 400) throw enrichError(res);
 	return res.json as T;
 };
 
 /** 读取文本响应，主要用于下载 release asset 和 raw.githubusercontent.com 文件。 */
-const fetchText = async (url: string, token?: string): Promise<string> => {
-	const res = await requestUrl({ url, headers: buildHeaders(token, "*/*"), throw: false });
+const fetchText = async (manager: Manager, url: string, token?: string): Promise<string> => {
+	const res = await requestUrl({ url: resolveGithubUrl(manager, url), headers: buildHeaders(token, "*/*"), throw: false });
 	if (res.status >= 400) throw enrichError(res);
 	return res.text;
 };
@@ -146,12 +147,12 @@ const fetchText = async (url: string, token?: string): Promise<string> => {
  * version 为空时使用 latest release；不为空时按 tag 精确查找。
  * tag 中可能出现斜杠等特殊字符，所以放入 URL 前要 encodeURIComponent。
  */
-const getRelease = async (repo: string, version?: string, token?: string): Promise<ReleaseResponse> => {
+const getRelease = async (manager: Manager, repo: string, version?: string, token?: string): Promise<ReleaseResponse> => {
 	const requestedVersion = version?.trim();
 	const url = requestedVersion
 		? `${API_BASE}/repos/${repo}/releases/tags/${encodeURIComponent(requestedVersion)}`
 		: `${API_BASE}/repos/${repo}/releases/latest`;
-	return fetchJson<ReleaseResponse>(url, token);
+	return fetchJson<ReleaseResponse>(manager, url, token);
 };
 
 const pickAsset = (release: ReleaseResponse, name: string): string | null =>
@@ -160,7 +161,8 @@ const pickAsset = (release: ReleaseResponse, name: string): string | null =>
 const cloneReleaseVersions = (versions: ReleaseVersion[]): ReleaseVersion[] =>
 	versions.map((version) => ({ ...version }));
 
-const buildReleaseCacheKey = (repo: string, token?: string): string => `${repo}\n${token ? "authenticated" : "anonymous"}`;
+const buildReleaseCacheKey = (repo: string, token?: string, proxy?: string): string =>
+	`${repo}\n${token ? "authenticated" : "anonymous"}\n${proxy || "direct"}`;
 
 /**
  * 生成 raw 文件候选地址。
@@ -178,10 +180,10 @@ const buildRawTagCandidates = (tag: string): string[] => {
 	return Array.from(new Set(candidates));
 };
 
-const fetchRawFromTag = async (repo: string, tag: string, file: string, token?: string): Promise<string> => {
+const fetchRawFromTag = async (manager: Manager, repo: string, tag: string, file: string, token?: string): Promise<string> => {
 	for (const candidateTag of buildRawTagCandidates(tag)) {
 		try {
-			return await fetchText(`https://raw.githubusercontent.com/${repo}/${candidateTag}/${file}`, token);
+			return await fetchText(manager, `https://raw.githubusercontent.com/${repo}/${candidateTag}/${file}`, token);
 		} catch {
 			// Try the next common tag spelling.
 		}
@@ -199,15 +201,15 @@ const settledValue = <T>(result: PromiseSettledResult<T | null>): T | null =>
  * 这里改为并行请求，安装时可以少等多个网络往返；任一资源失败时返回 null，
  * 调用方再决定是否回退到 raw tag。
  */
-const fetchPluginFilesFromReleaseAssets = async (release: ReleaseResponse, token?: string): Promise<PluginFiles> => {
+const fetchPluginFilesFromReleaseAssets = async (manager: Manager, release: ReleaseResponse, token?: string): Promise<PluginFiles> => {
 	const manifestUrl = pickAsset(release, "manifest.json");
 	const mainJsUrl = pickAsset(release, "main.js");
 	const stylesUrl = pickAsset(release, "styles.css");
 
 	const [manifestText, mainJs, styles] = await Promise.allSettled([
-		manifestUrl ? fetchText(manifestUrl, token) : Promise.resolve(null),
-		mainJsUrl ? fetchText(mainJsUrl, token) : Promise.resolve(null),
-		stylesUrl ? fetchText(stylesUrl, token) : Promise.resolve(null),
+		manifestUrl ? fetchText(manager, manifestUrl, token) : Promise.resolve(null),
+		mainJsUrl ? fetchText(manager, mainJsUrl, token) : Promise.resolve(null),
+		stylesUrl ? fetchText(manager, stylesUrl, token) : Promise.resolve(null),
 	]);
 
 	return {
@@ -224,15 +226,16 @@ const fetchPluginFilesFromReleaseAssets = async (release: ReleaseResponse, token
  * 已经从 release asset 成功拿到的文件会直接复用，不重复下载。
  */
 const fetchPluginFilesFromRawTag = async (
+	manager: Manager,
 	repo: string,
 	tag: string,
 	token: string | undefined,
 	current: PluginFiles
 ): Promise<PluginFiles> => {
 	const [manifestText, mainJs, styles] = await Promise.all([
-		current.manifestText ?? fetchRawFromTag(repo, tag, "manifest.json", token),
-		current.mainJs ?? fetchRawFromTag(repo, tag, "main.js", token),
-		current.styles ?? fetchRawFromTag(repo, tag, "styles.css", token).catch(() => null),
+		current.manifestText ?? fetchRawFromTag(manager, repo, tag, "manifest.json", token),
+		current.mainJs ?? fetchRawFromTag(manager, repo, tag, "main.js", token),
+		current.styles ?? fetchRawFromTag(manager, repo, tag, "styles.css", token).catch(() => null),
 	]);
 
 	return { manifestText, mainJs, styles };
@@ -289,7 +292,7 @@ const upsertInstalledPluginRecord = (
 export const fetchReleaseVersions = async (manager: Manager, repoInput: string): Promise<ReleaseVersion[]> => {
 	const repo = sanitizeRepo(repoInput);
 	const token = await getToken(manager);
-	const cacheKey = buildReleaseCacheKey(repo, token);
+	const cacheKey = buildReleaseCacheKey(repo, token, manager.settings.GITHUB_PROXY);
 	const cached = releaseVersionCache.get(cacheKey);
 	const now = Date.now();
 
@@ -300,7 +303,7 @@ export const fetchReleaseVersions = async (manager: Manager, repoInput: string):
 	const releases: ReleaseResponse[] = [];
 	for (let page = 1; ; page++) {
 		const url = `${API_BASE}/repos/${repo}/releases?per_page=${RELEASES_PER_PAGE}&page=${page}`;
-		const pageReleases = await fetchJson<ReleaseResponse[]>(url, token);
+		const pageReleases = await fetchJson<ReleaseResponse[]>(manager, url, token);
 		if (!Array.isArray(pageReleases) || pageReleases.length === 0) break;
 		releases.push(...pageReleases);
 		if (pageReleases.length < RELEASES_PER_PAGE) break;
@@ -345,12 +348,12 @@ export const installPluginFromGithub = async (
 	try {
 		const repo = sanitizeRepo(repoInput);
 		const token = await getToken(manager);
-		const release = await getRelease(repo, version, token);
+		const release = await getRelease(manager, repo, version, token);
 		const tag = release.tag_name || version || "";
 
 		if (manager.settings.DEBUG) console.log("[BPM] install from GitHub", { repo, version, tag });
 
-		let files = await fetchPluginFilesFromReleaseAssets(release, token);
+		let files = await fetchPluginFilesFromReleaseAssets(manager, release, token);
 
 		if (manager.settings.DEBUG) {
 			console.log("[BPM] release assets picked", {
@@ -363,7 +366,7 @@ export const installPluginFromGithub = async (
 		if (!files.manifestText || !files.mainJs) {
 			if (!tag) throw new Error("未找到发布 tag，无法下载原始文件。");
 			try {
-				files = await fetchPluginFilesFromRawTag(repo, tag, token, files);
+				files = await fetchPluginFilesFromRawTag(manager, repo, tag, token, files);
 				if (manager.settings.DEBUG) {
 					console.log("[BPM] fallback to raw tag", {
 						repo,
@@ -467,7 +470,7 @@ export const installThemeFromGithub = async (manager: Manager, repoInput: string
 	try {
 		const repo = sanitizeRepo(repoInput);
 		const token = await getToken(manager);
-		const release = await getRelease(repo, version, token);
+		const release = await getRelease(manager, repo, version, token);
 
 		const manifestUrl = pickAsset(release, "manifest.json");
 		const themeUrl = pickAsset(release, "theme.css") ?? pickAsset(release, "themes.css") ?? pickAsset(release, "theme-beta.css");
@@ -477,8 +480,8 @@ export const installThemeFromGithub = async (manager: Manager, repoInput: string
 		}
 
 		const [manifestText, themeCss] = await Promise.all([
-			fetchText(manifestUrl, token),
-			fetchText(themeUrl, token),
+			fetchText(manager, manifestUrl, token),
+			fetchText(manager, themeUrl, token),
 		]);
 
 		const manifest = JSON.parse(manifestText) as { name: string };
