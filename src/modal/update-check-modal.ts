@@ -9,10 +9,11 @@ import {
 } from "obsidian";
 
 import Manager from "main";
-import type { PluginUpdateCheckMode } from "../settings/data";
+import type { PluginUpdateCheckMode, ReleaseCompatibilityMode } from "../settings/data";
 
 export interface PluginUpdateCheckConfig {
     updateCheckMode: PluginUpdateCheckMode;
+    compatibilityMode: ReleaseCompatibilityMode;
     updateDelayDays: number;
 }
 
@@ -23,6 +24,9 @@ export const normalizePluginUpdateDelayDays = (value: unknown): number => {
 
 export const normalizePluginUpdateCheckMode = (value: unknown): PluginUpdateCheckMode =>
     value === "version" ? "version" : "release";
+
+export const normalizeReleaseCompatibilityMode = (value: unknown): ReleaseCompatibilityMode =>
+    value === "all" ? "all" : "compatible";
 
 export const openPluginUpdateCheckModal = (
     app: App,
@@ -46,6 +50,7 @@ class PluginUpdateCheckModal extends Modal {
         super(app);
         this.config = {
             updateCheckMode: normalizePluginUpdateCheckMode(initial.updateCheckMode),
+            compatibilityMode: normalizeReleaseCompatibilityMode(initial.compatibilityMode),
             updateDelayDays: normalizePluginUpdateDelayDays(initial.updateDelayDays),
         };
     }
@@ -80,6 +85,21 @@ class PluginUpdateCheckModal extends Modal {
                 dropdown.selectEl.setAttribute("aria-label", t("更新检测配置_方式_标题"));
                 dropdown.onChange((value) => {
                     this.config.updateCheckMode = normalizePluginUpdateCheckMode(value);
+                });
+            });
+
+        new Setting(body)
+            .setName(t("更新检测配置_兼容性_标题"))
+            .setDesc(t("更新检测配置_兼容性_描述"))
+            .addDropdown((dropdown: DropdownComponent) => {
+                dropdown.addOptions({
+                    compatible: t("更新检测配置_兼容性_兼容优先"),
+                    all: t("更新检测配置_兼容性_显示全部"),
+                });
+                dropdown.setValue(this.config.compatibilityMode);
+                dropdown.selectEl.setAttribute("aria-label", t("更新检测配置_兼容性_标题"));
+                dropdown.onChange((value) => {
+                    this.config.compatibilityMode = normalizeReleaseCompatibilityMode(value);
                 });
             });
 
@@ -127,6 +147,7 @@ class PluginUpdateCheckModal extends Modal {
         if (this.resolved) return;
         this.resolved = true;
         this.config.updateDelayDays = normalizePluginUpdateDelayDays(this.config.updateDelayDays);
+        this.config.compatibilityMode = normalizeReleaseCompatibilityMode(this.config.compatibilityMode);
         this.resolve({ ...this.config });
         this.close();
     }

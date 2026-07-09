@@ -47,6 +47,8 @@ export interface PluginLayoutItem {
 	title?: string;
 }
 
+export type ReleaseCompatibilityMode = "compatible" | "all";
+
 export interface BetaSource {
 	id: string;
 	repo: string;
@@ -55,6 +57,7 @@ export interface BetaSource {
 	frozenVersion?: string;
 	includePrerelease?: boolean;
 	updateCheckMode?: "release" | "version";
+	compatibilityMode?: ReleaseCompatibilityMode;
 	updateDelayDays?: number;
 	autoUpdate: boolean;
 	enabled: boolean;
@@ -63,8 +66,10 @@ export interface BetaSource {
 	latestPublishedAt?: string;
 	installedReleaseTag?: string;
 	installedReleasePublishedAt?: string;
+	installedReleaseIsGithubLatest?: boolean;
 	latestReleaseTag?: string;
 	latestReleasePublishedAt?: string;
+	latestReleaseIsGithubLatest?: boolean;
 	installedAt?: number;
 	lastChecked?: number;
 	error?: string;

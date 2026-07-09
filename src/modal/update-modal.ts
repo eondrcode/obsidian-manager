@@ -2,6 +2,7 @@ import { App, ExtraButtonComponent, Modal, Notice, setIcon, Setting } from "obsi
 import Manager from "main";
 import { ReleaseVersion, fetchReleaseVersions } from "src/github-install";
 import { getExtraButtonElement } from "src/obsidian-internals";
+import { pickSourceTargetRelease, releaseIsCompatible } from "src/source-release";
 
 export class UpdateModal extends Modal {
     private manager: Manager;
@@ -75,7 +76,7 @@ export class UpdateModal extends Modal {
             const loading = this.versionListEl.createDiv("manager-version-picker__empty");
             loading.setText(t("管理器_选择版本_获取中"));
             try {
-                versionList = await fetchReleaseVersions(this.manager, this.repo);
+                versionList = await fetchReleaseVersions(this.manager, this.repo, { includeManifest: true });
             } catch (e) {
                 console.error("fetch versions in modal failed", e);
                 new Notice(t("管理器_选择版本_获取失败提示"), 4000);
@@ -87,11 +88,22 @@ export class UpdateModal extends Modal {
 
         const hasDefaultVersion = Boolean(this.defaultVersion && versionList.some((release) => release.version === this.defaultVersion));
         const hasLocalVersion = Boolean(manifest?.version && versionList.some((release) => release.version === manifest.version));
+        const updateOptions = this.manager.getPluginUpdateCheckOptions();
+        const target = this.repo ? pickSourceTargetRelease({
+            id: this.pluginId,
+            repo: this.repo,
+            type: "plugin",
+            mode: "latest",
+            includePrerelease: false,
+            updateCheckMode: updateOptions.updateCheckMode,
+            compatibilityMode: updateOptions.compatibilityMode,
+            updateDelayDays: updateOptions.updateDelayDays || undefined,
+            autoUpdate: false,
+            enabled: true,
+        }, versionList) : null;
         this.selectedVersion = hasDefaultVersion
             ? this.defaultVersion!
-            : hasLocalVersion
-                ? manifest.version
-                : (versionList[0]?.version ?? "");
+            : target?.tag || (hasLocalVersion ? manifest.version : (versionList[0]?.version ?? ""));
         summaryStats.empty();
         const releaseCount = summaryStats.createSpan({ cls: "manager-version-picker__summary-stat" });
         setIcon(releaseCount.createSpan({ cls: "manager-version-picker__summary-stat-icon" }), "tags");
@@ -154,13 +166,23 @@ export class UpdateModal extends Modal {
             if (release.version === localVersion) {
                 title.createSpan({ cls: "manager-version-picker__badge", text: t("来源_当前") });
             }
+            if (release.isGithubLatest) {
+                title.createSpan({ cls: "manager-version-picker__badge is-latest", text: t("兼容性_GitHubLatest") });
+            }
             title.createSpan({
                 cls: `manager-version-picker__badge ${release.prerelease ? "is-prerelease" : "is-stable"}`,
                 text: t(release.prerelease ? "安装_发布类型_预发布" : "安装_发布类型_正式版"),
             });
+            if (release.minAppVersion) {
+                title.createSpan({
+                    cls: `manager-version-picker__badge ${releaseIsCompatible(release) ? "is-compatible" : "is-incompatible"}`,
+                    text: t(releaseIsCompatible(release) ? "兼容性_兼容" : "兼容性_不兼容"),
+                });
+            }
 
             const meta = main.createDiv("manager-version-picker__item-meta");
             if (release.name && release.name !== release.version) meta.createSpan({ text: release.name });
+            if (release.minAppVersion) meta.createSpan({ text: t("兼容性_需要版本", { version: release.minAppVersion }) });
             if (release.publishedAt) meta.createSpan({ text: this.formatDate(release.publishedAt) });
 
             const check = item.createSpan({ cls: "manager-version-picker__item-check" });

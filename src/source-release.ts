@@ -1,3 +1,4 @@
+import { requireApiVersion } from "obsidian";
 import type { BetaSource } from "./data/types";
 import type { ReleaseVersion } from "./github-install";
 
@@ -6,6 +7,7 @@ export interface SourceReleaseRef {
 	publishedAt?: string;
 	prerelease?: boolean;
 	index?: number;
+	isGithubLatest?: boolean;
 }
 
 export interface SourceReleaseCheck {
@@ -35,6 +37,7 @@ const releaseToRef = (release: ReleaseVersion, index: number): SourceReleaseRef 
 	publishedAt: release.publishedAt,
 	prerelease: release.prerelease,
 	index,
+	isGithubLatest: release.isGithubLatest,
 });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -59,6 +62,16 @@ const releaseIsMatureEnough = (source: BetaSource, release: ReleaseVersion, now 
 	const publishedAt = new Date(release.publishedAt).getTime();
 	if (Number.isNaN(publishedAt)) return true;
 	return publishedAt <= now - delayDays * DAY_MS;
+};
+
+export const releaseIsCompatible = (release: ReleaseVersion): boolean => {
+	const minAppVersion = release.minAppVersion?.trim();
+	if (!minAppVersion) return true;
+	try {
+		return requireApiVersion(minAppVersion);
+	} catch {
+		return true;
+	}
 };
 
 const sourceTargetIsMatureEnough = (source: BetaSource): boolean => {
@@ -91,8 +104,16 @@ export const pickSourceTargetRelease = (source: BetaSource, versions: ReleaseVer
 		};
 	}
 
-	const release = (source.includePrerelease ? versions : versions.filter((item) => !item.prerelease))
-		.find((item) => releaseIsMatureEnough(source, item));
+	const compatibleVersions = source.compatibilityMode === "all"
+		? versions
+		: versions.filter((item) => releaseIsCompatible(item));
+	const candidates = source.includePrerelease
+		? compatibleVersions
+		: compatibleVersions.filter((item) => !item.prerelease);
+	const githubLatest = candidates.find((item) => item.isGithubLatest);
+	const release = githubLatest && releaseIsMatureEnough(source, githubLatest)
+		? githubLatest
+		: candidates.find((item) => releaseIsMatureEnough(source, item));
 	if (!release) return null;
 	return releaseToRef(release, versions.indexOf(release));
 };
@@ -136,11 +157,13 @@ export const syncSourceReleaseCheck = (
 	source.localVersion = localVersion || source.localVersion || "";
 	source.latestReleaseTag = target?.tag || "";
 	source.latestReleasePublishedAt = target?.publishedAt;
+	source.latestReleaseIsGithubLatest = target?.isGithubLatest;
 	source.latestVersion = target?.tag || "";
 	source.latestPublishedAt = target?.publishedAt;
 
 	if (installed?.tag) source.installedReleaseTag = installed.tag;
 	if (installed?.publishedAt) source.installedReleasePublishedAt = installed.publishedAt;
+	source.installedReleaseIsGithubLatest = installed?.isGithubLatest;
 
 	return { target, installed };
 };
@@ -154,6 +177,9 @@ export const markSourceInstalledRelease = (
 	const tag = cleanReleaseTag(releaseTag);
 	if (tag) source.installedReleaseTag = tag;
 	source.installedReleasePublishedAt = publishedAt || source.installedReleasePublishedAt;
+	if (releaseTagsMatch(tag, source.latestReleaseTag)) {
+		source.installedReleaseIsGithubLatest = source.latestReleaseIsGithubLatest;
+	}
 	source.localVersion = localVersion || source.localVersion || tag;
 };
 
@@ -197,6 +223,7 @@ export const sourceHasReleaseUpdate = (source: BetaSource): boolean => {
 	if (!targetTag || !installedTag) return false;
 	if (releaseTagsMatch(targetTag, installedTag)) return false;
 	if (!sourceTargetIsMatureEnough(source)) return false;
+	if (source.compatibilityMode !== "all" && source.installedReleaseIsGithubLatest && !source.latestReleaseIsGithubLatest) return false;
 
 	if (source.mode === "frozen") return true;
 

@@ -62,6 +62,14 @@ export interface ReleaseVersion {
 	body?: string;
 	publishedAt?: string;
 	url?: string;
+	minAppVersion?: string;
+	manifestVersion?: string;
+	isGithubLatest?: boolean;
+	compatibilityChecked?: boolean;
+}
+
+export interface FetchReleaseVersionOptions {
+	includeManifest?: boolean;
 }
 
 const API_BASE = "https://api.github.com";
@@ -163,6 +171,13 @@ const cloneReleaseVersions = (versions: ReleaseVersion[]): ReleaseVersion[] =>
 
 const buildReleaseCacheKey = (repo: string, token?: string, proxy?: string): string =>
 	`${repo}\n${token ? "authenticated" : "anonymous"}\n${proxy || "direct"}`;
+
+const buildReleaseCacheKeyWithOptions = (
+	repo: string,
+	token: string | undefined,
+	proxy: string | undefined,
+	options?: FetchReleaseVersionOptions
+): string => `${buildReleaseCacheKey(repo, token, proxy)}\nmanifest:${options?.includeManifest ? "1" : "0"}`;
 
 /**
  * 生成 raw 文件候选地址。
@@ -283,16 +298,77 @@ const upsertInstalledPluginRecord = (
 	manager.settings.Plugins.push(record);
 };
 
+const releaseToVersion = (release: ReleaseResponse, latestTag?: string): ReleaseVersion => ({
+	version: release.tag_name || "",
+	prerelease: Boolean(release.prerelease),
+	name: release.name || undefined,
+	body: release.body || undefined,
+	publishedAt: release.published_at || undefined,
+	url: release.html_url || undefined,
+	isGithubLatest: Boolean(latestTag && release.tag_name === latestTag),
+});
+
+const fetchReleaseManifestText = async (
+	manager: Manager,
+	repo: string,
+	release: ReleaseResponse,
+	token?: string
+): Promise<string | null> => {
+	const manifestUrl = pickAsset(release, "manifest.json");
+	if (manifestUrl) {
+		try {
+			return await fetchText(manager, manifestUrl, token);
+		} catch {
+			// Fall back to the source tag below.
+		}
+	}
+
+	const tag = release.tag_name || "";
+	if (!tag) return null;
+	try {
+		return await fetchRawFromTag(manager, repo, tag, "manifest.json", token);
+	} catch {
+		return null;
+	}
+};
+
+const enrichReleaseVersionWithManifest = async (
+	manager: Manager,
+	repo: string,
+	release: ReleaseResponse,
+	version: ReleaseVersion,
+	token?: string
+): Promise<ReleaseVersion> => {
+	const manifestText = await fetchReleaseManifestText(manager, repo, release, token);
+	if (!manifestText) return { ...version, compatibilityChecked: true };
+
+	try {
+		const manifest = JSON.parse(manifestText) as { version?: string; minAppVersion?: string };
+		return {
+			...version,
+			manifestVersion: typeof manifest.version === "string" ? manifest.version : undefined,
+			minAppVersion: typeof manifest.minAppVersion === "string" ? manifest.minAppVersion : undefined,
+			compatibilityChecked: true,
+		};
+	} catch {
+		return { ...version, compatibilityChecked: true };
+	}
+};
+
 /**
  * 拉取指定仓库的 release 版本列表。
  *
  * 返回值用于下拉选择和更新检查。短 TTL 缓存可以避免用户打开弹窗、点击刷新、
  * 批量检查更新时反复打同一个 GitHub API。
  */
-export const fetchReleaseVersions = async (manager: Manager, repoInput: string): Promise<ReleaseVersion[]> => {
+export const fetchReleaseVersions = async (
+	manager: Manager,
+	repoInput: string,
+	options: FetchReleaseVersionOptions = {}
+): Promise<ReleaseVersion[]> => {
 	const repo = sanitizeRepo(repoInput);
 	const token = await getToken(manager);
-	const cacheKey = buildReleaseCacheKey(repo, token, manager.settings.GITHUB_PROXY);
+	const cacheKey = buildReleaseCacheKeyWithOptions(repo, token, manager.settings.GITHUB_PROXY, options);
 	const cached = releaseVersionCache.get(cacheKey);
 	const now = Date.now();
 
@@ -300,6 +376,8 @@ export const fetchReleaseVersions = async (manager: Manager, repoInput: string):
 		return cloneReleaseVersions(cached.versions);
 	}
 
+	const latestRelease = await getRelease(manager, repo, undefined, token).catch(() => null);
+	const latestTag = latestRelease?.tag_name || undefined;
 	const releases: ReleaseResponse[] = [];
 	for (let page = 1; ; page++) {
 		const url = `${API_BASE}/repos/${repo}/releases?per_page=${RELEASES_PER_PAGE}&page=${page}`;
@@ -309,17 +387,19 @@ export const fetchReleaseVersions = async (manager: Manager, repoInput: string):
 		if (pageReleases.length < RELEASES_PER_PAGE) break;
 	}
 
-	const versions = releases
+	let releaseEntries = releases
 		.filter((release) => !release.draft)
-		.map((release) => ({
-			version: release.tag_name || "",
-			prerelease: Boolean(release.prerelease),
-			name: release.name || undefined,
-			body: release.body || undefined,
-			publishedAt: release.published_at || undefined,
-			url: release.html_url || undefined,
-		}))
-		.filter((release) => release.version);
+		.map((release) => ({ release, version: releaseToVersion(release, latestTag) }))
+		.filter((entry) => entry.version.version);
+
+	if (options.includeManifest) {
+		releaseEntries = await Promise.all(releaseEntries.map(async (entry) => ({
+			release: entry.release,
+			version: await enrichReleaseVersionWithManifest(manager, repo, entry.release, entry.version, token),
+		})));
+	}
+
+	const versions = releaseEntries.map((entry) => entry.version);
 
 	releaseVersionCache.set(cacheKey, {
 		expiresAt: now + RELEASE_VERSION_CACHE_TTL_MS,

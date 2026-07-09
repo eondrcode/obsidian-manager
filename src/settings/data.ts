@@ -25,6 +25,7 @@ export type FilterOperator = "contains" | "not-contains";
 export type TagFilterOperator = FilterOperator;
 export type PluginOverviewLayout = "list" | "two-column";
 export type PluginUpdateCheckMode = NonNullable<BetaSource["updateCheckMode"]>;
+export type ReleaseCompatibilityMode = NonNullable<BetaSource["compatibilityMode"]>;
 
 export const DEFAULT_MAIN_PAGE_ACTION_PLACEMENT: Record<MainPageActionId, MainPageActionPlacement> = {
     checkUpdate: "menu",
@@ -83,6 +84,8 @@ export interface ManagerSettings {
     SOURCE_AUTO_UPDATE: boolean;
     /** 插件总览更新检测的判定方式。release 按 GitHub 发布顺序，version 按版本号比较。 */
     PLUGIN_UPDATE_CHECK_MODE: PluginUpdateCheckMode;
+    /** 插件总览更新检测是否按 manifest.minAppVersion 过滤不兼容版本。 */
+    PLUGIN_UPDATE_COMPATIBILITY_MODE: ReleaseCompatibilityMode;
     /** 插件总览更新检测延迟天数；只把发布满指定天数的版本视为可更新。 */
     PLUGIN_UPDATE_DELAY_DAYS: number;
     /** GitHub 请求中转站；留空时直连官方 GitHub。支持前缀或 {url}/{encodedUrl} 模板。 */
@@ -188,6 +191,7 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     SOURCE_STARTUP_CHECK_UPDATES: false,
     SOURCE_AUTO_UPDATE: true,
     PLUGIN_UPDATE_CHECK_MODE: "release",
+    PLUGIN_UPDATE_COMPATIBILITY_MODE: "compatible",
     PLUGIN_UPDATE_DELAY_DAYS: 0,
     GITHUB_PROXY: "",
     GITHUB_TOKEN: "",

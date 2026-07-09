@@ -1,5 +1,5 @@
 import { normalizePath, ObsidianProtocolData, Plugin, PluginManifest, Workspace } from 'obsidian';
-import { DEFAULT_SETTINGS, ManagerSettings, PluginUpdateCheckMode } from './settings/data';
+import { DEFAULT_SETTINGS, ManagerSettings, PluginUpdateCheckMode, ReleaseCompatibilityMode } from './settings/data';
 import { ManagerSettingTab } from './settings';
 import { Translator } from './lang/inxdex';
 import { ManagerModal } from './modal/manager-modal';
@@ -36,6 +36,7 @@ interface UpdateStatus {
 
 interface PluginUpdateCheckOptions {
     updateCheckMode?: PluginUpdateCheckMode;
+    compatibilityMode?: ReleaseCompatibilityMode;
     updateDelayDays?: number;
 }
 
@@ -509,12 +510,14 @@ export default class Manager extends Plugin {
     public getPluginUpdateCheckOptions(): Required<PluginUpdateCheckOptions> {
         return {
             updateCheckMode: this.normalizePluginUpdateCheckMode(this.settings.PLUGIN_UPDATE_CHECK_MODE),
+            compatibilityMode: this.normalizeReleaseCompatibilityMode(this.settings.PLUGIN_UPDATE_COMPATIBILITY_MODE),
             updateDelayDays: this.normalizePluginUpdateDelayDays(this.settings.PLUGIN_UPDATE_DELAY_DAYS),
         };
     }
 
     public async setPluginUpdateCheckOptions(options: PluginUpdateCheckOptions): Promise<void> {
         this.settings.PLUGIN_UPDATE_CHECK_MODE = this.normalizePluginUpdateCheckMode(options.updateCheckMode);
+        this.settings.PLUGIN_UPDATE_COMPATIBILITY_MODE = this.normalizeReleaseCompatibilityMode(options.compatibilityMode);
         this.settings.PLUGIN_UPDATE_DELAY_DAYS = this.normalizePluginUpdateDelayDays(options.updateDelayDays);
         await this.saveSettings();
     }
@@ -589,7 +592,7 @@ export default class Manager extends Plugin {
 
     private async checkBetaSource(source: BetaSource): Promise<void> {
         try {
-            const versions = await fetchReleaseVersions(this, source.repo);
+            const versions = await fetchReleaseVersions(this, source.repo, { includeManifest: source.type === "plugin" });
             let localVersion = source.localVersion || "";
             if (source.type === "plugin") {
                 const pluginId = this.getBetaSourcePluginId(source);
@@ -644,7 +647,7 @@ export default class Manager extends Plugin {
                     ? source.latestReleasePublishedAt || source.latestPublishedAt
                     : undefined;
                 if (!targetVersion) {
-                    const versions = await fetchReleaseVersions(this, source.repo);
+                    const versions = await fetchReleaseVersions(this, source.repo, { includeManifest: source.type === "plugin" });
                     let localVersion = source.localVersion || "";
                     if (source.type === "plugin") {
                         const pluginId = this.getBetaSourcePluginId(source);
@@ -1024,6 +1027,10 @@ export default class Manager extends Plugin {
         return value === "version" ? "version" : "release";
     }
 
+    private normalizeReleaseCompatibilityMode(value?: string | null): ReleaseCompatibilityMode {
+        return value === "all" ? "all" : "compatible";
+    }
+
     private normalizePluginUpdateDelayDays(value: unknown): number {
         const days = Math.floor(Number(value));
         return Number.isFinite(days) && days > 0 ? days : 0;
@@ -1032,6 +1039,7 @@ export default class Manager extends Plugin {
     private resolvePluginUpdateCheckOptions(options?: PluginUpdateCheckOptions): Required<PluginUpdateCheckOptions> {
         return {
             updateCheckMode: this.normalizePluginUpdateCheckMode(options?.updateCheckMode ?? this.settings.PLUGIN_UPDATE_CHECK_MODE),
+            compatibilityMode: this.normalizeReleaseCompatibilityMode(options?.compatibilityMode ?? this.settings.PLUGIN_UPDATE_COMPATIBILITY_MODE),
             updateDelayDays: this.normalizePluginUpdateDelayDays(options?.updateDelayDays ?? this.settings.PLUGIN_UPDATE_DELAY_DAYS),
         };
     }
@@ -1060,6 +1068,7 @@ export default class Manager extends Plugin {
                 mode: "latest",
                 includePrerelease: false,
                 updateCheckMode: options.updateCheckMode,
+                compatibilityMode: options.compatibilityMode,
                 updateDelayDays: options.updateDelayDays || undefined,
                 autoUpdate: false,
                 enabled: true,
@@ -1103,7 +1112,7 @@ export default class Manager extends Plugin {
                         st.repo = null;
                     }
                     if (st.repo) {
-                        st.versions = await this.fetchGithubVersions(st.repo, updateOptions.updateCheckMode === "release");
+                        st.versions = await this.fetchGithubVersions(st.repo, updateOptions.updateCheckMode === "release", true);
                     }
                     this.applyPluginUpdateStatus(st, pm, st.repo || null, st.versions || [], official, updateOptions);
                     if (this.settings.DEBUG) console.log("[BPM] update official match", pm.id, localVersion, "->", st.remoteVersion);
@@ -1120,10 +1129,8 @@ export default class Manager extends Plugin {
                     if (repo) {
                         st.source = 'github';
                         st.repo = repo;
-                        st.versions = await this.fetchGithubVersions(repo, updateOptions.updateCheckMode === "release");
-                        // 选择一个默认的远端版本：优先最新稳定，否则第一个
-                        const pick = st.versions?.find(v => !v.prerelease) ?? st.versions?.[0] ?? null;
-                        const remoteVersion = pick?.version ?? await this.fetchGithubManifestVersion(repo);
+                        st.versions = await this.fetchGithubVersions(repo, updateOptions.updateCheckMode === "release", true);
+                        const remoteVersion = st.versions.length > 0 ? null : await this.fetchGithubManifestVersion(repo);
                         this.applyPluginUpdateStatus(st, pm, repo, st.versions || [], remoteVersion, updateOptions);
                         if (!st.remoteVersion) st.message = this.translator.t("更新_未获取到远端版本");
                         if (this.settings.DEBUG) console.log("[BPM] update github match", pm.id, repo, localVersion, "->", st.remoteVersion);
@@ -1157,7 +1164,7 @@ export default class Manager extends Plugin {
                 st.source = "official";
                 try {
                     st.repo = await this.repoResolver.resolveRepo(pm.id);
-                    if (st.repo) st.versions = await this.fetchGithubVersions(st.repo, updateOptions.updateCheckMode === "release");
+                    if (st.repo) st.versions = await this.fetchGithubVersions(st.repo, updateOptions.updateCheckMode === "release", true);
                 } catch {
                     if (updateOptions.updateCheckMode === "release") throw new Error(this.translator.t("更新_未获取到远端版本"));
                 }
@@ -1174,9 +1181,8 @@ export default class Manager extends Plugin {
             if (repo) {
                 st.source = "github";
                 st.repo = repo;
-                st.versions = await this.fetchGithubVersions(repo, updateOptions.updateCheckMode === "release");
-                const pick = st.versions?.find(v => !v.prerelease) ?? st.versions?.[0] ?? null;
-                const remoteVersion = pick?.version ?? await this.fetchGithubManifestVersion(repo);
+                st.versions = await this.fetchGithubVersions(repo, updateOptions.updateCheckMode === "release", true);
+                const remoteVersion = st.versions.length > 0 ? null : await this.fetchGithubManifestVersion(repo);
                 this.applyPluginUpdateStatus(st, pm, repo, st.versions || [], remoteVersion, updateOptions);
                 if (!st.remoteVersion) st.message = this.translator.t("更新_未获取到远端版本");
                 if (this.settings.DEBUG) console.log("[BPM] single update github", pm.id, repo, localVersion, "->", st.remoteVersion);
@@ -1262,9 +1268,9 @@ export default class Manager extends Plugin {
         return null;
     }
 
-    private async fetchGithubVersions(repoInput: string, throwOnError = false): Promise<ReleaseVersion[]> {
+    private async fetchGithubVersions(repoInput: string, throwOnError = false, includeManifest = false): Promise<ReleaseVersion[]> {
         try {
-            return await fetchReleaseVersions(this, repoInput);
+            return await fetchReleaseVersions(this, repoInput, { includeManifest });
         } catch (e) {
             console.error("[BPM] fetchGithubVersions error", repoInput, e);
             if (throwOnError) throw e;

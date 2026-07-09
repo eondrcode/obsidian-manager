@@ -49,7 +49,7 @@ import {
     ManagerTransferTheme,
     parseManagerTransferPackage,
 } from "../import-export";
-import { markSourceInstalledRelease, sourceHasUpdate as sourceHasConfiguredUpdate, syncSourceReleaseCheck } from "../source-release"; 
+import { markSourceInstalledRelease, pickSourceTargetRelease, releaseIsCompatible, sourceHasUpdate as sourceHasConfiguredUpdate, syncSourceReleaseCheck } from "../source-release"; 
 import {
     createSharedVaultLinks,
     forgetSharedVault,
@@ -945,14 +945,26 @@ export class ManagerModal extends Modal {
                 return;
             }
 
-            const versions = await fetchReleaseVersions(this.manager, repo);
+            const versions = await fetchReleaseVersions(this.manager, repo, { includeManifest: true });
             if (!status) status = {};
             status.repo = repo;
             status.versions = versions;
             status.error = "";
             status.message = "";
-            const stableVersion = versions.find((release) => !release.prerelease)?.version;
-            status.remoteVersion = stableVersion || versions[0]?.version || status.remoteVersion || null;
+            const updateOptions = this.manager.getPluginUpdateCheckOptions();
+            const target = pickSourceTargetRelease({
+                id: pluginId,
+                repo,
+                type: "plugin",
+                mode: "latest",
+                includePrerelease: false,
+                updateCheckMode: updateOptions.updateCheckMode,
+                compatibilityMode: updateOptions.compatibilityMode,
+                updateDelayDays: updateOptions.updateDelayDays || undefined,
+                autoUpdate: false,
+                enabled: true,
+            }, versions);
+            status.remoteVersion = target?.tag || status.remoteVersion || null;
             this.manager.updateStatus[pluginId] = {
                 ...(this.manager.updateStatus?.[pluginId] ?? {}),
                 ...status,
@@ -4450,6 +4462,7 @@ export class ManagerModal extends Modal {
             autoUpdate: source.autoUpdate ?? false,
             mode: source.mode || "latest",
             updateCheckMode: source.updateCheckMode || "release",
+            compatibilityMode: source.compatibilityMode || "compatible",
             updateDelayDays: this.normalizeSourceUpdateDelayDays(source.updateDelayDays),
         };
         if (existing) {
@@ -4461,7 +4474,7 @@ export class ManagerModal extends Modal {
 
     private async checkBetaSource(source: BetaSource): Promise<BetaSource> {
         try {
-            const versions = await fetchReleaseVersions(this.manager, source.repo);
+            const versions = await fetchReleaseVersions(this.manager, source.repo, { includeManifest: source.type === "plugin" });
             const localVersion = this.getSourceLocalVersion(source);
             const releaseCheck = syncSourceReleaseCheck(source, versions, localVersion);
             await this.refreshSourcePackageCreatedAt(source);
@@ -4725,6 +4738,8 @@ export class ManagerModal extends Modal {
 
             const card = list.createDiv("manager-source-card");
             card.setAttribute("data-source-repo", source.repo);
+            card.toggleClass("has-update", hasUpdate);
+            card.toggleClass("has-error", Boolean(source.error));
 
             const cardMain = card.createDiv("manager-source-card__main");
             const cardHeader = cardMain.createDiv("manager-source-card__header");
@@ -4750,6 +4765,10 @@ export class ManagerModal extends Modal {
             chips.appendChild(createSpan({
                 text: source.updateCheckMode === "version" ? t("来源_检测方式_版本号") : t("来源_检测方式_发布顺序"),
                 cls: `manager-source-item__chip ${source.updateCheckMode === "version" ? "is-latest" : "is-frozen"}`,
+            }));
+            chips.appendChild(createSpan({
+                text: source.compatibilityMode === "all" ? t("兼容性_显示全部") : t("兼容性_仅兼容"),
+                cls: `manager-source-item__chip ${source.compatibilityMode === "all" ? "is-frozen" : "is-latest"}`,
             }));
             if (source.autoUpdate) {
                 chips.appendChild(createSpan({ text: t("来源_自动更新"), cls: "manager-source-item__chip is-auto" }));
@@ -4781,7 +4800,9 @@ export class ManagerModal extends Modal {
             }
 
             const controls = card.createDiv("manager-source-card__controls");
-            const strategyGroup = controls.createDiv("manager-source-card__control-group manager-source-card__control-group--strategy");
+            const strategyPanel = controls.createDiv("manager-source-card__control-panel manager-source-card__control-panel--strategy");
+            const updatePanel = controls.createDiv("manager-source-card__control-panel manager-source-card__control-panel--update");
+            const strategyGroup = strategyPanel.createDiv("manager-source-card__control-group manager-source-card__control-group--strategy");
             strategyGroup.createSpan({ cls: "manager-source-card__control-label", text: t("来源_版本策略") });
             const strategyWrap = strategyGroup.createDiv("manager-source-item__strategy");
             const modeDropdown = new DropdownComponent(strategyWrap);
@@ -4812,6 +4833,24 @@ export class ManagerModal extends Modal {
             updateCheckDropdown.selectEl.addClass("manager-source-item__mode");
             updateCheckDropdown.selectEl.addClass("manager-source-item__check-mode");
             updateCheckDropdown.selectEl.setAttribute("aria-label", t("来源_检测方式"));
+
+            if (source.type === "plugin") {
+                const compatibilityGroup = strategyPanel.createDiv("manager-source-card__control-group manager-source-card__control-group--compatibility");
+                compatibilityGroup.createSpan({ cls: "manager-source-card__control-label", text: t("兼容性_策略") });
+                const compatibilityDropdown = new DropdownComponent(compatibilityGroup);
+                compatibilityDropdown.addOptions({
+                    compatible: t("兼容性_仅兼容"),
+                    all: t("兼容性_显示全部"),
+                });
+                compatibilityDropdown.setValue(source.compatibilityMode || "compatible");
+                compatibilityDropdown.onChange(async (value) => {
+                    source.compatibilityMode = value === "all" ? "all" : "compatible";
+                    await this.checkBetaSource(source);
+                    this.renderContent();
+                });
+                compatibilityDropdown.selectEl.addClass("manager-source-item__mode");
+                compatibilityDropdown.selectEl.setAttribute("aria-label", t("兼容性_策略"));
+            }
 
             const delayWrap = strategyWrap.createDiv("manager-source-item__delay");
             delayWrap.createSpan({ cls: "manager-source-item__delay-label", text: t("来源_更新延迟_标签") });
@@ -4846,7 +4885,8 @@ export class ManagerModal extends Modal {
                 });
             }
 
-            const autoGroup = controls.createDiv("manager-source-card__control-group manager-source-card__control-group--auto");
+            const updateToggleGrid = updatePanel.createDiv("manager-source-card__toggle-grid");
+            const autoGroup = updateToggleGrid.createDiv("manager-source-card__control-group manager-source-card__control-group--auto");
             autoGroup.createSpan({ cls: "manager-source-card__control-label", text: t("来源_更新") });
             const autoWrap = autoGroup.createDiv("manager-source-item__toggle");
             autoWrap.createSpan({ cls: "manager-source-item__toggle-label", text: t("来源_自动") });
@@ -4859,7 +4899,7 @@ export class ManagerModal extends Modal {
                 this.renderContent();
             });
 
-            const prereleaseGroup = controls.createDiv("manager-source-card__control-group manager-source-card__control-group--pre");
+            const prereleaseGroup = updateToggleGrid.createDiv("manager-source-card__control-group manager-source-card__control-group--pre");
             prereleaseGroup.createSpan({ cls: "manager-source-card__control-label", text: t("安装_发布类型_预发布") });
             const prereleaseWrap = prereleaseGroup.createDiv("manager-source-item__toggle");
             prereleaseWrap.createSpan({ cls: "manager-source-item__toggle-label", text: t("来源_最新") });
@@ -4873,7 +4913,7 @@ export class ManagerModal extends Modal {
                 this.renderContent();
             });
 
-            const actionGroup = controls.createDiv("manager-source-card__actions");
+            const actionGroup = updatePanel.createDiv("manager-source-card__actions");
             const prepareActionButton = (btn: ButtonComponent, label: string) => {
                 btn.setTooltip(label);
                 btn.buttonEl.setAttribute("aria-label", label);
@@ -5056,6 +5096,9 @@ export class ManagerModal extends Modal {
         };
         const getReleaseOptionLabel = (release: ReleaseVersion) => [
             release.version,
+            release.isGithubLatest ? t("兼容性_GitHubLatest") : "",
+            release.minAppVersion ? t("兼容性_需要版本", { version: release.minAppVersion }) : "",
+            release.minAppVersion ? t(releaseIsCompatible(release) ? "兼容性_兼容" : "兼容性_不兼容") : "",
             formatReleaseDate(release.publishedAt),
             release.prerelease ? t("安装_发布类型_预发布") : "",
         ].filter(Boolean).join(" · ");
@@ -5063,6 +5106,21 @@ export class ManagerModal extends Modal {
             if (this.installVersions.length === 0) return null;
             const selected = this.installVersion.trim();
             if (selected) return this.installVersions.find((item) => item.version === selected) ?? null;
+            if (this.installType === "plugin") {
+                const updateOptions = this.manager.getPluginUpdateCheckOptions();
+                const target = pickSourceTargetRelease({
+                    id: this.getNormalizedInstallRepo(),
+                    repo: this.getNormalizedInstallRepo(),
+                    type: "plugin",
+                    mode: "latest",
+                    includePrerelease: false,
+                    updateCheckMode: "release",
+                    compatibilityMode: updateOptions.compatibilityMode,
+                    autoUpdate: false,
+                    enabled: true,
+                }, this.installVersions);
+                if (target) return this.installVersions.find((item) => item.version === target.tag) ?? null;
+            }
             return this.installVersions.find((item) => !item.prerelease) || this.installVersions[0];
         };
         const updateReleaseInfo = () => {
@@ -5081,6 +5139,9 @@ export class ManagerModal extends Modal {
             releaseEls.title.setText(release.name || release.version);
             const metaParts = [
                 release.version,
+                release.isGithubLatest ? t("兼容性_GitHubLatest") : "",
+                release.minAppVersion ? t("兼容性_需要版本", { version: release.minAppVersion }) : "",
+                release.minAppVersion ? t(releaseIsCompatible(release) ? "兼容性_兼容" : "兼容性_不兼容") : "",
                 release.prerelease ? t("安装_发布类型_预发布") : t("安装_发布类型_正式版"),
                 formatReleaseDate(release.publishedAt),
             ].filter(Boolean);
@@ -5096,7 +5157,7 @@ export class ManagerModal extends Modal {
             fetchButton?.setDisabled(true);
             fetchButton?.setButtonText(t("管理器_安装_版本_获取中"));
             try {
-                this.installVersions = await fetchReleaseVersions(this.manager, validRepo);
+                this.installVersions = await fetchReleaseVersions(this.manager, validRepo, { includeManifest: this.installType === "plugin" });
                 this.installVersion = "";
                 if (this.installVersions.length === 0) new Notice(t("管理器_安装_版本_空提示"));
             } catch (e) {
@@ -5277,10 +5338,23 @@ export class ManagerModal extends Modal {
                         let selectedRelease = getSelectedRelease();
                         if (!selectedRelease) {
                             try {
-                                const versions = await fetchReleaseVersions(this.manager, validRepo);
+                                const updateOptions = this.manager.getPluginUpdateCheckOptions();
+                                const versions = await fetchReleaseVersions(this.manager, validRepo, { includeManifest: this.installType === "plugin" });
                                 selectedRelease = this.installVersion
                                     ? versions.find((item) => item.version === this.installVersion) ?? null
-                                    : versions.find((item) => !item.prerelease) || versions[0] || null;
+                                    : this.installType === "plugin"
+                                        ? versions.find((item) => item.version === pickSourceTargetRelease({
+                                            id: pluginId || validRepo,
+                                            repo: validRepo,
+                                            type: "plugin",
+                                            mode: "latest",
+                                            includePrerelease: false,
+                                            updateCheckMode: "release",
+                                            compatibilityMode: updateOptions.compatibilityMode,
+                                            autoUpdate: false,
+                                            enabled: true,
+                                        }, versions)?.tag) || versions.find((item) => !item.prerelease) || versions[0] || null
+                                        : versions.find((item) => !item.prerelease) || versions[0] || null;
                             } catch {
                                 selectedRelease = null;
                             }
@@ -5298,6 +5372,7 @@ export class ManagerModal extends Modal {
                             frozenVersion: this.installVersion || undefined,
                             includePrerelease: Boolean(selectedRelease?.prerelease),
                             updateCheckMode: "release",
+                            compatibilityMode: this.manager.getPluginUpdateCheckOptions().compatibilityMode,
                             autoUpdate: false,
                             enabled: true,
                             localVersion,
@@ -6825,14 +6900,14 @@ export class ManagerModal extends Modal {
     private applyEditingStyle() {
         if (!this.modalContainer) return;
         if (this.editorMode) {
-            this.modalContainer.addClass("manager-container--editing"); 
+            this.modalContainer.addClass("manager-container--editing");  
         } else {
-            this.modalContainer.removeClass("manager-container--editing");
+            this.modalContainer.removeClass("manager-container--editing"); 
         }
         if (this.bulkEditMode) {
-            this.modalContainer.addClass("manager-container--bulk-editing");
+            this.modalContainer.addClass("manager-container--bulk-editing"); 
         } else {
-            this.modalContainer.removeClass("manager-container--bulk-editing");
+            this.modalContainer.removeClass("manager-container--bulk-editing"); 
         }
         if (this.desktopActionWrapper) this.syncPageChrome();
     }
