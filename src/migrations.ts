@@ -225,6 +225,8 @@ export const runMigrations = async (manager: Manager): Promise<void> => {
 		.filter((migration) => compareVersions(migration.version, lastMigrationVersion) > 0)
 		.sort((a, b) => compareVersions(a.version, b.version));
 
+	let anyChange = false;
+
 	for (const migration of pendingMigrations) {
 		if (manager.settings.DEBUG) {
 			console.log("[BPM] Running migration", migration.version);
@@ -239,7 +241,7 @@ export const runMigrations = async (manager: Manager): Promise<void> => {
 		 * 否则下次启动会重复执行已经完成的迁移。
 		 */
 		if (settingsChanged || manager.settings.MIGRATION_VERSION !== previousMigrationVersion) {
-			await manager.saveSettings();
+			anyChange = true;
 		}
 	}
 
@@ -251,6 +253,10 @@ export const runMigrations = async (manager: Manager): Promise<void> => {
 	 */
 	if (!manager.settings.MIGRATION_VERSION || compareVersions(manager.settings.MIGRATION_VERSION, currentVersion) < 0) {
 		manager.settings.MIGRATION_VERSION = currentVersion;
+		anyChange = true;
+	}
+
+	if (anyChange) {
 		await manager.saveSettings();
 	}
 };

@@ -91,12 +91,17 @@ export default class Manager extends Plugin {
 
         console.log(`%c ${this.manifest.name} %c v${this.manifest.version} `, `padding: 2px; border-radius: 2px 0 0 2px; color: #fff; background: #5B5B5B;`, `padding: 2px; border-radius: 0 2px 2px 0; color: #fff; background: #409EFF;`);
         await this.loadSettings();
+        let settingsDirty = false;
+        const markSettingsDirty = () => {
+            settingsDirty = true;
+        };
+
         await runMigrations(this);
         // 首次安装或未设置语言时，自动跟随 Obsidian 语言
         if (!this.settings.LANGUAGE_INITIALIZED || !this.settings.LANGUAGE) {
             this.settings.LANGUAGE = this.getAppLanguage();
             this.settings.LANGUAGE_INITIALIZED = true;
-            await this.saveSettings();
+            markSettingsDirty();
         }
         // 初始化语言系统
         this.translator = new Translator(this);
@@ -122,9 +127,9 @@ export default class Manager extends Plugin {
             });
             builtinTagsChanged = true;
         }
-        this.ensureBpmTagAndRecords();
-        this.ensureSelfPluginRecord();
-        if (this.normalizeBuiltinTagNames() || builtinTagsChanged) await this.saveSettings();
+        const bpmRecordsChanged = this.ensureBpmTagAndRecords();
+        const selfRecordChanged = this.ensureSelfPluginRecord({ save: false });
+        if (this.normalizeBuiltinTagNames() || builtinTagsChanged || bpmRecordsChanged || selfRecordChanged) markSettingsDirty();
 
         this.repoResolver = new RepoResolver(this);
 
@@ -138,12 +143,15 @@ export default class Manager extends Plugin {
         this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), () => { this.managerModal = new ManagerModal(this.app, this); this.managerModal.open(); });
         // 初始化设置界面
         this.addSettingTab(new ManagerSettingTab(this.app, this));
-        if (this.settings.DELAY) {
-            this.enableDelay();
-        } else {
-            this.disableDelay();
-        }
+        const pluginsChanged = this.settings.DELAY
+            ? this.enableDelay({ save: false })
+            : this.disableDelay({ save: false });
+        if (pluginsChanged) markSettingsDirty();
         Commands(this.app, this);
+
+        if (settingsDirty) {
+            await this.saveSettings();
+        }
 
         this.agreement = new Agreement(this);
         void this.startupCheckForUpdates();
@@ -695,7 +703,11 @@ export default class Manager extends Plugin {
         await this.saveSettings();
     }
 
-    public ensureBpmTagAndRecords() {
+    public ensureBpmTagAndRecords(): boolean {
+        const previousStateJson = JSON.stringify({
+            TAGS: this.settings.TAGS,
+            Plugins: this.settings.Plugins,
+        });
         ensureBpmTagExists(this);
         // 确保 BPM 安装的插件拥有标签
         this.settings.BPM_INSTALLED.forEach((id) => {
@@ -703,6 +715,11 @@ export default class Manager extends Plugin {
             if (mp && !mp.tags.includes(BPM_TAG_ID)) mp.tags.push(BPM_TAG_ID);
         });
         this.settings.Plugins.forEach((plugin) => this.applySpecialPluginTags(plugin));
+        const nextStateJson = JSON.stringify({
+            TAGS: this.settings.TAGS,
+            Plugins: this.settings.Plugins,
+        });
+        return previousStateJson !== nextStateJson;
     }
 
     private isEondrPlugin(pluginId: string): boolean {
@@ -756,11 +773,22 @@ export default class Manager extends Plugin {
     }
 
     // 确保 BPM 自身也存在于插件记录中（用于面板显示）
-    public ensureSelfPluginRecord() {
+    public ensureSelfPluginRecord(options: { save?: boolean } = {}): boolean {
+        const shouldSave = options.save !== false;
+        let changed = false;
+        if (!Array.isArray(this.settings.Plugins)) {
+            this.settings.Plugins = [];
+            changed = true;
+        }
+        if (!Array.isArray(this.settings.HIDES)) {
+            this.settings.HIDES = [];
+            changed = true;
+        }
         const id = this.manifest.id;
         const existing = this.settings.Plugins.find(p => p.id === id);
         if (this.settings.HIDES?.includes(id)) {
             this.settings.HIDES = this.settings.HIDES.filter(x => x !== id);
+            changed = true;
         }
         if (!existing) {
             this.settings.Plugins.push({
@@ -773,13 +801,27 @@ export default class Manager extends Plugin {
                 delay: "",
                 note: "",
             });
-            void this.saveSettings();
-            return;
+            if (shouldSave) void this.saveSettings();
+            return true;
         }
-        existing.name = existing.name || this.manifest.name;
-        existing.desc = existing.desc || this.manifest.description;
-        existing.enabled = true;
-        existing.delay = "";
+        if (!existing.name) {
+            existing.name = this.manifest.name;
+            changed = true;
+        }
+        if (!existing.desc) {
+            existing.desc = this.manifest.description;
+            changed = true;
+        }
+        if (existing.enabled !== true) {
+            existing.enabled = true;
+            changed = true;
+        }
+        if (existing.delay !== "") {
+            existing.delay = "";
+            changed = true;
+        }
+        if (changed && shouldSave) void this.saveSettings();
+        return changed;
     }
 
     private reloadIfCurrentModal() {
@@ -810,9 +852,9 @@ export default class Manager extends Plugin {
     }
 
     // 关闭延时 调用
-    public disableDelay() {
+    public disableDelay(options: { save?: boolean } = {}): boolean {
         const plugins = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id);
-        this.synchronizePlugins(plugins);
+        return this.synchronizePlugins(plugins, options);
     }
 
     // 开启延时 调用
@@ -825,12 +867,13 @@ export default class Manager extends Plugin {
             .filter((pm: PluginManifest) => pm.id !== this.manifest.id && !this.isBpmIgnoredPlugin(pm.id));
     }
 
-    public enableDelay() {
+    public enableDelay(options: { save?: boolean } = {}): boolean {
         const plugins = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id);
         // 同步插件
-        this.synchronizePlugins(plugins);
+        const changed = this.synchronizePlugins(plugins, options);
         // 开始延时启动插件
         this.getDelayManagedPluginManifests().forEach((plugin: PluginManifest) => this.startPluginWithDelay(plugin.id));
+        return changed;
     }
 
     // 为所有插件启动延迟
@@ -890,7 +933,12 @@ export default class Manager extends Plugin {
     }
 
     // 同步插件到配置文件
-    public synchronizePlugins(p1: PluginManifest[]) {
+    public synchronizePlugins(p1: PluginManifest[], options: { save?: boolean } = {}): boolean {
+        const previousStateJson = JSON.stringify({
+            Plugins: this.settings.Plugins,
+            HIDES: this.settings.HIDES,
+        });
+        const shouldSave = options.save !== false;
         const manifestIds = new Set(p1.map((plugin) => plugin.id));
         const bpmInstalledIds = new Set(this.settings.BPM_INSTALLED || []);
         const nextPlugins = this.settings.Plugins.filter((plugin) => {
@@ -922,9 +970,14 @@ export default class Manager extends Plugin {
         });
         this.settings.Plugins = nextPlugins;
         // BPM 自身保持启用且不允许延迟
-        this.ensureSelfPluginRecord();
-        // 保存设置
-        void this.saveSettings();
+        this.ensureSelfPluginRecord({ save: false });
+        const nextStateJson = JSON.stringify({
+            Plugins: this.settings.Plugins,
+            HIDES: this.settings.HIDES,
+        });
+        const changed = previousStateJson !== nextStateJson;
+        if (changed && shouldSave) void this.saveSettings();
+        return changed;
     }
 
     // 工具函数
