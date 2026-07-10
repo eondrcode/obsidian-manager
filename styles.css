@@ -12171,3 +12171,36 @@ body.theme-dark .manager-transfer-segment[data-state="active"]:hover {
 .manager-repo-page .manager-install__segment {
     padding: 4px 8px !important;
 }
+
+.manager-command-suggestion {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    min-height: 38px;
+}
+
+.manager-command-suggestion.is-disabled {
+    opacity: 0.55;
+}
+
+.manager-command-suggestion__icon {
+    color: var(--text-muted);
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+.manager-command-suggestion__text {
+    min-width: 0;
+}
+
+.manager-command-suggestion__title,
+.manager-command-suggestion__meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manager-command-suggestion__meta {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+}

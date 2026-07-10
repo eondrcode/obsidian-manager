@@ -262,7 +262,7 @@ BPM 设置按功能拆分为多个页面：
 
 | 页面 | 可配置内容 |
 |------|------------|
-| **Basic** | 语言、筛选持久化、延迟启动、自动接管、启动检查更新、来源检查更新、来源自动更新、BPM 标签显示、Ribbon 编排、命令、调试模式和 GitHub Token |
+| **Basic** | 语言、筛选持久化、延迟启动、自动接管、启动检查更新、来源检查更新、来源自动更新、BPM 标签显示、Ribbon 编排、命令注册、调试模式和 GitHub Token |
 | **Main Page Actions** | 选择哪些插件操作直接显示在插件卡片上，哪些收纳到右键菜单 |
 | **Style** | 插件列表布局、项目显示样式、分组/标签样式和禁用插件淡化 |
 | **Groups** | 创建、重命名、重新着色和删除插件分组 |
@@ -276,9 +276,14 @@ BPM 设置按功能拆分为多个页面：
 | 命令 | 可用性 | 说明 |
 |------|--------|------|
 | **Open the plugin manager** | 始终可用 | 打开 BPM 主界面 |
+| **Control a plugin** | 始终可用 | 搜索插件后执行启用、禁用、单次启动、重启、打开设置、打开目录、打开仓库或复制 ID |
+| **Save current plugin state as profile** | 始终可用 | 将当前插件启用/禁用状态保存为可复用 Profile |
+| **Restore previous plugin state** | BPM 命令改变插件状态后可用 | 恢复最近一次命令操作前保存的状态快照 |
 | **Troubleshoot plugin conflicts** | 始终可用 | 启动冲突诊断流程 |
 | **Enable/Disable [Plugin Name]** | 可选设置 | 为每个插件注册独立启用/禁用命令 |
 | **One-click Enable/Disable [Group Name]** | 可选设置 | 为分组注册批量切换命令 |
+| **One-click Enable/Disable [Tag Name]** | 可选设置 | 为标签注册批量切换命令 |
+| **Apply [Profile Name]** | 可选设置 | 为已保存的插件 Profile 注册一键应用命令 |
 
 ---
 

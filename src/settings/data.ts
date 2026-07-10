@@ -26,6 +26,21 @@ export type TagFilterOperator = FilterOperator;
 export type PluginOverviewLayout = "list" | "two-column";
 export type PluginUpdateCheckMode = NonNullable<BetaSource["updateCheckMode"]>;
 export type ReleaseCompatibilityMode = NonNullable<BetaSource["compatibilityMode"]>;
+export type PluginCommandState = Record<string, boolean>;
+
+export interface PluginCommandSnapshot {
+    pluginStates: PluginCommandState;
+    createdAt: number;
+    label?: string;
+}
+
+export interface PluginCommandProfile {
+    id: string;
+    name: string;
+    pluginStates: PluginCommandState;
+    createdAt: number;
+    updatedAt?: number;
+}
 
 export const DEFAULT_MAIN_PAGE_ACTION_PLACEMENT: Record<MainPageActionId, MainPageActionPlacement> = {
     checkUpdate: "menu",
@@ -76,6 +91,14 @@ export interface ManagerSettings {
     COMMAND_ITEM: boolean;
     /** 是否为每个分组注册批量启用/禁用命令。 */
     COMMAND_GROUP: boolean;
+    /** 是否为每个标签注册批量启用/禁用命令。 */
+    COMMAND_TAG: boolean;
+    /** 是否为保存的插件状态方案注册一键应用命令。 */
+    COMMAND_PROFILE: boolean;
+    /** 命令面板保存的插件状态方案。 */
+    COMMAND_PROFILES: PluginCommandProfile[];
+    /** 命令面板批量操作前的上一份状态快照，用于撤销。 */
+    COMMAND_LAST_STATE?: PluginCommandSnapshot;
     /** 是否在插件启动后自动检查插件更新。 */
     STARTUP_CHECK_UPDATES: boolean;
     /** 是否在插件启动后自动检查 GitHub 来源订阅的远程版本。 */
@@ -187,6 +210,9 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     SELF_CHECK_IGNORED: false,
     COMMAND_ITEM: false,
     COMMAND_GROUP: false,
+    COMMAND_TAG: false,
+    COMMAND_PROFILE: false,
+    COMMAND_PROFILES: [],
     STARTUP_CHECK_UPDATES: false,
     SOURCE_STARTUP_CHECK_UPDATES: false,
     SOURCE_AUTO_UPDATE: true,

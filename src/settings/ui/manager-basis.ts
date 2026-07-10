@@ -179,6 +179,28 @@ export default class ManagerBasis extends BaseSetting {
             Commands(this.app, this.manager);
         });
 
+        const CommandTagBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t("command_setting_tag_title"))
+            .setDesc(this.manager.translator.t("command_setting_tag_desc"));
+        const CommandTagToggle = new ToggleComponent(CommandTagBar.controlEl);
+        CommandTagToggle.setValue(this.settings.COMMAND_TAG);
+        CommandTagToggle.onChange((value) => {
+            this.settings.COMMAND_TAG = value;
+            void this.manager.saveSettings();
+            Commands(this.app, this.manager);
+        });
+
+        const CommandProfileBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t("command_setting_profile_title"))
+            .setDesc(this.manager.translator.t("command_setting_profile_desc"));
+        const CommandProfileToggle = new ToggleComponent(CommandProfileBar.controlEl);
+        CommandProfileToggle.setValue(this.settings.COMMAND_PROFILE);
+        CommandProfileToggle.onChange((value) => {
+            this.settings.COMMAND_PROFILE = value;
+            void this.manager.saveSettings();
+            Commands(this.app, this.manager);
+        });
+
         heading("设置_基础设置_分组_开发网络");
 
         const debugBar = new Setting(this.containerEl)

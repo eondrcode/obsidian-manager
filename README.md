@@ -264,7 +264,7 @@ BPM settings are split into focused pages:
 
 | Page | What you can configure |
 |------|------------------------|
-| **Basic** | Language, persistent filters, delayed startup, auto takeover, startup update checks, source update checks, source auto-update, BPM tag visibility, ribbon order, commands, debug mode, and GitHub token |
+| **Basic** | Language, persistent filters, delayed startup, auto takeover, startup update checks, source update checks, source auto-update, BPM tag visibility, ribbon order, command registration, debug mode, and GitHub token |
 | **Main Page Actions** | Choose which plugin actions appear directly on plugin cards and which stay in the right-click menu |
 | **Style** | Plugin list layout, item display style, group/tag styles, and disabled-plugin fading |
 | **Groups** | Create, rename, recolor, and delete plugin groups |
@@ -278,9 +278,14 @@ BPM settings are split into focused pages:
 | Command | Availability | Description |
 |---------|--------------|-------------|
 | **Open the plugin manager** | Always available | Opens the BPM main interface |
+| **Control a plugin** | Always available | Search a plugin, then enable, disable, single-start, restart, open settings, open folder, open repository, or copy ID |
+| **Save current plugin state as profile** | Always available | Saves the current enabled/disabled state as a reusable command profile |
+| **Restore previous plugin state** | Available after a BPM command changes plugin state | Restores the snapshot captured before the last command-driven state change |
 | **Troubleshoot plugin conflicts** | Always available | Starts the conflict diagnosis workflow |
 | **Enable/Disable selected plugin** | Optional setting | Registers one command per plugin for direct toggling |
 | **One-click Enable/Disable selected group** | Optional setting | Registers group-level commands for batch toggling |
+| **One-click Enable/Disable selected tag** | Optional setting | Registers tag-level commands for batch toggling |
+| **Apply selected profile** | Optional setting | Registers one command per saved plugin profile |
 
 ---
 
