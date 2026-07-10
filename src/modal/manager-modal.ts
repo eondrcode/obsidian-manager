@@ -24,9 +24,9 @@ import { GroupModal } from "./group-modal";
 import { TagsModal } from "./tags-modal";
 import { DeleteModal } from "./delete-modal";
 import Commands from "src/command";
-import { DisableModal } from "./disable-modal";
 import { NoteModal } from "./note-modal";
 import { HideModal } from "./hide-modal";
+import { confirmBulkStatusChange } from "./bulk-status-confirm-modal";
 import { TroubleshootPanel } from "../troubleshoot/troubleshoot-panel";
 import { installPluginFromGithub, installThemeFromGithub, fetchReleaseVersions, ReleaseVersion, sanitizeRepo } from "../github-install";
 import { BPM_TAG_ID } from "src/repo-resolver";
@@ -190,11 +190,18 @@ export class ManagerModal extends Modal {
     private pluginCardControllers = new Map<string, PluginCardController>();
     private bulkBarHostEl?: HTMLElement;
     private singleStartedPluginIds = new Set<string>();
+    private expandedSourceConfigKeys = new Set<string>();
     private pluginManifestCache?: { source: Record<string, PluginManifest>; plugins: PluginManifest[] };
+    private modalChromeEl?: HTMLElement;
+    private modalPageEl?: HTMLElement;
     private readonly renderBatchSize = 80;
     private readonly desktopPages: ManagerPage[] = SHARED_VAULTS_ENABLED
         ? ["plugins", "install", "sources", "transfer", "vaults", "ribbon", "troubleshoot"]
         : ["plugins", "install", "sources", "transfer", "ribbon", "troubleshoot"];
+
+    private get pageEl(): HTMLElement {
+        return this.modalPageEl ?? this.contentEl;
+    }
 
     private nextRenderGeneration(): number {
         return ++this.renderGeneration;
@@ -269,14 +276,14 @@ export class ManagerModal extends Modal {
     }
 
     private syncPluginOverviewLayoutClass() {
-        this.contentEl.removeClass("manager-plugin-overview--list");
-        this.contentEl.removeClass("manager-plugin-overview--two-column");
-        this.contentEl.addClass(`manager-plugin-overview--${this.getPluginOverviewLayout()}`);
+        this.pageEl.removeClass("manager-plugin-overview--list");
+        this.pageEl.removeClass("manager-plugin-overview--two-column");
+        this.pageEl.addClass(`manager-plugin-overview--${this.getPluginOverviewLayout()}`);
     }
 
     private clearPluginOverviewLayoutClass() {
-        this.contentEl.removeClass("manager-plugin-overview--list");
-        this.contentEl.removeClass("manager-plugin-overview--two-column");
+        this.pageEl.removeClass("manager-plugin-overview--list");
+        this.pageEl.removeClass("manager-plugin-overview--two-column");
     }
 
     private getPluginUpdateCount(statusMap?: Record<string, { hasUpdate?: boolean }>): number {
@@ -1019,7 +1026,7 @@ export class ManagerModal extends Modal {
     }
 
     private refreshSinglePluginUpdateUi(pluginId: string) {
-        const card = Array.from(this.contentEl.querySelectorAll<HTMLElement>(".manager-plugin-card[data-plugin-id]"))
+        const card = Array.from(this.pageEl.querySelectorAll<HTMLElement>(".manager-plugin-card[data-plugin-id]"))
             .find((el) => el.getAttribute("data-plugin-id") === pluginId);
         if (!card) return;
 
@@ -1061,7 +1068,7 @@ export class ManagerModal extends Modal {
     }
 
     private findPluginCard(pluginId: string): HTMLElement | null {
-        return Array.from(this.contentEl.querySelectorAll<HTMLElement>(".manager-plugin-card[data-plugin-id]"))
+        return Array.from(this.pageEl.querySelectorAll<HTMLElement>(".manager-plugin-card[data-plugin-id]"))
             .find((el) => el.getAttribute("data-plugin-id") === pluginId) ?? null;
     }
 
@@ -1297,7 +1304,7 @@ export class ManagerModal extends Modal {
             void this.reloadShowData();
             return;
         }
-        const visiblePluginIds = Array.from(this.contentEl.querySelectorAll<HTMLElement>(".manager-plugin-card[data-plugin-id]"))
+        const visiblePluginIds = Array.from(this.pageEl.querySelectorAll<HTMLElement>(".manager-plugin-card[data-plugin-id]"))
             .map((card) => card.getAttribute("data-plugin-id"))
             .filter((pluginId): pluginId is string => Boolean(pluginId));
         visiblePluginIds.forEach((pluginId) => this.refreshPluginCard(pluginId));
@@ -1493,41 +1500,6 @@ export class ManagerModal extends Modal {
         return this.isPluginEnabledForDisplay(pluginId);
     }
 
-    private getBulkToggleTarget(): boolean {
-        const targets = this.displayPlugins.filter((plugin) => plugin.id !== this.manager.manifest.id);
-        if (targets.length === 0) return true;
-        return !targets.every((plugin) => this.isManagedPluginEnabled(plugin.id));
-    }
-
-    private async setDisplayedPluginsEnabled(targetEnabled: boolean) {
-        for (const plugin of this.displayPlugins) {
-            if (plugin.id === this.manager.manifest.id) continue;
-            const managerPlugin = this.settings.Plugins.find((item) => item.id === plugin.id);
-            if (!managerPlugin) continue;
-            const isEnabled = this.isManagedPluginEnabled(plugin.id);
-            if (isEnabled === targetEnabled) continue;
-
-            if (this.settings.DELAY) {
-                managerPlugin.enabled = targetEnabled;
-                if (targetEnabled) {
-                    await this.appPlugins.enablePlugin(plugin.id);
-                } else {
-                    await this.appPlugins.disablePlugin(plugin.id);
-                }
-            } else if (targetEnabled) {
-                managerPlugin.enabled = true;
-                await this.appPlugins.enablePluginAndSave(plugin.id);
-            } else {
-                managerPlugin.enabled = false;
-                await this.appPlugins.disablePluginAndSave(plugin.id);
-            }
-            this.singleStartedPluginIds.delete(plugin.id);
-            await this.manager.savePluginAndExport(plugin.id);
-        }
-        Commands(this.app, this.manager);
-        await this.reloadShowData();
-    }
-
     private getSelectedManagerPlugins(): ManagerPlugin[] {
         return this.settings.Plugins.filter((plugin) => this.bulkSelectedPluginIds.has(plugin.id));
     }
@@ -1556,6 +1528,27 @@ export class ManagerModal extends Modal {
         if (!value) this.bulkSelectedPluginIds.clear();
         this.applyEditingStyle();
         this.renderContent();
+        if (Platform.isMobileApp) this.showHeadMobile();
+    }
+
+    private async setEditorMode(value: boolean) {
+        if (value && this.activePage !== "plugins") return;
+        if (this.editorMode === value) {
+            this.applyEditingStyle();
+            this.syncPageChrome();
+            return;
+        }
+        this.editorMode = value;
+        if (value && this.bulkEditMode) {
+            this.bulkEditMode = false;
+            this.bulkSelectedPluginIds.clear();
+        }
+        this.applyEditingStyle();
+        if (!value) {
+            await this.refreshFilterOptions(true);
+        } else {
+            this.renderContent();
+        }
         if (Platform.isMobileApp) this.showHeadMobile();
     }
 
@@ -1650,20 +1643,7 @@ export class ManagerModal extends Modal {
 
     private showBulkMoreMenu(event: MouseEvent) {
         const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
-        const selectedCount = this.getBulkSelectedCount();
-        const disabled = selectedCount === 0;
         const menu = new Menu();
-        menu.addItem((item) => item
-            .setTitle(t("通用_启用_文本"))
-            .setIcon("power")
-            .setDisabled(disabled)
-            .onClick(() => { void this.applyBulkEnabled(true); }));
-        menu.addItem((item) => item
-            .setTitle(t("通用_禁用_文本"))
-            .setIcon("power-off")
-            .setDisabled(disabled)
-            .onClick(() => { void this.applyBulkEnabled(false); }));
-        menu.addSeparator();
         menu.addItem((item) => item
             .setTitle(t("批量编辑_全选当前列表"))
             .setIcon("list-checks")
@@ -1693,12 +1673,36 @@ export class ManagerModal extends Modal {
 
         const actions = bar.createDiv("manager-bulk-bar__actions");
         this.createBulkActionButton(actions, "list-checks", t("批量编辑_全选当前列表"), () => this.selectDisplayedPlugins(), displayedCount === 0);
+        this.createBulkActionButton(actions, "power", t("通用_启用_文本"), () => { void this.applyBulkEnabled(true); }, disabled);
+        this.createBulkActionButton(actions, "power-off", t("通用_禁用_文本"), () => { void this.applyBulkEnabled(false); }, disabled);
         this.createBulkActionButton(actions, "folder-tree", t("批量编辑_设置分组"), (event) => this.showBulkGroupMenu(event), disabled);
         this.createBulkActionButton(actions, "tag", t("批量编辑_添加标签"), (event) => this.showBulkTagMenu(event, "add"), disabled);
         this.createBulkActionButton(actions, "tag-x", t("批量编辑_移除标签"), (event) => this.showBulkTagMenu(event, "remove"), disabled);
         if (this.settings.DELAY) this.createBulkActionButton(actions, "timer", t("批量编辑_设置延迟"), (event) => this.showBulkDelayMenu(event), disabled);
         this.createBulkActionButton(actions, "more-horizontal", t("管理器_更多操作_描述"), (event) => this.showBulkMoreMenu(event));
         this.createBulkActionButton(actions, "x", t("通用_完成_文本"), () => this.setBulkEditMode(false));
+    }
+
+    private renderEditorBar(container: HTMLElement) {
+        if (!this.editorMode) return;
+        const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
+        const canEditLayout = this.shouldRenderPluginLayoutSeparators();
+        const bar = container.createDiv("manager-bulk-bar manager-editor-bar");
+        const summary = bar.createDiv("manager-bulk-bar__summary");
+        const summaryIcon = summary.createSpan({ cls: "manager-bulk-bar__summary-icon" });
+        setIcon(summaryIcon, "pen-line");
+        const text = summary.createDiv("manager-bulk-bar__summary-text");
+        text.createSpan({ cls: "manager-bulk-bar__title", text: t("管理器_编辑模式_标题") });
+
+        const actions = bar.createDiv("manager-bulk-bar__actions");
+        if (canEditLayout) {
+            this.createBulkActionButton(actions, "separator-horizontal", t("管理器_布局_添加分割线"), () => { void this.addPluginLayoutSeparator(); });
+            this.createBulkActionButton(actions, "rotate-ccw", t("管理器_布局_按名称重置"), async () => {
+                if (!(await confirmWithModal(this.app, this.manager, t("管理器_布局_重置确认")))) return;
+                await this.resetPluginLayout();
+            });
+        }
+        this.createBulkActionButton(actions, "x", t("通用_完成编辑_文本"), () => { void this.setEditorMode(false); });
     }
 
     private updateBulkBar() {
@@ -1708,7 +1712,7 @@ export class ManagerModal extends Modal {
     }
 
     private refreshBulkSelectionUi() {
-        this.contentEl.querySelectorAll<HTMLElement>(".manager-plugin-card[data-plugin-id]").forEach((card) => {
+        this.pageEl.querySelectorAll<HTMLElement>(".manager-plugin-card[data-plugin-id]").forEach((card) => {
             const pluginId = card.getAttribute("data-plugin-id") || "";
             const selected = this.bulkSelectedPluginIds.has(pluginId);
             card.toggleClass("is-bulk-selected", selected);
@@ -1719,14 +1723,14 @@ export class ManagerModal extends Modal {
     }
 
     private syncPluginEmptyState() {
-        const existing = this.contentEl.querySelector<HTMLElement>(".manager-plugin-page__empty");
-        const hasCards = Boolean(this.contentEl.querySelector(".manager-plugin-card[data-plugin-id]"));
+        const existing = this.pageEl.querySelector<HTMLElement>(".manager-plugin-page__empty");
+        const hasCards = Boolean(this.pageEl.querySelector(".manager-plugin-card[data-plugin-id]"));
         if (hasCards) {
             existing?.remove();
             return;
         }
         if (existing) return;
-        const empty = this.contentEl.createDiv("bpm-empty-state manager-plugin-page__empty");
+        const empty = this.pageEl.createDiv("bpm-empty-state manager-plugin-page__empty");
         empty.setAttribute("role", "status");
         const icon = empty.createDiv("bpm-empty-state__icon");
         setIcon(icon, "search-x");
@@ -1791,13 +1795,19 @@ export class ManagerModal extends Modal {
 
     private async applyBulkEnabled(targetEnabled: boolean) {
         const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
-        const plugins = this.getSelectedManagerPlugins()
-            .filter((plugin) => plugin.id !== this.manager.manifest.id && !plugin.tags.includes(BPM_IGNORE_TAG));
+        const selectedPlugins = this.getSelectedManagerPlugins();
+        const plugins = selectedPlugins.filter((plugin) => plugin.id !== this.manager.manifest.id && !plugin.tags.includes(BPM_IGNORE_TAG));
         if (plugins.length === 0) {
             new Notice(t("批量编辑_无可操作插件"));
             return;
         }
-        if (!(await confirmWithModal(this.app, this.manager, t(targetEnabled ? "批量编辑_启用确认" : "批量编辑_禁用确认", { count: plugins.length })))) return;
+        if (!(await confirmBulkStatusChange(this.app, this.manager, {
+            targetEnabled,
+            selectedCount: selectedPlugins.length,
+            actionableCount: plugins.length,
+            skippedCount: Math.max(0, selectedPlugins.length - plugins.length),
+            pluginNames: plugins.map((plugin) => plugin.name || plugin.id),
+        }))) return;
         const progress = this.showInlineProgress(t("管理器_应用更改中_提示"));
         let processed = 0;
         for (const plugin of plugins) {
@@ -1823,13 +1833,6 @@ export class ManagerModal extends Modal {
         new Notice(t("批量编辑_已更新状态", { count: plugins.length }));
     }
 
-    private runDisplayedPluginsToggle() {
-        const targetEnabled = this.getBulkToggleTarget();
-        new DisableModal(this.app, this.manager, () => {
-            void this.setDisplayedPluginsEnabled(targetEnabled);
-        }).open();
-    }
-
     private showInlineProgress(text: string, subText?: string) {
         const baseText = subText ? `${text} ${subText}` : text;
         const notice = new Notice(baseText, 0);
@@ -1853,6 +1856,7 @@ export class ManagerModal extends Modal {
     private desktopActionWrapper?: HTMLElement;
     private desktopFilterWrapper?: HTMLElement;
     private bulkEditButtonEl?: HTMLButtonElement;
+    private editorButtonEl?: HTMLButtonElement;
     private pluginTabEl?: HTMLButtonElement;
     private installTabEl?: HTMLButtonElement;
     private sourcesTabEl?: HTMLButtonElement;
@@ -1960,6 +1964,7 @@ export class ManagerModal extends Modal {
         if (!modalEl) return;
         this.modalContainer = modalEl;
         modalEl.addClass("manager-container");
+        modalEl.addClass("manager-container--main");
         if (Platform.isMobileApp) modalEl.addClass("manager-container--mobile");
         // 靠上
         if (!this.settings.CENTER && !Platform.isMobileApp) modalEl.addClass("manager-container__top");
@@ -1967,15 +1972,24 @@ export class ManagerModal extends Modal {
 
         modalEl.getElementsByClassName("modal-close-button")[0]?.remove();
         this.titleEl.empty();
-        this.titleEl.parentElement?.addClass("manager-container__header");
-        this.contentEl.addClass("manager-item-container");
+        this.titleEl.parentElement?.addClass("manager-container__native-header");
+        this.contentEl.empty();
+        this.contentEl.addClass("manager-modal-shell-host");
+        this.contentEl.removeClass("manager-item-container");
+
+        const shell = this.contentEl.createDiv("manager-modal-shell");
+        const chromeEl = shell.createDiv("manager-modal-chrome");
+        this.modalChromeEl = chromeEl;
+        this.modalPageEl = shell.createDiv("manager-modal-page manager-item-container");
 
         if (Platform.isMobileApp) {
             this.showHeadMobile();
             return;
         }
 
-        const titleBar = this.titleEl.createDiv("manager-header");
+        chromeEl.empty();
+
+        const titleBar = chromeEl.createDiv("manager-header");
         const identity = titleBar.createDiv("manager-header__identity");
         const mark = identity.createDiv("manager-header__mark");
         mark.setAttribute("aria-hidden", "true");
@@ -1990,7 +2004,7 @@ export class ManagerModal extends Modal {
         this.updateStats();
 
         // [操作行]
-        const actionWrapper = this.titleEl.createDiv("manager-section manager-section--actions");
+        const actionWrapper = chromeEl.createDiv("manager-section manager-section--actions");
         this.desktopActionWrapper = actionWrapper;
         const actionContent = actionWrapper.createDiv("manager-section__content");
         actionContent.addClass("manager-section__content--actions");
@@ -2007,10 +2021,12 @@ export class ManagerModal extends Modal {
         const toolbar = actionContent.createDiv("manager-toolbar");
         const tabs = toolbar.createDiv("manager-toolbar__tabs");
         tabs.setAttribute("role", "tablist");
+        tabs.setAttribute("data-slot", "tabs-list");
         const createTab = (page: ManagerPage, label: string, icon: string, tooltip?: string) => {
             const tab = tabs.createEl("button", { cls: "manager-toolbar__tab" });
             tab.type = "button";
             tab.setAttribute("role", "tab");
+            tab.setAttribute("data-slot", "tabs-trigger");
             tab.setAttribute("aria-label", label);
             if (tooltip) {
                 tab.setAttribute("title", tooltip);
@@ -2061,16 +2077,6 @@ export class ManagerModal extends Modal {
         markTool(updateButton, "plugin", 10);
         this.preparePluginUpdateButton(updateButton);
 
-        // [操作行] 全选/全部取消当前列表
-        const toggleAllButton = new ButtonComponent(actionBar.controlEl);
-        markTool(toggleAllButton, "plugin", 30);
-        toggleAllButton.setIcon("list-checks");
-        toggleAllButton.setTooltip(this.manager.translator.t("管理器_全选取消_描述"));
-        this.bindLongPressTooltip(toggleAllButton.buttonEl, this.manager.translator.t("管理器_全选取消_描述"));
-        toggleAllButton.onClick(() => {
-            this.runDisplayedPluginsToggle();
-        });
-
         // [操作行] 重载插件
         const reloadButton = new ButtonComponent(actionBar.controlEl);
         markTool(reloadButton, "plugin", 40);
@@ -2106,31 +2112,18 @@ export class ManagerModal extends Modal {
 
         // [操作行] 编辑模式
         const editorButton = new ButtonComponent(actionBar.controlEl);
-        markTool(editorButton, "plugin", 50);
+        markTool(editorButton, "plugin", 30);
         if (this.editorMode) {
             editorButton.setIcon("pen-off");
         } else {
             editorButton.setIcon("pen");
         }
         editorButton.setTooltip(this.manager.translator.t("管理器_编辑模式_描述"));
+        editorButton.buttonEl.classList.toggle("is-active", this.editorMode);
+        this.editorButtonEl = editorButton.buttonEl;
         this.bindLongPressTooltip(editorButton.buttonEl, this.manager.translator.t("管理器_编辑模式_描述"));
-        editorButton.onClick(async () => {
-            this.editorMode = !this.editorMode;
-            if (this.editorMode && this.bulkEditMode) {
-                this.bulkEditMode = false;
-                this.bulkSelectedPluginIds.clear();
-            }
-            if (this.editorMode) {
-                editorButton.setIcon("pen-off");
-            } else {
-                editorButton.setIcon("pen");
-            }
-            this.applyEditingStyle();
-            if (!this.editorMode) {
-                await this.refreshFilterOptions(true);
-            } else {
-                this.renderContent();
-            }
+        editorButton.onClick(() => {
+            void this.setEditorMode(!this.editorMode);
         });
 
         if (this.isRibbonManagerEnabled()) {
@@ -2239,7 +2232,7 @@ export class ManagerModal extends Modal {
         }
 
         // [过滤行]
-        const filterWrapper = this.titleEl.createDiv("manager-section manager-section--filters");
+        const filterWrapper = chromeEl.createDiv("manager-section manager-section--filters");
         this.desktopFilterWrapper = filterWrapper;
         const filterContent = filterWrapper.createDiv("manager-section__content");
         filterContent.addClass("manager-section__content--filters");
@@ -2354,9 +2347,10 @@ export class ManagerModal extends Modal {
     private showHeadMobile() {
         const t = (k: string) => this.manager.translator.t(k);
         this.migratePersistedFilterValues();
-        this.titleEl.empty();
+        const chromeEl = this.modalChromeEl ?? this.titleEl;
+        chromeEl.empty();
 
-        const header = this.titleEl.createDiv("bpm-mobile-header");
+        const header = chromeEl.createDiv("bpm-mobile-header");
         const topRow = header.createDiv("bpm-mobile-header__top");
 
         const titleGroup = topRow.createDiv("bpm-mobile-header__identity");
@@ -2379,26 +2373,6 @@ export class ManagerModal extends Modal {
         const updateBtn = new ButtonComponent(topActions);
         this.preparePluginUpdateButton(updateBtn);
 
-        // 编辑模式
-        const editorBtn = new ButtonComponent(topActions);
-        editorBtn.setIcon(this.editorMode ? "pen-off" : "pen");
-        editorBtn.setTooltip(t("管理器_编辑模式_描述"));
-        this.bindLongPressTooltip(editorBtn.buttonEl, t("管理器_编辑模式_描述"));
-        editorBtn.onClick(async () => {
-            this.editorMode = !this.editorMode;
-            if (this.editorMode && this.bulkEditMode) {
-                this.bulkEditMode = false;
-                this.bulkSelectedPluginIds.clear();
-            }
-            this.applyEditingStyle();
-            if (!this.editorMode) {
-                await this.refreshFilterOptions(true);
-            } else {
-                this.renderContent();
-            }
-            this.showHeadMobile();
-        });
-
         const bulkBtn = new ButtonComponent(topActions);
         bulkBtn.setIcon(this.bulkEditMode ? "square-check-big" : "list-plus");
         bulkBtn.setTooltip(t("批量编辑_入口"));
@@ -2406,6 +2380,16 @@ export class ManagerModal extends Modal {
         this.bindLongPressTooltip(bulkBtn.buttonEl, t("批量编辑_入口"));
         bulkBtn.onClick(() => {
             this.setBulkEditMode(!this.bulkEditMode);
+        });
+
+        // 编辑模式
+        const editorBtn = new ButtonComponent(topActions);
+        editorBtn.setIcon(this.editorMode ? "pen-off" : "pen");
+        editorBtn.setTooltip(t("管理器_编辑模式_描述"));
+        editorBtn.buttonEl.toggleClass("is-active", this.editorMode);
+        this.bindLongPressTooltip(editorBtn.buttonEl, t("管理器_编辑模式_描述"));
+        editorBtn.onClick(() => {
+            void this.setEditorMode(!this.editorMode);
         });
 
         // 安装/返回
@@ -2430,9 +2414,6 @@ export class ManagerModal extends Modal {
             const menu = new Menu();
             menu.addItem((item) => item.setTitle(t("批量编辑_入口")).setIcon("list-plus").onClick(() => {
                 this.setBulkEditMode(!this.bulkEditMode);
-            }));
-            menu.addItem((item) => item.setTitle(t("管理器_全选取消_描述")).setIcon("list-checks").onClick(() => {
-                this.runDisplayedPluginsToggle();
             }));
             menu.addItem((item) => item.setTitle(t("排查_按钮_描述")).setIcon("search-check").onClick(() => {
                 this.activePage = "troubleshoot";
@@ -2702,12 +2683,6 @@ export class ManagerModal extends Modal {
             return btn;
         };
 
-        // 全选/全部取消按钮
-        const toggleAllBtn = createFooterBtn("list-checks", t("管理器_全选取消_描述"), () => {
-            this.runDisplayedPluginsToggle();
-        });
-        footer.appendChild(toggleAllBtn);
-
         const bulkBtn = createFooterBtn(this.bulkEditMode ? "square-check-big" : "list-plus", t("批量编辑_入口"), () => {
             this.setBulkEditMode(!this.bulkEditMode);
         });
@@ -2796,9 +2771,11 @@ export class ManagerModal extends Modal {
         const canEditLayout = this.editorMode && showSeparators;
         if (this.settings.DEBUG) console.log("[BPM] render showData uniquePlugins:", uniquePlugins.map(p => p.id).join(","));
 
-        if (this.settings.DEBUG) console.log("[BPM] render showData before loop, children:", this.contentEl.children.length);
+        if (this.settings.DEBUG) console.log("[BPM] render showData before loop, children:", this.pageEl.children.length);
         this.displayPlugins = [];
-        const bulkBarHost = this.bulkEditMode ? this.contentEl.createDiv("manager-bulk-bar-host") : null;
+        const modeBarHost = (this.bulkEditMode || this.editorMode) ? this.pageEl.createDiv("manager-bulk-bar-host") : null;
+        const bulkBarHost = this.bulkEditMode ? modeBarHost : null;
+        const editBarHost = this.editorMode ? modeBarHost : null;
         this.bulkBarHostEl = bulkBarHost ?? undefined;
         this.pluginCardControllers.clear();
         const renderedIds = new Set<string>();
@@ -2847,9 +2824,9 @@ export class ManagerModal extends Modal {
             } else {
                 pluginDir = normalizePath(`${basePath}/${cfgDir}/${rawDir}`);
             }
-            if (this.settings.DEBUG) console.log("[BPM] render item", plugin.id, "children before add:", this.contentEl.children.length);
+            if (this.settings.DEBUG) console.log("[BPM] render item", plugin.id, "children before add:", this.pageEl.children.length);
 
-            const itemEl = new Setting(this.contentEl);
+            const itemEl = new Setting(this.pageEl);
             renderedInBatch++;
             itemEl.settingEl.setAttr("data-plugin-id", plugin.id);
             itemEl.setClass("manager-item");
@@ -3822,13 +3799,14 @@ export class ManagerModal extends Modal {
                 }
             }
             if (this.settings.DEBUG) {
-                const cards = Array.from(this.contentEl.querySelectorAll(".manager-item"));
+                const cards = Array.from(this.pageEl.querySelectorAll(".manager-item"));
                 console.log("[BPM] render showData after loop, cards:", cards.length, "ids:", cards.map(el => el.getAttribute("data-plugin-id")).filter(Boolean).join(","));
             }
         }
         if (bulkBarHost) this.renderBulkBar(bulkBarHost);
+        if (editBarHost) this.renderEditorBar(editBarHost);
         if (renderedCount === 0) {
-            const empty = this.contentEl.createDiv("bpm-empty-state manager-plugin-page__empty");
+            const empty = this.pageEl.createDiv("bpm-empty-state manager-plugin-page__empty");
             empty.setAttribute("role", "status");
             const icon = empty.createDiv("bpm-empty-state__icon");
             setIcon(icon, "search-x");
@@ -3936,22 +3914,26 @@ export class ManagerModal extends Modal {
         const isVaults = this.activePage === "vaults";
         const isRibbon = this.activePage === "ribbon";
         const isTroubleshoot = this.activePage === "troubleshoot";
-        const showLayoutTools = isPlugins && this.editorMode && this.shouldRenderPluginLayoutSeparators();
+        if (!isPlugins && (this.bulkEditMode || this.editorMode)) {
+            this.bulkEditMode = false;
+            this.editorMode = false;
+            this.bulkSelectedPluginIds.clear();
+            this.modalContainer?.removeClass("manager-container--editing");
+            this.modalContainer?.removeClass("manager-container--bulk-editing");
+        }
+        const syncTabState = (tabEl: HTMLButtonElement | undefined, active: boolean) => {
+            tabEl?.classList.toggle("is-active", active);
+            tabEl?.setAttribute("aria-selected", `${active}`);
+            tabEl?.setAttribute("data-state", active ? "active" : "inactive");
+        };
         this.installMode = isInstallWorkspace;
-        this.pluginTabEl?.classList.toggle("is-active", isPlugins);
-        this.installTabEl?.classList.toggle("is-active", isInstallWorkspace);
-        this.sourcesTabEl?.classList.toggle("is-active", isSources);
-        this.transferTabEl?.classList.toggle("is-active", isTransfer);
-        this.vaultsTabEl?.classList.toggle("is-active", isVaults);
-        this.ribbonTabEl?.classList.toggle("is-active", isRibbon);
-        this.troubleshootTabEl?.classList.toggle("is-active", isTroubleshoot);
-        this.pluginTabEl?.setAttribute("aria-selected", `${isPlugins}`);
-        this.installTabEl?.setAttribute("aria-selected", `${isInstallWorkspace}`);
-        this.sourcesTabEl?.setAttribute("aria-selected", `${isSources}`);
-        this.transferTabEl?.setAttribute("aria-selected", `${isTransfer}`);
-        this.vaultsTabEl?.setAttribute("aria-selected", `${isVaults}`);
-        this.ribbonTabEl?.setAttribute("aria-selected", `${isRibbon}`);
-        this.troubleshootTabEl?.setAttribute("aria-selected", `${isTroubleshoot}`);
+        syncTabState(this.pluginTabEl, isPlugins);
+        syncTabState(this.installTabEl, isInstallWorkspace);
+        syncTabState(this.sourcesTabEl, isSources);
+        syncTabState(this.transferTabEl, isTransfer);
+        syncTabState(this.vaultsTabEl, isVaults);
+        syncTabState(this.ribbonTabEl, isRibbon);
+        syncTabState(this.troubleshootTabEl, isTroubleshoot);
         this.desktopActionWrapper?.classList.toggle("is-plugin-page", isPlugins);
         this.desktopActionWrapper?.classList.toggle("is-install-page", isInstall);
         this.desktopActionWrapper?.classList.toggle("is-sources-page", isSources);
@@ -3959,9 +3941,10 @@ export class ManagerModal extends Modal {
         this.desktopActionWrapper?.classList.toggle("is-vaults-page", isVaults);
         this.desktopActionWrapper?.classList.toggle("is-ribbon-page", isRibbon);
         this.desktopActionWrapper?.classList.toggle("is-troubleshoot-page", isTroubleshoot);
-        this.desktopActionWrapper?.classList.toggle("is-layout-editing", showLayoutTools);
+        this.desktopActionWrapper?.classList.remove("is-layout-editing");
         this.desktopActionWrapper?.classList.toggle("is-bulk-editing", isPlugins && this.bulkEditMode);
         this.bulkEditButtonEl?.classList.toggle("is-active", this.bulkEditMode);
+        this.editorButtonEl?.classList.toggle("is-active", isPlugins && this.editorMode);
         if (this.desktopFilterWrapper) {
             this.desktopFilterWrapper.classList.toggle("manager-display-none", !isPlugins);
         }
@@ -3981,9 +3964,12 @@ export class ManagerModal extends Modal {
             return;
         }
         this.activePage = page;
-        if (page !== "plugins" && this.bulkEditMode) {
-            this.bulkEditMode = false;
-            this.bulkSelectedPluginIds.clear();
+        if (page !== "plugins" && (this.bulkEditMode || this.editorMode)) {
+            if (this.bulkEditMode) {
+                this.bulkEditMode = false;
+                this.bulkSelectedPluginIds.clear();
+            }
+            this.editorMode = false;
             this.applyEditingStyle();
         }
         this.syncPageChrome();
@@ -4079,7 +4065,7 @@ export class ManagerModal extends Modal {
     }
 
     private renderPluginLayoutSeparator(title: string) {
-        const separator = this.contentEl.createDiv("manager-plugin-separator");
+        const separator = this.pageEl.createDiv("manager-plugin-separator");
         const lineStart = separator.createSpan({ cls: "manager-plugin-separator__line" });
         lineStart.setAttribute("aria-hidden", "true");
         const label = separator.createSpan({ cls: "manager-plugin-separator__label", text: title || this.manager.translator.t("管理器_布局_分割线") });
@@ -4120,7 +4106,7 @@ export class ManagerModal extends Modal {
 
     private renderPluginLayoutSeparatorEditor(layoutItem: PluginLayoutItem, index: number, layoutLength: number) {
         const t = (k: string) => this.manager.translator.t(k);
-        const card = this.contentEl.createDiv("manager-hidden-card manager-hidden-separator-card manager-layout-editable-card manager-plugin-separator-editor");
+        const card = this.pageEl.createDiv("manager-hidden-card manager-hidden-separator-card manager-layout-editable-card manager-plugin-separator-editor");
         card.setAttr("data-layout-id", layoutItem.id);
         this.bindPluginLayoutDragHandle(card, index, layoutItem.title || t("管理器_布局_分割线"));
 
@@ -4306,6 +4292,10 @@ export class ManagerModal extends Modal {
     private getBetaSources(): BetaSource[] {
         if (!Array.isArray(this.manager.settings.BETA_SOURCES)) this.manager.settings.BETA_SOURCES = [];
         return this.manager.settings.BETA_SOURCES;
+    }
+
+    private getSourceConfigKey(source: BetaSource): string {
+        return `${source.type}:${sanitizeRepo(source.repo || source.id).toLowerCase()}`;
     }
 
     private getPluginIdByRepo(repo: string): string | null {
@@ -4523,10 +4513,10 @@ export class ManagerModal extends Modal {
 
     private showHiddenPanel() {
         const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
-        this.contentEl.empty();
+        this.pageEl.empty();
         this.displayPlugins = [];
         let renderedCount = 0;
-        const page = this.contentEl.createDiv("manager-hidden-page");
+        const page = this.pageEl.createDiv("manager-hidden-page");
         const manifests = this.getUniquePluginManifests();
         const manifestById = new Map(manifests.map((plugin) => [plugin.id, plugin]));
         const managerPluginById = new Map(this.manager.settings.Plugins.map((plugin) => [plugin.id, plugin]));
@@ -4663,9 +4653,9 @@ export class ManagerModal extends Modal {
         }
     }
 
-    private showSourcesPanel(containerEl: HTMLElement = this.contentEl) {
+    private showSourcesPanel(containerEl: HTMLElement = this.pageEl) {
         const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
-        if (containerEl === this.contentEl) containerEl.empty();
+        if (containerEl === this.pageEl) containerEl.empty();
 
         const page = containerEl.createDiv("manager-source-page");
         const sources = this.getBetaSources();
@@ -4735,11 +4725,16 @@ export class ManagerModal extends Modal {
                 ? this.formatVersionWithDate(source.latestReleaseTag || source.latestVersion || "", source.latestReleasePublishedAt || source.latestPublishedAt)
                 : latestVersion;
             const hasUpdate = this.sourceHasUpdate(source);
+            const sourceKey = this.getSourceConfigKey(source);
+            const isConfigExpanded = this.expandedSourceConfigKeys.has(sourceKey);
+            const configRegionId = `manager-source-config-${sourceKey.replace(/[^a-z0-9_-]+/gi, "-")}`;
 
             const card = list.createDiv("manager-source-card");
             card.setAttribute("data-source-repo", source.repo);
             card.toggleClass("has-update", hasUpdate);
             card.toggleClass("has-error", Boolean(source.error));
+            card.toggleClass("is-config-expanded", isConfigExpanded);
+            card.toggleClass("is-config-collapsed", !isConfigExpanded);
 
             const cardMain = card.createDiv("manager-source-card__main");
             const cardHeader = cardMain.createDiv("manager-source-card__header");
@@ -4753,7 +4748,8 @@ export class ManagerModal extends Modal {
                 title: `https://github.com/${source.repo}`,
             });
 
-            const chips = cardHeader.createDiv("manager-source-card__chips");
+            const headerActions = cardHeader.createDiv("manager-source-card__header-actions");
+            const chips = headerActions.createDiv("manager-source-card__chips");
             chips.appendChild(createSpan({
                 text: source.type === "plugin" ? t("来源_类型_插件") : t("来源_类型_主题"),
                 cls: "manager-source-item__chip",
@@ -4780,6 +4776,24 @@ export class ManagerModal extends Modal {
                 chips.appendChild(createSpan({ text: t("来源_有更新"), cls: "manager-source-item__chip is-update" }));
             }
 
+            const configToggleLabel = `${isConfigExpanded ? t("Ribbon_隐藏") : t("Ribbon_显示")} ${t("导入导出_配置短标签")}`;
+            const configToggle = headerActions.createEl("button", { cls: "manager-source-card__config-toggle" });
+            configToggle.setAttribute("type", "button");
+            configToggle.setAttribute("aria-expanded", String(isConfigExpanded));
+            configToggle.setAttribute("aria-controls", configRegionId);
+            configToggle.setAttribute("aria-label", configToggleLabel);
+            configToggle.setAttribute("title", configToggleLabel);
+            const configToggleIcon = configToggle.createSpan("manager-source-card__config-toggle-icon");
+            setIcon(configToggleIcon, isConfigExpanded ? "chevron-up" : "chevron-down");
+            configToggle.addEventListener("click", () => {
+                if (isConfigExpanded) {
+                    this.expandedSourceConfigKeys.delete(sourceKey);
+                } else {
+                    this.expandedSourceConfigKeys.add(sourceKey);
+                }
+                this.renderContent();
+            });
+
             const checkedText = source.lastChecked ? new Date(source.lastChecked).toLocaleString() : notCheckedText;
             const metaGrid = cardMain.createDiv("manager-source-card__meta-grid");
             const createMeta = (label: string, value: string, iconName: string, extraCls?: string) => {
@@ -4800,6 +4814,10 @@ export class ManagerModal extends Modal {
             }
 
             const controls = card.createDiv("manager-source-card__controls");
+            controls.id = configRegionId;
+            controls.setAttribute("role", "region");
+            controls.setAttribute("aria-label", configToggleLabel);
+            controls.toggleAttribute("hidden", !isConfigExpanded);
             const strategyPanel = controls.createDiv("manager-source-card__control-panel manager-source-card__control-panel--strategy");
             const updatePanel = controls.createDiv("manager-source-card__control-panel manager-source-card__control-panel--update");
             const strategyGroup = strategyPanel.createDiv("manager-source-card__control-group manager-source-card__control-group--strategy");
@@ -4988,7 +5006,7 @@ export class ManagerModal extends Modal {
 
     // 安装面板
     private showInstallPanel() {
-        this.contentEl.empty();
+        this.pageEl.empty();
         const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
         const repo = this.getNormalizedInstallRepo();
         const repoIsValid = this.isValidInstallRepo(repo);
@@ -4998,15 +5016,21 @@ export class ManagerModal extends Modal {
         const versionLabel = this.installVersion || t("管理器_安装_版本_默认最新");
         const sources = this.getBetaSources();
         const stats = this.getSourceStats(sources);
-        const workspace = this.contentEl.createDiv("manager-repo-page");
+        const workspace = this.pageEl.createDiv("manager-repo-page");
         const toolbar = workspace.createDiv("manager-repo-page__toolbar");
         const switcher = toolbar.createDiv("manager-repo-page__switcher");
+        switcher.setAttribute("role", "tablist");
+        switcher.setAttribute("data-slot", "tabs-list");
         const createWorkspaceButton = (page: "install" | "sources", icon: string, label: string, count?: number) => {
             const button = switcher.createEl("button", { cls: "manager-repo-page__switch" });
             const selected = this.activePage === page;
             button.type = "button";
+            button.setAttribute("role", "tab");
+            button.setAttribute("data-slot", "tabs-trigger");
             button.toggleClass("is-active", selected);
             button.setAttribute("aria-pressed", `${selected}`);
+            button.setAttribute("aria-selected", `${selected}`);
+            button.setAttribute("data-state", selected ? "active" : "inactive");
             const iconEl = button.createSpan({ cls: "manager-repo-page__switch-icon" });
             setIcon(iconEl, icon);
             button.createSpan({ cls: "manager-repo-page__switch-label", text: label });
@@ -5051,11 +5075,17 @@ export class ManagerModal extends Modal {
         typeSetting.settingEl.addClass("manager-install__setting");
         typeSetting.controlEl.addClass("manager-install__type-control");
         const typeSegment = typeSetting.controlEl.createDiv("manager-install__segmented");
+        typeSegment.setAttribute("role", "tablist");
+        typeSegment.setAttribute("data-slot", "tabs-list");
         const createTypeButton = (type: "plugin" | "theme", icon: string, label: string) => {
             const button = typeSegment.createEl("button", { cls: "manager-install__segment" });
             button.type = "button";
+            button.setAttribute("role", "tab");
+            button.setAttribute("data-slot", "tabs-trigger");
             button.toggleClass("is-active", this.installType === type);
             button.setAttribute("aria-pressed", `${this.installType === type}`);
+            button.setAttribute("aria-selected", `${this.installType === type}`);
+            button.setAttribute("data-state", this.installType === type ? "active" : "inactive");
             const iconEl = button.createSpan({ cls: "manager-install__segment-icon" });
             setIcon(iconEl, icon);
             button.createSpan({ text: label });
@@ -5403,13 +5433,13 @@ export class ManagerModal extends Modal {
             this.activePage = "plugins";
             this.installMode = false;
             this.syncPageChrome();
-            this.contentEl.empty();
+            this.pageEl.empty();
             await this.showData(renderGeneration);
             return;
         }
 
-        this.contentEl.empty();
-        const page = this.contentEl.createDiv("manager-ribbon-page ribbon-manager-modal");
+        this.pageEl.empty();
+        const page = this.pageEl.createDiv("manager-ribbon-page ribbon-manager-modal");
         page.createDiv({
             cls: "manager-ribbon-page__loading",
             text: this.manager.translator.t("Ribbon_标题"),
@@ -5422,11 +5452,11 @@ export class ManagerModal extends Modal {
     }
 
     private showTroubleshootPanel() {
-        this.contentEl.empty();
+        this.pageEl.empty();
         if (!this.troubleshootPanel) {
             this.troubleshootPanel = new TroubleshootPanel(this.app, this.manager, () => this.updateStats());
         }
-        this.troubleshootPanel.display(this.contentEl);
+        this.troubleshootPanel.display(this.pageEl);
     }
 
     private renderTransferCardHeader(card: HTMLElement, icon: string, title: string, desc: string) {
@@ -5596,7 +5626,7 @@ export class ManagerModal extends Modal {
 
     private updateTransferSelectionSummary() {
         const setValue = (key: string, value: number) => {
-            const el = this.contentEl.querySelector<HTMLElement>(`[data-transfer-summary-value="${key}"]`);
+            const el = this.pageEl.querySelector<HTMLElement>(`[data-transfer-summary-value="${key}"]`);
             if (el) el.setText(`${value}`);
         };
         setValue("selected-plugins", this.transferSelectedPluginIds.size);
@@ -6101,11 +6131,18 @@ export class ManagerModal extends Modal {
         const row = container.createDiv("manager-transfer-strategy");
         row.createDiv({ cls: "manager-transfer-strategy__label", text: t("导入导出_版本策略") });
         const controls = row.createDiv("manager-transfer-strategy__controls");
+        controls.setAttribute("role", "tablist");
+        controls.setAttribute("data-slot", "tabs-list");
         const createButton = (strategy: "latest" | "package", icon: string, label: string) => {
             const button = controls.createEl("button", { cls: "manager-transfer-segment" });
+            const selected = this.transferImportOptions.installVersionStrategy === strategy;
             button.type = "button";
-            button.toggleClass("is-active", this.transferImportOptions.installVersionStrategy === strategy);
-            button.setAttribute("aria-pressed", `${this.transferImportOptions.installVersionStrategy === strategy}`);
+            button.setAttribute("role", "tab");
+            button.setAttribute("data-slot", "tabs-trigger");
+            button.toggleClass("is-active", selected);
+            button.setAttribute("aria-pressed", `${selected}`);
+            button.setAttribute("aria-selected", `${selected}`);
+            button.setAttribute("data-state", selected ? "active" : "inactive");
             const iconEl = button.createSpan({ cls: "manager-transfer-segment__icon" });
             setIcon(iconEl, icon);
             button.createSpan({ text: label });
@@ -6184,9 +6221,9 @@ export class ManagerModal extends Modal {
     }
 
     private async showTransferPanel(renderGeneration = this.renderGeneration) {
-        this.contentEl.empty();
+        this.pageEl.empty();
         const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
-        const page = this.contentEl.createDiv("manager-transfer");
+        const page = this.pageEl.createDiv("manager-transfer");
         const plugins = this.getTransferPluginItems();
         const themes = await this.getTransferThemeItems();
         const pluginConfigs = await this.getTransferPluginConfigItems(plugins);
@@ -6720,14 +6757,14 @@ export class ManagerModal extends Modal {
             this.activePage = "plugins";
             this.installMode = false;
             this.syncPageChrome();
-            this.contentEl.empty();
+            this.pageEl.empty();
             await this.showData(renderGeneration);
             return;
         }
 
-        this.contentEl.empty();
+        this.pageEl.empty();
         const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
-        const page = this.contentEl.createDiv("manager-vault-share");
+        const page = this.pageEl.createDiv("manager-vault-share");
 
         if (Platform.isMobileApp || !isSharedVaultFsAvailable()) {
             this.renderVaultEmpty(page, "monitor-x", t("共享库_桌面端限定_标题"), t("共享库_桌面端限定_说明"));
@@ -6777,7 +6814,7 @@ export class ManagerModal extends Modal {
     private renderContent() {
         this.ensureAllowedActivePage();
         const renderGeneration = this.nextRenderGeneration();
-        this.contentEl.empty();
+        this.pageEl.empty();
         this.clearPluginOverviewLayoutClass();
         if (this.activePage === "ribbon") {
             void this.showRibbonPanel(renderGeneration);
@@ -6808,10 +6845,10 @@ export class ManagerModal extends Modal {
 
     public async reloadShowData() {
         this.ensureAllowedActivePage();
-        if (this.settings.DEBUG) console.log("[BPM] reloadShowData start, children before empty:", this.contentEl.children.length);
+        if (this.settings.DEBUG) console.log("[BPM] reloadShowData start, children before empty:", this.pageEl.children.length);
         this.clearScheduledSearchRender();
         const renderGeneration = this.nextRenderGeneration();
-        const modalElement: HTMLElement = this.contentEl;
+        const modalElement: HTMLElement = this.pageEl;
         const scrollTop = modalElement.scrollTop;
         modalElement.empty();
         this.clearPluginOverviewLayoutClass();
@@ -6838,11 +6875,11 @@ export class ManagerModal extends Modal {
             if (!this.isRenderCurrent(renderGeneration, "plugins")) return;
             modalElement.scrollTo(0, scrollTop);
         }
-        if (this.settings.DEBUG) console.log("[BPM] reloadShowData end, children after render:", this.contentEl.children.length);
+        if (this.settings.DEBUG) console.log("[BPM] reloadShowData end, children after render:", this.pageEl.children.length);
     }
 
     private async refreshFilterOptions(preserveScroll = false) {
-        const scrollTop = preserveScroll ? this.contentEl.scrollTop : 0;
+        const scrollTop = preserveScroll ? this.pageEl.scrollTop : 0;
         // 重新计算并刷新分组/标签/延迟下拉的计数
         if (this.groupMultiSelect) {
             const groups = this.getGroupFilterOptions(this.manager.translator.t("筛选_全部_描述"));
@@ -6857,7 +6894,7 @@ export class ManagerModal extends Modal {
             this.delayMultiSelect.refreshOptions(delays, this.getDelayFilterValues());
         }
         await this.reloadShowData();
-        if (preserveScroll) this.contentEl.scrollTo({ top: scrollTop });
+        if (preserveScroll) this.pageEl.scrollTo({ top: scrollTop });
     }
 
     public async refreshRibbonFeatureAvailability() {
@@ -6892,6 +6929,8 @@ export class ManagerModal extends Modal {
             void this.manager.saveSettings();
         }
         this.contentEl.empty();
+        this.modalChromeEl = undefined;
+        this.modalPageEl = undefined;
         if (this.manager.ribbonModal === this.ribbonPage) this.manager.ribbonModal = null;
         if (this.modalContainer) this.modalContainer.removeClass("manager-container--editing");
         if (this.modalContainer) this.modalContainer.removeClass("manager-container--bulk-editing"); 

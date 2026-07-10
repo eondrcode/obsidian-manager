@@ -2231,7 +2231,7 @@ body.theme-dark {
     gap: 12px;
     height: 50px;
     min-height: 50px;
-    padding: 0 16px;
+    padding: 0;
     overflow: hidden;
 }
 
@@ -3182,7 +3182,7 @@ body.theme-dark {
     justify-content: space-between;
     gap: 10px;
     min-width: 0;
-    padding: 6px;
+    padding: 8px;
     border: 1px solid var(--bpm-border);
     border-radius: var(--bpm-radius);
     background: color-mix(in srgb, var(--bpm-muted) 74%, var(--bpm-card));
@@ -5527,7 +5527,7 @@ body.theme-dark {
     justify-content: space-between;
     gap: 10px;
     min-height: 42px;
-    padding: 7px 8px;
+    padding: 8px;
     border: 1px solid color-mix(in srgb, var(--interactive-accent) 28%, var(--bpm-border));
     border-radius: var(--bpm-radius);
     background: color-mix(in srgb, var(--interactive-accent) 7%, var(--bpm-card));
@@ -5631,6 +5631,410 @@ body.theme-dark {
 .manager-bulk-bar__button-icon svg {
     width: 13px;
     height: 13px;
+}
+
+.manager-bulk-status-confirm {
+    --bpm-radius: var(--bpm-ui-radius);
+    --bpm-radius-sm: var(--bpm-ui-radius-sm);
+    --bpm-border: var(--bpm-ui-border);
+    --bpm-surface: var(--bpm-ui-surface);
+    --bpm-card: var(--bpm-ui-card);
+    --bpm-muted: var(--bpm-ui-muted);
+    --bpm-ring: var(--bpm-ui-ring);
+    --bpm-shadow: var(--bpm-ui-shadow);
+    --bpm-status-accent: var(--interactive-accent);
+    --bpm-status-accent-soft: color-mix(in srgb, var(--bpm-status-accent) 10%, var(--bpm-card));
+    display: flex;
+    flex-direction: column;
+    z-index: 225;
+    width: min(460px, calc(100vw - 40px));
+    min-width: min(360px, calc(100vw - 40px));
+    border: 1px solid var(--bpm-border);
+    border-radius: var(--bpm-ui-modal-radius);
+    background: var(--bpm-surface);
+    box-shadow: var(--bpm-ui-modal-shadow);
+    overflow: hidden;
+}
+
+.manager-bulk-status-confirm.is-disable {
+    --bpm-status-accent: var(--text-error);
+}
+
+.manager-bulk-status-confirm,
+.manager-bulk-status-confirm * {
+    box-sizing: border-box;
+}
+
+.manager-bulk-status-confirm .manager-container__header {
+    margin: 0;
+    padding: 0;
+    border-bottom: 1px solid var(--bpm-border);
+    background: linear-gradient(180deg,
+            color-mix(in srgb, var(--bpm-status-accent) 7%, var(--bpm-surface)),
+            var(--bpm-surface) 84%);
+}
+
+.manager-bulk-status-confirm .modal-title {
+    width: 100%;
+    padding: 0;
+}
+
+.manager-bulk-status-confirm__titlebar.setting-item {
+    align-items: center;
+    min-height: 58px;
+    margin: 0;
+    padding: 10px 14px;
+    border: 0;
+    background: transparent;
+}
+
+.manager-bulk-status-confirm__titlebar .setting-item-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+}
+
+.manager-bulk-status-confirm__titlebar .setting-item-control {
+    flex: 0 0 auto;
+    min-width: max-content;
+}
+
+.manager-bulk-status-confirm__title {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-width: 0;
+}
+
+.manager-bulk-status-confirm__title-icon,
+.manager-bulk-status-confirm__summary-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 var(--bpm-ui-icon-tile);
+    width: var(--bpm-ui-icon-tile);
+    height: var(--bpm-ui-icon-tile);
+    border: 1px solid color-mix(in srgb, var(--bpm-status-accent) 38%, var(--bpm-border));
+    border-radius: var(--bpm-radius-sm);
+    background: var(--bpm-status-accent-soft);
+    color: var(--bpm-status-accent);
+}
+
+.manager-bulk-status-confirm__title-icon svg,
+.manager-bulk-status-confirm__summary-icon svg {
+    width: var(--bpm-ui-icon-size);
+    height: var(--bpm-ui-icon-size);
+    stroke-width: 2.2;
+}
+
+.manager-bulk-status-confirm__title-text {
+    min-width: 0;
+}
+
+.manager-bulk-status-confirm__eyebrow {
+    color: var(--bpm-status-accent);
+    font-size: 10px;
+    font-weight: 750;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.manager-bulk-status-confirm__heading {
+    margin-top: 3px;
+    overflow: hidden;
+    color: var(--text-normal);
+    font-size: 15px;
+    font-weight: 750;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manager-bulk-status-confirm__titlebar .setting-item-description {
+    margin-top: 4px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.manager-bulk-status-confirm__close.clickable-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--bpm-ui-control-size);
+    height: var(--bpm-ui-control-size);
+    min-width: var(--bpm-ui-control-size);
+    min-height: var(--bpm-ui-control-size);
+    padding: 0;
+    border: 1px solid var(--bpm-border);
+    border-radius: var(--bpm-radius-sm);
+    background: var(--bpm-card);
+    color: var(--text-normal);
+    box-shadow: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+
+.manager-bulk-status-confirm__close.clickable-icon:hover {
+    border-color: color-mix(in srgb, var(--bpm-status-accent) 36%, var(--bpm-border));
+    background: var(--bpm-status-accent-soft);
+    color: var(--bpm-status-accent);
+}
+
+.manager-bulk-status-confirm__close.clickable-icon:active {
+    transform: translateY(1px);
+}
+
+.manager-bulk-status-confirm__body.manager-item-container {
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    background: var(--bpm-surface);
+}
+
+.manager-bulk-status-confirm__page {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    padding: 12px;
+}
+
+.manager-bulk-status-confirm__summary,
+.manager-bulk-status-confirm__metrics,
+.manager-bulk-status-confirm__preview,
+.manager-bulk-status-confirm__note {
+    border: 1px solid var(--bpm-border);
+    border-radius: var(--bpm-radius);
+    background: var(--bpm-card);
+    box-shadow: var(--bpm-shadow);
+}
+
+.manager-bulk-status-confirm__summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border-color: color-mix(in srgb, var(--bpm-status-accent) 32%, var(--bpm-border));
+    background: color-mix(in srgb, var(--bpm-status-accent) 7%, var(--bpm-card));
+}
+
+.manager-bulk-status-confirm__summary-text {
+    min-width: 0;
+}
+
+.manager-bulk-status-confirm__summary-title {
+    color: var(--text-normal);
+    font-size: 14px;
+    font-weight: 750;
+    line-height: 1.25;
+}
+
+.manager-bulk-status-confirm__summary-desc {
+    margin-top: 4px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.manager-bulk-status-confirm__metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 0;
+    overflow: hidden;
+}
+
+.manager-bulk-status-confirm__metric {
+    min-width: 0;
+    padding: 10px;
+    text-align: center;
+}
+
+.manager-bulk-status-confirm__metric:not(:last-child) {
+    border-right: 1px solid var(--bpm-border);
+}
+
+.manager-bulk-status-confirm__metric-value {
+    color: var(--bpm-status-accent);
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.1;
+}
+
+.manager-bulk-status-confirm__metric-label {
+    margin-top: 4px;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manager-bulk-status-confirm__metric.is-muted .manager-bulk-status-confirm__metric-value {
+    color: var(--text-muted);
+}
+
+.manager-bulk-status-confirm__preview {
+    padding: 10px;
+}
+
+.manager-bulk-status-confirm__preview-label {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.manager-bulk-status-confirm__plugin-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.manager-bulk-status-confirm__plugin {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    color: var(--text-normal);
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1.35;
+}
+
+.manager-bulk-status-confirm__plugin-icon {
+    display: inline-flex;
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+    color: var(--text-muted);
+}
+
+.manager-bulk-status-confirm__plugin-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.manager-bulk-status-confirm__plugin-name,
+.manager-bulk-status-confirm__plugin-more {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manager-bulk-status-confirm__plugin-more {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.manager-bulk-status-confirm__note {
+    display: flex;
+    gap: 8px;
+    padding: 10px;
+    background: color-mix(in srgb, var(--bpm-muted) 34%, var(--bpm-card));
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.manager-bulk-status-confirm__note-icon {
+    display: inline-flex;
+    flex: 0 0 15px;
+    width: 15px;
+    height: 15px;
+    margin-top: 1px;
+    color: var(--bpm-status-accent);
+}
+
+.manager-bulk-status-confirm__note-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+.manager-bulk-status-confirm__actions.setting-item {
+    min-height: auto;
+    margin: 0;
+    padding: 2px 0 0;
+    border: 0;
+    background: transparent;
+}
+
+.manager-bulk-status-confirm__actions .setting-item-info {
+    display: none;
+}
+
+.manager-bulk-status-confirm__actions .setting-item-control {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+.manager-bulk-status-confirm__actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 96px;
+    min-height: var(--bpm-ui-control-size);
+    padding: 0 12px;
+    border-radius: var(--bpm-radius-sm);
+    font-weight: 650;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+
+.manager-bulk-status-confirm__actions button:active {
+    transform: translateY(1px);
+}
+
+.manager-bulk-status-confirm__confirm {
+    border-color: color-mix(in srgb, var(--bpm-status-accent) 42%, var(--background-modifier-border));
+    background: var(--bpm-status-accent);
+    color: var(--text-on-accent);
+}
+
+.manager-bulk-status-confirm__confirm:hover {
+    border-color: var(--bpm-status-accent);
+    background: color-mix(in srgb, var(--bpm-status-accent) 86%, var(--background-primary));
+    color: var(--text-on-accent);
+}
+
+@media (max-width: 520px) {
+    .manager-bulk-status-confirm {
+        width: min(94vw, 460px);
+        min-width: 0;
+    }
+
+    .manager-bulk-status-confirm__titlebar.setting-item {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .manager-bulk-status-confirm__titlebar .setting-item-control {
+        justify-content: flex-end;
+        width: 100%;
+    }
+
+    .manager-bulk-status-confirm__metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .manager-bulk-status-confirm__metric:not(:last-child) {
+        border-right: 0;
+        border-bottom: 1px solid var(--bpm-border);
+    }
+
+    .manager-bulk-status-confirm__actions .setting-item-control {
+        flex-direction: column-reverse;
+    }
+
+    .manager-bulk-status-confirm__actions button {
+        width: 100%;
+        min-height: var(--bpm-ui-touch-size);
+    }
 }
 
 .manager-toolbar__tools .manager-tool.is-active,
@@ -6586,8 +6990,8 @@ body.theme-dark {
         gap: 8px;
         height: 50px;
         min-height: 50px;
-        padding-right: 12px;
-        padding-left: 12px;
+        padding-right: 0;
+        padding-left: 0;
     }
 
     .manager-header__stats {
@@ -8969,7 +9373,7 @@ body.theme-dark {
     gap: 12px;
     height: var(--bpm-ui-header-height);
     min-height: var(--bpm-ui-header-height);
-    padding: 0 16px;
+    padding: 0;
 }
 
 .manager-header__identity,
@@ -9633,7 +10037,7 @@ body.theme-dark {
 
 .manager-repo-page__toolbar {
     align-items: center;
-    padding: 6px;
+    padding: 8px;
     background: color-mix(in srgb, var(--bpm-muted) 74%, var(--bpm-card));
 }
 
@@ -9922,8 +10326,8 @@ body.theme-dark {
     .manager-header {
         height: var(--bpm-ui-header-height);
         min-height: var(--bpm-ui-header-height);
-        padding-right: 12px;
-        padding-left: 12px;
+        padding-right: 0;
+        padding-left: 0;
     }
 
     .manager-container .manager-section {
@@ -9932,6 +10336,277 @@ body.theme-dark {
         margin-right: 12px;
         margin-left: 12px;
     }
+}
+
+/* shadcn/ui Tabs parity */
+.manager-setting__tabs,
+.manager-toolbar__tabs,
+.manager-repo-page__switcher,
+.manager-install__segmented,
+.manager-transfer-strategy__controls {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-wrap: nowrap !important;
+    gap: 0;
+    width: fit-content !important;
+    max-width: 100%;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 3px !important;
+    border: 0 !important;
+    border-radius: 8px !important;
+    background: var(--background-secondary) !important;
+    color: var(--text-muted) !important;
+    box-shadow: none !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none;
+}
+
+.manager-setting__tabs {
+    flex: 0 0 auto !important;
+    border-bottom: 0 !important;
+}
+
+.manager-toolbar {
+    min-height: 36px;
+    height: 36px;
+}
+
+.manager-setting__content {
+    margin-top: 8px;
+}
+
+.manager-setting__tabs::-webkit-scrollbar,
+.manager-toolbar__tabs::-webkit-scrollbar,
+.manager-repo-page__switcher::-webkit-scrollbar,
+.manager-install__segmented::-webkit-scrollbar,
+.manager-transfer-strategy__controls::-webkit-scrollbar {
+    display: none;
+}
+
+.manager-setting__tabs-item,
+.manager-toolbar__tab,
+.manager-repo-page__switch,
+.manager-install__segment,
+.manager-transfer-segment {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    position: relative;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex: 1 1 0 !important;
+    gap: 6px;
+    width: auto !important;
+    min-width: max-content !important;
+    height: calc(100% - 1px) !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 4px 8px !important;
+    border: 1px solid transparent !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    color: var(--text-normal) !important;
+    box-shadow: none !important;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transform: none !important;
+    outline: 0;
+    transition: color 0.15s ease, box-shadow 0.15s ease;
+}
+
+body.theme-dark .manager-setting__tabs-item,
+body.theme-dark .manager-toolbar__tab,
+body.theme-dark .manager-repo-page__switch,
+body.theme-dark .manager-install__segment,
+body.theme-dark .manager-transfer-segment {
+    color: var(--text-muted) !important;
+}
+
+.manager-setting__tabs-item:hover,
+.manager-toolbar__tab:hover,
+.manager-repo-page__switch:hover,
+.manager-install__segment:hover,
+.manager-transfer-segment:hover {
+    border-color: transparent !important;
+    background: transparent !important;
+    color: var(--text-normal) !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+.manager-setting__tabs-item:first-child,
+.manager-setting__tabs-item:last-child {
+    border: 1px solid transparent !important;
+    border-radius: 6px !important;
+}
+
+.manager-setting__tabs-item_is-active,
+.manager-setting__tabs-item[data-state="active"],
+.manager-toolbar__tab.is-active,
+.manager-toolbar__tab[aria-selected="true"],
+.manager-toolbar__tab[data-state="active"],
+.manager-repo-page__switch.is-active,
+.manager-repo-page__switch[aria-pressed="true"],
+.manager-repo-page__switch[data-state="active"],
+.manager-install__segment.is-active,
+.manager-install__segment[aria-pressed="true"],
+.manager-install__segment[data-state="active"],
+.manager-transfer-segment.is-active,
+.manager-transfer-segment[aria-pressed="true"],
+.manager-transfer-segment[data-state="active"] {
+    border-color: transparent !important;
+    background: var(--background-primary) !important;
+    color: var(--text-normal) !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+    transform: none !important;
+}
+
+.manager-setting__tabs-item_is-active:hover,
+.manager-setting__tabs-item[data-state="active"]:hover,
+.manager-toolbar__tab.is-active:hover,
+.manager-toolbar__tab[aria-selected="true"]:hover,
+.manager-toolbar__tab[data-state="active"]:hover,
+.manager-repo-page__switch.is-active:hover,
+.manager-repo-page__switch[aria-pressed="true"]:hover,
+.manager-repo-page__switch[data-state="active"]:hover,
+.manager-install__segment.is-active:hover,
+.manager-install__segment[aria-pressed="true"]:hover,
+.manager-install__segment[data-state="active"]:hover,
+.manager-transfer-segment.is-active:hover,
+.manager-transfer-segment[aria-pressed="true"]:hover,
+.manager-transfer-segment[data-state="active"]:hover {
+    border-color: transparent !important;
+    background: var(--background-primary) !important;
+    color: var(--text-normal) !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+body.theme-dark .manager-setting__tabs-item_is-active,
+body.theme-dark .manager-setting__tabs-item[data-state="active"],
+body.theme-dark .manager-toolbar__tab.is-active,
+body.theme-dark .manager-toolbar__tab[aria-selected="true"],
+body.theme-dark .manager-toolbar__tab[data-state="active"],
+body.theme-dark .manager-repo-page__switch.is-active,
+body.theme-dark .manager-repo-page__switch[aria-pressed="true"],
+body.theme-dark .manager-repo-page__switch[data-state="active"],
+body.theme-dark .manager-install__segment.is-active,
+body.theme-dark .manager-install__segment[aria-pressed="true"],
+body.theme-dark .manager-install__segment[data-state="active"],
+body.theme-dark .manager-transfer-segment.is-active,
+body.theme-dark .manager-transfer-segment[aria-pressed="true"],
+body.theme-dark .manager-transfer-segment[data-state="active"] {
+    border-color: var(--background-modifier-border) !important;
+    background: color-mix(in srgb, var(--background-modifier-form-field) 30%, transparent) !important;
+    color: var(--text-normal) !important;
+}
+
+body.theme-dark .manager-setting__tabs-item_is-active:hover,
+body.theme-dark .manager-setting__tabs-item[data-state="active"]:hover,
+body.theme-dark .manager-toolbar__tab.is-active:hover,
+body.theme-dark .manager-toolbar__tab[aria-selected="true"]:hover,
+body.theme-dark .manager-toolbar__tab[data-state="active"]:hover,
+body.theme-dark .manager-repo-page__switch.is-active:hover,
+body.theme-dark .manager-repo-page__switch[aria-pressed="true"]:hover,
+body.theme-dark .manager-repo-page__switch[data-state="active"]:hover,
+body.theme-dark .manager-install__segment.is-active:hover,
+body.theme-dark .manager-install__segment[aria-pressed="true"]:hover,
+body.theme-dark .manager-install__segment[data-state="active"]:hover,
+body.theme-dark .manager-transfer-segment.is-active:hover,
+body.theme-dark .manager-transfer-segment[aria-pressed="true"]:hover,
+body.theme-dark .manager-transfer-segment[data-state="active"]:hover {
+    border-color: var(--background-modifier-border) !important;
+    background: color-mix(in srgb, var(--background-modifier-form-field) 30%, transparent) !important;
+    color: var(--text-normal) !important;
+}
+
+.manager-setting__tabs-item:active,
+.manager-toolbar__tab:active,
+.manager-repo-page__switch:active,
+.manager-install__segment:active,
+.manager-transfer-segment:active {
+    transform: none !important;
+}
+
+.manager-setting__tabs-item:focus-visible,
+.manager-toolbar__tab:focus-visible,
+.manager-repo-page__switch:focus-visible,
+.manager-install__segment:focus-visible,
+.manager-transfer-segment:focus-visible {
+    outline: 1px solid var(--interactive-accent) !important;
+    outline-offset: 0;
+    border-color: var(--interactive-accent) !important;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--interactive-accent) 50%, transparent) !important;
+}
+
+.manager-setting__tabs-item:disabled,
+.manager-setting__tabs-item[aria-disabled="true"],
+.manager-toolbar__tab:disabled,
+.manager-toolbar__tab[aria-disabled="true"],
+.manager-repo-page__switch:disabled,
+.manager-repo-page__switch[aria-disabled="true"],
+.manager-install__segment:disabled,
+.manager-install__segment[aria-disabled="true"],
+.manager-transfer-segment:disabled,
+.manager-transfer-segment[aria-disabled="true"] {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+.manager-toolbar__tab-label,
+.manager-repo-page__switch-label {
+    overflow: visible !important;
+    text-overflow: clip !important;
+}
+
+.manager-toolbar__tab-icon,
+.manager-toolbar__tab-icon svg,
+.manager-repo-page__switch-icon,
+.manager-repo-page__switch-icon svg,
+.manager-install__segment-icon,
+.manager-install__segment-icon svg,
+.manager-transfer-segment__icon,
+.manager-transfer-segment__icon svg {
+    flex-shrink: 0;
+    width: 16px !important;
+    height: 16px !important;
+    color: currentColor !important;
+    opacity: 1 !important;
+    pointer-events: none;
+    stroke-width: 2;
+}
+
+.manager-repo-page__switch-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    min-height: 18px;
+    padding: 0 5px;
+    border: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text-muted) 10%, transparent);
+    color: currentColor;
+    box-shadow: none;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 18px;
+}
+
+.manager-repo-page__switch.is-active .manager-repo-page__switch-count,
+.manager-repo-page__switch[data-state="active"] .manager-repo-page__switch-count {
+    background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+    color: currentColor;
 }
 
 /* Source subscription cards: separated identity, status, configuration, and actions. */
@@ -10006,7 +10681,61 @@ body.theme-dark {
 .manager-source-card__chips {
     justify-content: flex-end;
     align-content: flex-start;
+    flex: 1 1 auto;
+    min-width: 0;
     max-width: 430px;
+}
+
+.manager-source-card__header-actions {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
+}
+
+.manager-source-card__config-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 30px;
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    min-height: 30px;
+    padding: 0;
+    border: 1px solid var(--bpm-border);
+    border-radius: var(--bpm-radius-sm);
+    background: var(--bpm-card-muted);
+    color: var(--text-muted);
+    line-height: 1.2;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.manager-source-card.is-config-expanded .manager-source-card__config-toggle {
+    border-color: color-mix(in srgb, var(--interactive-accent) 32%, var(--bpm-border));
+    background: var(--bpm-accent-soft);
+    color: var(--text-accent);
+}
+
+.manager-source-card__config-toggle:hover,
+.manager-source-card__config-toggle:focus-visible {
+    border-color: color-mix(in srgb, var(--interactive-accent) 38%, var(--bpm-border));
+    background: var(--bpm-accent-soft);
+    color: var(--text-accent);
+    outline: none;
+}
+
+.manager-source-card__config-toggle-icon,
+.manager-source-card__config-toggle-icon svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+}
+
+.manager-source-card__config-toggle-label {
+    display: none;
 }
 
 .manager-source-card__meta-grid {
@@ -10047,6 +10776,10 @@ body.theme-dark {
     align-items: stretch;
     gap: 10px;
     padding-top: 10px;
+}
+
+.manager-source-card__controls[hidden] {
+    display: none !important;
 }
 
 .manager-source-card__control-panel {
@@ -10171,6 +10904,16 @@ body.theme-dark {
     .manager-source-card__chips {
         justify-content: flex-start;
         max-width: none;
+    }
+
+    .manager-source-card__header-actions {
+        align-items: flex-start;
+        justify-content: space-between;
+        width: 100%;
+    }
+
+    .manager-source-card__config-toggle {
+        width: 30px;
     }
 
     .manager-source-card__meta-grid {
@@ -11130,6 +11873,106 @@ body.theme-dark {
     }
 }
 
+/* Unified item/card border: match source install/source subscription item surfaces. */
+.manager-container,
+.manager-tag-editor.manager-editor__container,
+.manager-setting-tag__container,
+.manager-taxonomy-setting,
+.ribbon-manager-modal,
+.manager-version-picker {
+    --bpm-unified-item-border: color-mix(in srgb, var(--bpm-border, var(--background-modifier-border)) 70%, transparent);
+    --bpm-unified-item-border-hover: color-mix(in srgb, var(--text-muted) 28%, var(--bpm-border, var(--background-modifier-border)));
+    --bpm-unified-item-bg: color-mix(in srgb, var(--bpm-card, var(--background-primary)) 94%, var(--bpm-surface, var(--background-secondary)));
+    --bpm-unified-item-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --bpm-unified-item-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.07);
+}
+
+.manager-container:not(.manager-container--mobile) .manager-item-container .setting-item,
+.manager-container .manager-item,
+.manager-container .manager-install > .manager-install__setting.setting-item,
+.manager-repo-page__toolbar,
+.manager-repo-page__header,
+.manager-source-page__toolbar,
+.manager-source-card:not(.has-update):not(.has-error),
+.manager-hidden-toolbar,
+.manager-hidden-card,
+.manager-transfer-card,
+.manager-transfer-result,
+.ribbon-manager-modal .draggable-item,
+.manager-install__history,
+.manager-install__release,
+.manager-troubleshoot__header,
+.manager-troubleshoot__stage,
+.manager-troubleshoot__feedback,
+.manager-troubleshoot__start,
+.manager-troubleshoot__result,
+.manager-troubleshoot__flow,
+.manager-troubleshoot__metric,
+.manager-troubleshoot__info-card,
+.manager-troubleshoot__plugin-list,
+.manager-tag-editor__item.setting-item,
+.manager-tag-editor__add-panel.setting-item,
+.manager-tag-editor__add-trigger.setting-item,
+.manager-setting-tag__item.setting-item,
+.manager-taxonomy-setting__row.setting-item {
+    border: 1px solid var(--bpm-unified-item-border);
+    border-radius: var(--bpm-radius, var(--bpm-ui-radius));
+    background: var(--bpm-unified-item-bg);
+    box-shadow: var(--bpm-unified-item-shadow);
+}
+
+.manager-container:not(.manager-container--mobile) .manager-item-container .setting-item:hover,
+.manager-container .manager-item:hover,
+.manager-container .manager-install > .manager-install__setting.setting-item:hover,
+.manager-repo-page__toolbar:hover,
+.manager-repo-page__header:hover,
+.manager-source-page__toolbar:hover,
+.manager-source-card:not(.has-update):not(.has-error):hover,
+.manager-hidden-toolbar:hover,
+.manager-hidden-card:hover,
+.manager-transfer-card:hover,
+.manager-transfer-result:hover,
+.ribbon-manager-modal .draggable-item:hover,
+.manager-install__history:hover,
+.manager-install__release:hover,
+.manager-troubleshoot__header:hover,
+.manager-troubleshoot__stage:hover,
+.manager-troubleshoot__feedback:hover,
+.manager-troubleshoot__start:hover,
+.manager-troubleshoot__result:hover,
+.manager-troubleshoot__flow:hover,
+.manager-troubleshoot__metric:hover,
+.manager-troubleshoot__info-card:hover,
+.manager-troubleshoot__plugin-list:hover,
+.manager-tag-editor__item.setting-item:hover,
+.manager-tag-editor__add-panel.setting-item:hover,
+.manager-tag-editor__add-trigger.setting-item:hover,
+.manager-setting-tag__item.setting-item:hover,
+.manager-taxonomy-setting__row.setting-item:hover {
+    border-color: var(--bpm-unified-item-border-hover);
+    box-shadow: var(--bpm-unified-item-shadow-hover);
+}
+
+.manager-source-card.has-update,
+.manager-source-card.has-error,
+.manager-container .manager-plugin-card.is-enabled,
+.manager-container .manager-plugin-card.is-disabled,
+.manager-container .manager-plugin-card.has-update,
+.manager-container .manager-plugin-card.has-update-problem:not(.has-update),
+.manager-container .manager-plugin-card.is-self,
+.manager-tag-editor__item.is-assigned,
+.manager-setting-tag__item.is-used,
+.manager-taxonomy-setting__row.is-used {
+    border-color: var(--bpm-unified-item-border);
+    border-left-width: 1px;
+}
+
+.manager-tag-editor__item.is-editing {
+    box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 42%, transparent),
+        var(--bpm-unified-item-shadow);
+}
+
 /* Keep overview filter menus above the plugin list instead of clipping inside the filter bar. */
 .manager-container .manager-section.manager-section--filters,
 .manager-container .manager-section.manager-section--filters .manager-section__content,
@@ -11184,4 +12027,147 @@ body.theme-dark {
 .manager-container--mobile .bpm-mobile-header__filters.is-filter-menu-open {
     overflow: visible;
     z-index: 90;
+}
+
+/* Main manager modal: use a custom shell instead of Obsidian's fixed header/content split. */
+.manager-container.manager-container--main {
+    height: min(86vh, 820px);
+    max-height: calc(100vh - 48px);
+    overflow: hidden;
+}
+
+.manager-container.manager-container--main.manager-container__top {
+    max-height: calc(100vh - 120px);
+}
+
+.manager-container.manager-container--main .manager-container__native-header,
+.manager-container.manager-container--main .modal-header.manager-container__native-header,
+.manager-container.manager-container--main .modal-title.manager-container__native-header {
+    display: none !important;
+    margin: 0 !important;
+    border: 0 !important;
+    padding: 0 !important;
+}
+
+.manager-container.manager-container--main .modal-content.manager-modal-shell-host,
+.manager-container.manager-container--main .manager-modal-shell-host {
+    display: flex;
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+.manager-container.manager-container--main .manager-modal-shell {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    width: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.manager-container.manager-container--main .manager-modal-chrome {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    padding: 0 0 8px;
+    overflow: visible;
+    background: var(--bpm-surface);
+}
+
+.manager-container.manager-container--main .manager-modal-chrome>.manager-section {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+}
+
+.manager-container.manager-container--main .manager-modal-page.manager-item-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    padding: 0;
+    overflow: auto;
+}
+
+.manager-container.manager-container--main .manager-modal-page.manager-item-container.manager-plugin-overview--list,
+.manager-container.manager-container--main .manager-modal-page.manager-item-container.manager-plugin-overview--two-column {
+    min-height: 0;
+}
+
+.manager-container.manager-container--main.manager-container--mobile {
+    height: calc(100vh - 8vh - env(safe-area-inset-top, 0px));
+    max-height: calc(100vh - 8vh - env(safe-area-inset-top, 0px));
+}
+
+.manager-container.manager-container--main.manager-container--mobile .manager-modal-chrome {
+    gap: 0;
+    padding: 0 0 8px;
+}
+
+.manager-container.manager-container--main.manager-container--mobile .manager-modal-page.manager-item-container {
+    max-height: none;
+    padding: 0;
+}
+
+.manager-container.manager-container--main .manager-modal-page>.manager-troubleshoot-page {
+    padding: 0;
+}
+
+.manager-troubleshoot-page .manager-troubleshoot__header,
+.manager-troubleshoot-page .manager-troubleshoot__stage,
+.manager-troubleshoot-page .manager-troubleshoot__feedback,
+.manager-troubleshoot-page .manager-troubleshoot__start,
+.manager-troubleshoot-page .manager-troubleshoot__result,
+.manager-troubleshoot-page .manager-troubleshoot__flow,
+.manager-troubleshoot-page .manager-troubleshoot__metric,
+.manager-troubleshoot-page .manager-troubleshoot__info-card,
+.manager-troubleshoot-page .manager-troubleshoot__plugin-list,
+.manager-troubleshoot-page .manager-troubleshoot__step,
+.manager-troubleshoot-page .manager-troubleshoot__plugin,
+.manager-troubleshoot-page .manager-troubleshoot__result-plugin,
+.manager-troubleshoot-page .manager-troubleshoot__plugin-list-header,
+.manager-troubleshoot-page .manager-troubleshoot__plugins {
+    padding: 8px;
+}
+
+.manager-repo-page,
+.manager-source-page {
+    --bpm-item-padding: 8px;
+    --bpm-ui-item-padding: 8px;
+}
+
+.manager-repo-page .manager-repo-page__header,
+.manager-repo-page .manager-repo-page__toolbar,
+.manager-repo-page .manager-repo-page__stat,
+.manager-repo-page .manager-install>.manager-install__setting.setting-item,
+.manager-repo-page .manager-install__history,
+.manager-repo-page .manager-install__history-list,
+.manager-repo-page .manager-install__history-item,
+.manager-repo-page .manager-install__release,
+.manager-repo-page .manager-install__release-body,
+.manager-source-page .manager-source-page__toolbar,
+.manager-source-page .manager-source-page__empty,
+.manager-source-page .manager-source-page__stat,
+.manager-source-page .manager-source-card,
+.manager-source-page .manager-source-card__meta,
+.manager-source-page .manager-source-card__error,
+.manager-source-page .manager-source-card__control-panel,
+.manager-source-page .manager-source-card__actions,
+.manager-source-page .manager-source-item__chip {
+    padding: 8px;
+}
+
+.manager-repo-page .manager-repo-page__switcher,
+.manager-repo-page .manager-install__segmented {
+    padding: 3px !important;
+}
+
+.manager-repo-page .manager-repo-page__switch,
+.manager-repo-page .manager-install__segment {
+    padding: 4px 8px !important;
 }

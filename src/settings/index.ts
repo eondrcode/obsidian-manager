@@ -30,6 +30,8 @@ class ManagerSettingTab extends PluginSettingTab {
         containerEl.addClass('manager-setting__container');
         const tabsEl = this.containerEl.createEl('div');
         tabsEl.addClass('manager-setting__tabs');
+        tabsEl.setAttribute('role', 'tablist');
+        tabsEl.setAttribute('data-slot', 'tabs-list');
         this.contentEl = this.containerEl.createEl('div');
         this.contentEl.addClass('manager-setting__content');
 
@@ -43,18 +45,36 @@ class ManagerSettingTab extends PluginSettingTab {
         ];
         if (this.manager.settings.DELAY) tabItems.push({ text: this.manager.translator.t('设置_延迟设置_前缀'), content: () => this.delayDisplay() });
 
-        const tabItemsEls: HTMLDivElement[] = [];
+        const tabItemsEls: HTMLButtonElement[] = [];
 
         tabItems.forEach((item, index) => {
-            const itemEl = tabsEl.createEl('div');
+            const itemEl = tabsEl.createEl('button');
+            itemEl.type = 'button';
             itemEl.addClass('manager-setting__tabs-item');
+            itemEl.setAttribute('role', 'tab');
+            itemEl.setAttribute('tabindex', '0');
+            itemEl.setAttribute('data-slot', 'tabs-trigger');
             itemEl.textContent = item.text;
             tabItemsEls.push(itemEl);
-            if (index === 0) { itemEl.addClass('manager-setting__tabs-item_is-active'); item.content(); }
-            itemEl.addEventListener('click', () => {
-                tabItemsEls.forEach(tabEl => { tabEl.removeClass('manager-setting__tabs-item_is-active') });
+            const activate = () => {
+                tabItemsEls.forEach(tabEl => {
+                    tabEl.removeClass('manager-setting__tabs-item_is-active');
+                    tabEl.setAttribute('aria-selected', 'false');
+                    tabEl.setAttribute('data-state', 'inactive');
+                });
                 itemEl.addClass('manager-setting__tabs-item_is-active');
+                itemEl.setAttribute('aria-selected', 'true');
+                itemEl.setAttribute('data-state', 'active');
                 item.content();
+            };
+            itemEl.setAttribute('aria-selected', 'false');
+            itemEl.setAttribute('data-state', 'inactive');
+            if (index === 0) activate();
+            itemEl.addEventListener('click', activate);
+            itemEl.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                activate();
             });
         });
     }
