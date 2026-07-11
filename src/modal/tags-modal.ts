@@ -2,7 +2,7 @@ import { App, ExtraButtonComponent, Modal, Notice, setIcon, Setting } from 'obsi
 import { ManagerSettings } from '../settings/data';
 import Manager from 'main';
 import { ManagerModal } from './manager-modal';
-import { ManagerPlugin, BPM_IGNORE_TAG } from 'src/data/types';
+import { ManagerPlugin, BPM_IGNORE_TAG, EONDR_PLUGIN_TAG_ID } from 'src/data/types';
 import Commands from 'src/command';
 import { BPM_TAG_ID } from 'src/repo-resolver';
 import { getExtraButtonElement } from 'src/obsidian-internals';
@@ -42,7 +42,7 @@ export class TagsModal extends Modal {
     }
 
     private isPresetTag(tagId: string): boolean {
-        return tagId === BPM_TAG_ID || tagId === BPM_IGNORE_TAG;
+        return tagId === BPM_TAG_ID || tagId === BPM_IGNORE_TAG || tagId === EONDR_PLUGIN_TAG_ID;
     }
 
     private async showHead() {
@@ -51,6 +51,8 @@ export class TagsModal extends Modal {
         if (!modalEl) return;
         modalEl.addClass('manager-editor__container');
         modalEl.addClass('manager-tag-editor');
+        modalEl.addClass('manager-taxonomy-editor');
+        modalEl.addClass('manager-taxonomy-editor--tag');
         modalEl.getElementsByClassName('modal-close-button')[0]?.remove();
         this.titleEl.parentElement?.addClass('manager-container__header');
         this.contentEl.addClass('manager-item-container');

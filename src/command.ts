@@ -44,7 +44,7 @@ class ManagerCommandService {
     private readonly app: App;
     private readonly manager: Manager;
     private staticCommandIds = new Set<string>();
-    private staticLanguage = "";
+    private staticLanguage = ""; 
     private dynamicCommandIds = new Set<string>();
     private running = new Set<string>();
 

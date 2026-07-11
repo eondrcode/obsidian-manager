@@ -46,6 +46,8 @@ export class GroupModal extends Modal {
         if (!modalEl) return;
         modalEl.addClass('manager-editor__container');
         modalEl.addClass('manager-tag-editor');
+        modalEl.addClass('manager-taxonomy-editor');
+        modalEl.addClass('manager-taxonomy-editor--group');
         modalEl.addClass('manager-group-editor');
         modalEl.getElementsByClassName('modal-close-button')[0]?.remove();
         this.titleEl.parentElement?.addClass('manager-container__header');
