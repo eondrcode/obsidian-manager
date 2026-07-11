@@ -71,7 +71,7 @@ import {
 } from "../vault-share";
 import { AppPluginInstanceLike, getExtraButtonElement, ObsidianAppWithInternals, ObsidianPluginRegistry, VaultAdapterWithBasePath } from "src/obsidian-internals";
 
-type ManagerPage = "plugins" | "install" | "sources" | "transfer" | "vaults" | "ribbon" | "troubleshoot";
+type ManagerPage = "plugins" | "themes" | "install" | "sources" | "transfer" | "vaults" | "ribbon" | "troubleshoot";
 const SHARED_VAULTS_ENABLED = false;
 const SUPPORT_QQ_GROUP_URL = "https://qm.qq.com/cgi-bin/qm/qr?k=kHTS0iC1FC5igTXbdbKzff6_tc54mOF5&jump_from=webapi&authKey=AoSkriW+nDeDzBPqBl9jcpbAYkPXN2QRbrMh0hFbvMrGbqZyRAbJwaD6JKbOy4Nx";
 const SUPPORT_QQ_GROUP_LABEL = "\u52a0\u5165 QQ \u7fa4";
@@ -196,8 +196,8 @@ export class ManagerModal extends Modal {
     private modalPageEl?: HTMLElement;
     private readonly renderBatchSize = 80;
     private readonly desktopPages: ManagerPage[] = SHARED_VAULTS_ENABLED
-        ? ["plugins", "install", "sources", "transfer", "vaults", "ribbon", "troubleshoot"]
-        : ["plugins", "install", "sources", "transfer", "ribbon", "troubleshoot"];
+        ? ["plugins", "themes", "install", "sources", "transfer", "vaults", "ribbon", "troubleshoot"]
+        : ["plugins", "themes", "install", "sources", "transfer", "ribbon", "troubleshoot"];
 
     private get pageEl(): HTMLElement {
         return this.modalPageEl ?? this.contentEl;
@@ -276,12 +276,14 @@ export class ManagerModal extends Modal {
     }
 
     private syncPluginOverviewLayoutClass() {
+        this.pageEl.removeClass("manager-theme-overview");
         this.pageEl.removeClass("manager-plugin-overview--list");
         this.pageEl.removeClass("manager-plugin-overview--two-column");
         this.pageEl.addClass(`manager-plugin-overview--${this.getPluginOverviewLayout()}`);
     }
 
     private clearPluginOverviewLayoutClass() {
+        this.pageEl.removeClass("manager-theme-overview");
         this.pageEl.removeClass("manager-plugin-overview--list");
         this.pageEl.removeClass("manager-plugin-overview--two-column");
     }
@@ -1858,6 +1860,7 @@ export class ManagerModal extends Modal {
     private bulkEditButtonEl?: HTMLButtonElement;
     private editorButtonEl?: HTMLButtonElement;
     private pluginTabEl?: HTMLButtonElement;
+    private themeTabEl?: HTMLButtonElement;
     private installTabEl?: HTMLButtonElement;
     private sourcesTabEl?: HTMLButtonElement;
     private transferTabEl?: HTMLButtonElement;
@@ -2041,6 +2044,7 @@ export class ManagerModal extends Modal {
             return tab;
         };
         this.pluginTabEl = createTab("plugins", t("管理器_Tab_插件管理"), "blocks");
+        this.themeTabEl = createTab("themes", t("主题总览_Tab_标题"), "palette");
         this.installTabEl = createTab("install", t("管理器_Tab_安装来源"), "download");
         this.sourcesTabEl = undefined;
         this.transferTabEl = createTab("transfer", t("导入导出_Tab_标题"), "archive-restore", t("导入导出_Tab_说明"));
@@ -2417,6 +2421,13 @@ export class ManagerModal extends Modal {
             }));
             menu.addItem((item) => item.setTitle(t("排查_按钮_描述")).setIcon("search-check").onClick(() => {
                 this.activePage = "troubleshoot";
+                this.installMode = false;
+                this.syncPageChrome();
+                this.renderContent();
+                this.showHeadMobile();
+            }));
+            menu.addItem((item) => item.setTitle(t("主题总览_Tab_标题")).setIcon("palette").onClick(() => {
+                this.activePage = "themes";
                 this.installMode = false;
                 this.syncPageChrome();
                 this.renderContent();
@@ -3907,6 +3918,7 @@ export class ManagerModal extends Modal {
     private syncPageChrome() {
         this.ensureAllowedActivePage();
         const isPlugins = this.activePage === "plugins";
+        const isThemes = this.activePage === "themes";
         const isInstall = this.activePage === "install";
         const isSources = this.activePage === "sources";
         const isInstallWorkspace = isInstall || isSources;
@@ -3928,6 +3940,7 @@ export class ManagerModal extends Modal {
         };
         this.installMode = isInstallWorkspace;
         syncTabState(this.pluginTabEl, isPlugins);
+        syncTabState(this.themeTabEl, isThemes);
         syncTabState(this.installTabEl, isInstallWorkspace);
         syncTabState(this.sourcesTabEl, isSources);
         syncTabState(this.transferTabEl, isTransfer);
@@ -3935,6 +3948,7 @@ export class ManagerModal extends Modal {
         syncTabState(this.ribbonTabEl, isRibbon);
         syncTabState(this.troubleshootTabEl, isTroubleshoot);
         this.desktopActionWrapper?.classList.toggle("is-plugin-page", isPlugins);
+        this.desktopActionWrapper?.classList.toggle("is-theme-page", isThemes);
         this.desktopActionWrapper?.classList.toggle("is-install-page", isInstall);
         this.desktopActionWrapper?.classList.toggle("is-sources-page", isSources);
         this.desktopActionWrapper?.classList.toggle("is-transfer-page", isTransfer);
@@ -3949,7 +3963,7 @@ export class ManagerModal extends Modal {
             this.desktopFilterWrapper.classList.toggle("manager-display-none", !isPlugins);
         }
         if (this.searchBarEl) {
-            if (isPlugins) {
+            if (isPlugins || isThemes) {
                 this.searchBarEl.removeClass("manager-display-none");
             } else {
                 this.searchBarEl.addClass("manager-display-none");
@@ -4509,6 +4523,165 @@ export class ManagerModal extends Modal {
         source.error = "";
         await this.manager.saveSettings();
         return true;
+    }
+
+    private getActiveThemeName(): string {
+        const customCss = (this.app as unknown as {
+            customCss?: { theme?: string; getTheme?: () => string };
+        }).customCss;
+        return customCss?.theme || customCss?.getTheme?.() || "";
+    }
+
+    private setActiveThemeName(themeName: string) {
+        const customCss = (this.app as unknown as {
+            customCss?: { setTheme?: (name: string) => void };
+        }).customCss;
+        customCss?.setTheme?.(themeName);
+    }
+
+    private getThemeFolderPath(themeName: string): string {
+        const getBasePath = (this.app.vault.adapter as VaultAdapterWithBasePath).getBasePath?.();
+        const basePath = getBasePath ? normalizePath(getBasePath) : "";
+        const relativePath = normalizePath(`${this.app.vault.configDir}/themes/${themeName}`);
+        return basePath ? normalizePath(`${basePath}/${relativePath}`) : relativePath;
+    }
+
+    private renderThemeStats(themes: ManagerTransferTheme[]) {
+        if (!this.footEl) return;
+        const activeTheme = this.getActiveThemeName();
+        const trackedCount = themes.filter((theme) => Boolean(theme.repo || theme.source)).length;
+        const activeCount = themes.some((theme) => theme.active) ? 1 : 0;
+        this.footEl.empty();
+        const t = (key: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(key, vars);
+        [
+            { cls: "bpm-stat-chip--total", icon: "palette", label: t("主题总览_统计_主题"), value: themes.length },
+            { cls: "bpm-stat-chip--enabled", icon: "badge-check", label: t("主题总览_统计_已启用"), value: activeCount },
+            { cls: "bpm-stat-chip--updates", icon: "radio-tower", label: t("主题总览_统计_已追踪"), value: trackedCount },
+            { cls: "bpm-stat-chip--hidden", icon: "monitor", label: t("主题总览_统计_当前"), value: activeTheme || t("主题总览_默认主题") },
+        ].forEach((item) => {
+            const chip = this.footEl.createSpan({ cls: `bpm-stat-chip ${item.cls}` });
+            chip.setAttribute("aria-label", `${item.label} ${item.value}`);
+            const icon = chip.createSpan({ cls: "bpm-stat-chip__icon" });
+            setIcon(icon, item.icon);
+            chip.createSpan({ cls: "bpm-stat-chip__label", text: item.label });
+            chip.createSpan({ cls: "bpm-stat-chip__value", text: `${item.value}` });
+        });
+    }
+
+    private async showThemeOverview(renderGeneration = this.renderGeneration) {
+        const page: ManagerPage = "themes";
+        if (!this.isRenderCurrent(renderGeneration, page)) return;
+        const t = (key: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(key, vars);
+        this.pageEl.empty();
+        this.pageEl.addClass("manager-theme-overview");
+
+        const themes = await collectInstalledThemes(this.manager, undefined, false, true);
+        if (!this.isRenderCurrent(renderGeneration, page)) return;
+        this.renderThemeStats(themes);
+
+        const lowerSearchText = this.searchText.trim().toLowerCase();
+        const visibleThemes = lowerSearchText
+            ? themes.filter((theme) => [
+                theme.name,
+                theme.version || "",
+                theme.author || "",
+                theme.repo || "",
+                theme.source?.latestVersion || "",
+                theme.source?.localVersion || "",
+            ].join("\n").toLowerCase().includes(lowerSearchText))
+            : themes;
+
+        if (visibleThemes.length === 0) {
+            const empty = this.pageEl.createDiv("bpm-empty-state manager-theme-page__empty");
+            const icon = empty.createDiv("bpm-empty-state__icon");
+            setIcon(icon, lowerSearchText ? "search-x" : "palette");
+            empty.createDiv({ cls: "bpm-empty-state__title", text: lowerSearchText ? t("主题总览_空_无匹配标题") : t("主题总览_空_无主题标题") });
+            empty.createDiv({
+                cls: "bpm-empty-state__text",
+                text: lowerSearchText
+                    ? t("主题总览_空_无匹配说明")
+                    : t("主题总览_空_无主题说明"),
+            });
+            if (!lowerSearchText) {
+                const actionWrap = empty.createDiv("manager-theme-page__empty-action");
+                const installBtn = new ButtonComponent(actionWrap);
+                installBtn.setIcon("download");
+                installBtn.setButtonText(t("主题总览_操作_安装主题"));
+                installBtn.onClick(() => {
+                    this.installType = "theme";
+                    this.activePage = "install";
+                    this.syncPageChrome();
+                    this.renderContent();
+                });
+            }
+            return;
+        }
+
+        for (const theme of visibleThemes) {
+            if (!this.isRenderCurrent(renderGeneration, page)) return;
+            const itemEl = new Setting(this.pageEl);
+            itemEl.setClass("manager-item");
+            itemEl.settingEl.addClass("manager-theme-card");
+            itemEl.settingEl.toggleClass("is-active-theme", theme.active);
+            itemEl.nameEl.addClass("manager-item__name-container");
+            itemEl.nameEl.addClass("manager-theme-card__header");
+            itemEl.descEl.addClass("manager-item__description-container");
+            itemEl.descEl.addClass("manager-theme-card__body");
+            itemEl.controlEl.addClass("manager-item__controls");
+            itemEl.controlEl.addClass("manager-theme-card__actions");
+            itemEl.controlEl.setAttribute("aria-label", t("主题总览_操作_区域", { name: theme.name }));
+
+            const titleRow = itemEl.nameEl.createDiv("manager-theme-card__title-row");
+            const iconWrap = titleRow.createSpan({ cls: "manager-theme-card__icon" });
+            setIcon(iconWrap, theme.active ? "badge-check" : "palette");
+            titleRow.createSpan({ cls: "manager-theme-card__name", text: theme.name, title: theme.name });
+            if (theme.active) titleRow.createSpan({ cls: "manager-theme-card__chip is-active", text: t("主题总览_状态_当前") });
+            if (theme.version) titleRow.createSpan({ cls: "manager-theme-card__chip", text: `v${theme.version}` });
+            if (theme.repo || theme.source) titleRow.createSpan({ cls: "manager-theme-card__chip is-source", text: t("主题总览_状态_已追踪") });
+
+            const meta = itemEl.descEl.createDiv("manager-theme-card__meta");
+            const addMeta = (iconName: string, label: string, value: string) => {
+                if (!value) return;
+                const row = meta.createDiv("manager-theme-card__meta-row");
+                const rowIcon = row.createSpan({ cls: "manager-theme-card__meta-icon" });
+                setIcon(rowIcon, iconName);
+                row.createSpan({ cls: "manager-theme-card__meta-label", text: label });
+                row.createSpan({ cls: "manager-theme-card__meta-value", text: value, title: value });
+            };
+            addMeta("user", t("主题总览_字段_作者"), theme.author || "");
+            addMeta("tag", t("主题总览_字段_版本"), theme.version || "");
+            addMeta("github", t("主题总览_字段_仓库"), theme.repo || "");
+            if (theme.source) {
+                addMeta("clock", t("主题总览_字段_安装时间"), this.formatSourceDate(theme.source.installedAt));
+                addMeta("radio-tower", t("主题总览_字段_最新"), theme.source.latestReleaseTag || theme.source.latestVersion || "");
+            }
+
+            const activateBtn = new ButtonComponent(itemEl.controlEl);
+            activateBtn.setIcon(theme.active ? "badge-check" : "paintbrush");
+            activateBtn.setTooltip(theme.active ? t("主题总览_操作_当前主题") : t("主题总览_操作_使用主题"));
+            activateBtn.setDisabled(theme.active);
+            activateBtn.onClick(async () => {
+                this.setActiveThemeName(theme.name);
+                new Notice(t("主题总览_提示_已切换", { name: theme.name }));
+                await this.reloadShowData();
+            });
+
+            const openDirBtn = new ButtonComponent(itemEl.controlEl);
+            openDirBtn.setIcon("folder-open");
+            openDirBtn.setTooltip(t("主题总览_操作_打开目录"));
+            openDirBtn.onClick(() => {
+                managerOpen(this.getThemeFolderPath(theme.name), this.manager);
+            });
+
+            if (theme.repo) {
+                const githubBtn = new ButtonComponent(itemEl.controlEl);
+                githubBtn.setIcon("github");
+                githubBtn.setTooltip(t("主题总览_操作_打开GitHub"));
+                githubBtn.onClick(() => {
+                    window.open(`https://github.com/${theme.repo}`);
+                });
+            }
+        }
     }
 
     private showHiddenPanel() {
@@ -6818,6 +6991,8 @@ export class ManagerModal extends Modal {
         this.clearPluginOverviewLayoutClass();
         if (this.activePage === "ribbon") {
             void this.showRibbonPanel(renderGeneration);
+        } else if (this.activePage === "themes") {
+            void this.showThemeOverview(renderGeneration);
         } else if (this.activePage === "troubleshoot") {
             this.showTroubleshootPanel();
         } else if (this.activePage === "transfer") {
@@ -6855,6 +7030,10 @@ export class ManagerModal extends Modal {
         if (this.activePage === "ribbon") {
             await this.showRibbonPanel(renderGeneration);
             if (!this.isRenderCurrent(renderGeneration, "ribbon")) return;
+            modalElement.scrollTo(0, scrollTop);
+        } else if (this.activePage === "themes") {
+            await this.showThemeOverview(renderGeneration);
+            if (!this.isRenderCurrent(renderGeneration, "themes")) return;
             modalElement.scrollTo(0, scrollTop);
         } else if (this.activePage === "troubleshoot") {
             this.showTroubleshootPanel();
