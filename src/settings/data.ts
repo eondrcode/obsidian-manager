@@ -42,6 +42,20 @@ export interface PluginCommandProfile {
     updatedAt?: number;
 }
 
+export type AppearanceProfileMode = "merge" | "exact";
+
+export interface AppearanceProfile {
+    id: string;
+    name: string;
+    theme?: string;
+    enableSnippets: string[];
+    disableSnippets: string[];
+    mode: AppearanceProfileMode;
+    autoApplyOnTheme?: boolean;
+    createdAt: number;
+    updatedAt?: number;
+}
+
 export const DEFAULT_MAIN_PAGE_ACTION_PLACEMENT: Record<MainPageActionId, MainPageActionPlacement> = {
     checkUpdate: "menu",
     downloadUpdate: "item",
@@ -97,6 +111,8 @@ export interface ManagerSettings {
     COMMAND_PROFILE: boolean;
     /** 命令面板保存的插件状态方案。 */
     COMMAND_PROFILES: PluginCommandProfile[];
+    /** 外观总览保存的主题与 CSS 片段组合方案。 */
+    APPEARANCE_PROFILES: AppearanceProfile[];
     /** 命令面板批量操作前的上一份状态快照，用于撤销。 */
     COMMAND_LAST_STATE?: PluginCommandSnapshot;
     /** 是否在插件启动后自动检查插件更新。 */
@@ -213,6 +229,7 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     COMMAND_TAG: false,
     COMMAND_PROFILE: false,
     COMMAND_PROFILES: [],
+    APPEARANCE_PROFILES: [],
     STARTUP_CHECK_UPDATES: false,
     SOURCE_STARTUP_CHECK_UPDATES: false,
     SOURCE_AUTO_UPDATE: true,

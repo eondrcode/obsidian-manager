@@ -8,7 +8,7 @@ import {
     Notice,
     PluginManifest,
     SearchComponent,
-    setIcon,
+    setIcon, 
     Setting,
     TextComponent,
     ToggleComponent,
@@ -16,7 +16,7 @@ import {
 } from "obsidian";
 
 import { BetaSource, BPM_IGNORE_TAG, EONDR_PLUGIN_TAG_ID, InstallHistoryItem, ManagerPlugin, PluginLayoutItem } from "../data/types";
-import { DEFAULT_MAIN_PAGE_ACTION_PLACEMENT, FilterOperator, MainPageActionId, ManagerSettings } from "../settings/data";
+import { AppearanceProfile, AppearanceProfileMode, DEFAULT_MAIN_PAGE_ACTION_PLACEMENT, FilterOperator, MainPageActionId, ManagerSettings } from "../settings/data";
 import { confirmWithModal, managerOpen } from "../utils";
 
 import Manager from "main";
@@ -72,6 +72,7 @@ import {
 import { AppPluginInstanceLike, getExtraButtonElement, ObsidianAppWithInternals, ObsidianPluginRegistry, VaultAdapterWithBasePath } from "src/obsidian-internals";
 
 type ManagerPage = "plugins" | "themes" | "install" | "sources" | "transfer" | "vaults" | "ribbon" | "troubleshoot";
+type AppearanceView = "profiles" | "themes" | "snippets";
 const SHARED_VAULTS_ENABLED = false;
 const SUPPORT_QQ_GROUP_URL = "https://qm.qq.com/cgi-bin/qm/qr?k=kHTS0iC1FC5igTXbdbKzff6_tc54mOF5&jump_from=webapi&authKey=AoSkriW+nDeDzBPqBl9jcpbAYkPXN2QRbrMh0hFbvMrGbqZyRAbJwaD6JKbOy4Nx";
 const SUPPORT_QQ_GROUP_LABEL = "\u52a0\u5165 QQ \u7fa4";
@@ -124,6 +125,178 @@ type PluginCardController = {
     enableIgnoredButton?: ExtraButtonComponent | null;
 };
 
+type CssSnippetItem = {
+    id: string;
+    name: string;
+    path: string;
+    enabled: boolean;
+};
+
+type AppearanceJson = {
+    enabledCssSnippets?: string[];
+    [key: string]: unknown;
+};
+
+type CustomCssLike = {
+    theme?: string;
+    getTheme?: () => string;
+    setTheme?: (name: string) => void;
+    enabledSnippets?: Set<string> | string[];
+    setCssEnabledStatus?: (snippet: string, enabled: boolean) => void;
+    loadSnippets?: () => void | Promise<void>;
+};
+
+type AppearanceSnippetChoice = "ignore" | "enable" | "disable";
+
+type AppearanceProfileDraft = Omit<AppearanceProfile, "createdAt" | "updatedAt"> & {
+    createdAt?: number;
+    updatedAt?: number;
+};
+
+class AppearanceProfileModal extends Modal {
+    private profile: AppearanceProfileDraft;
+    private themes: ManagerTransferTheme[];
+    private snippets: CssSnippetItem[];
+    private manager: Manager;
+    private onSave: (profile: AppearanceProfileDraft) => Promise<void>;
+
+    constructor(
+        app: App,
+        manager: Manager,
+        profile: AppearanceProfileDraft,
+        themes: ManagerTransferTheme[],
+        snippets: CssSnippetItem[],
+        onSave: (profile: AppearanceProfileDraft) => Promise<void>
+    ) {
+        super(app);
+        this.manager = manager;
+        this.profile = {
+            ...profile,
+            enableSnippets: [...(profile.enableSnippets || [])],
+            disableSnippets: [...(profile.disableSnippets || [])],
+        };
+        this.themes = themes;
+        this.snippets = snippets;
+        this.onSave = onSave;
+    }
+
+    onOpen() {
+        const t = (key: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(key, vars);
+        const modalEl = this.contentEl.parentElement;
+        modalEl?.addClass("manager-appearance-profile-modal");
+        this.titleEl.setText(t(this.profile.id ? "外观总览_方案_编辑标题" : "外观总览_方案_新建标题"));
+        this.contentEl.empty();
+
+        let name = this.profile.name || t("外观总览_方案_默认名称");
+        let theme = this.profile.theme || "";
+        let mode: AppearanceProfileMode = this.profile.mode || "merge";
+        let autoApplyOnTheme = Boolean(this.profile.autoApplyOnTheme);
+        const snippetChoices = new Map<string, AppearanceSnippetChoice>();
+        new Set(this.profile.enableSnippets || []).forEach((id) => snippetChoices.set(id, "enable"));
+        new Set(this.profile.disableSnippets || []).forEach((id) => {
+            if (!snippetChoices.has(id)) snippetChoices.set(id, "disable");
+        });
+
+        new Setting(this.contentEl)
+            .setName(t("外观总览_方案_名称"))
+            .addText((text) => {
+                text.setValue(name);
+                text.setPlaceholder(t("外观总览_方案_默认名称"));
+                text.onChange((value) => { name = value; });
+            });
+
+        new Setting(this.contentEl)
+            .setName(t("外观总览_方案_绑定主题"))
+            .setDesc(t("外观总览_方案_绑定主题说明"))
+            .addDropdown((dropdown) => {
+                dropdown.addOption("", t("外观总览_方案_不绑定主题"));
+                this.themes.forEach((item) => dropdown.addOption(item.name, item.name));
+                dropdown.setValue(theme);
+                dropdown.onChange((value) => { theme = value; });
+            });
+
+        new Setting(this.contentEl)
+            .setName(t("外观总览_方案_应用模式"))
+            .setDesc(t("外观总览_方案_应用模式说明"))
+            .addDropdown((dropdown) => {
+                dropdown.addOption("merge", t("外观总览_方案_合并模式"));
+                dropdown.addOption("exact", t("外观总览_方案_精确模式"));
+                dropdown.setValue(mode);
+                dropdown.onChange((value) => { mode = value as AppearanceProfileMode; });
+            });
+
+        new Setting(this.contentEl)
+            .setName(t("外观总览_方案_自动应用"))
+            .setDesc(t("外观总览_方案_自动应用说明"))
+            .addToggle((toggle) => {
+                toggle.setValue(autoApplyOnTheme);
+                toggle.onChange((value) => { autoApplyOnTheme = value; });
+            });
+
+        const snippetHeader = this.contentEl.createDiv("manager-appearance-profile-modal__snippet-header");
+        snippetHeader.createSpan({ text: t("外观总览_方案_CSS片段规则") });
+        snippetHeader.createSpan({ text: t("外观总览_方案_CSS片段规则说明") });
+
+        const snippetList = this.contentEl.createDiv("manager-appearance-profile-modal__snippet-list");
+        if (this.snippets.length === 0) {
+            snippetList.createDiv({ cls: "manager-appearance-inline-empty", text: t("外观总览_空_无CSS片段") });
+        }
+        for (const snippet of this.snippets) {
+            const choice = snippetChoices.get(snippet.id) || "ignore";
+            const item = new Setting(snippetList);
+            item.setName(snippet.name);
+            item.setDesc(`${snippet.id}.css`);
+            item.addDropdown((dropdown) => {
+                dropdown.addOption("ignore", t("外观总览_方案_片段忽略"));
+                dropdown.addOption("enable", t("外观总览_方案_片段启用"));
+                dropdown.addOption("disable", t("外观总览_方案_片段禁用"));
+                dropdown.setValue(choice);
+                dropdown.onChange((value) => {
+                    const nextChoice = value as AppearanceSnippetChoice;
+                    if (nextChoice === "ignore") snippetChoices.delete(snippet.id);
+                    else snippetChoices.set(snippet.id, nextChoice);
+                });
+            });
+        }
+
+        const footer = new Setting(this.contentEl);
+        footer.settingEl.addClass("manager-appearance-profile-modal__footer");
+        footer.addButton((button) => {
+            button.setButtonText(t("通用_取消_文本"));
+            button.onClick(() => this.close());
+        });
+        footer.addButton((button) => {
+            button.setCta();
+            button.setButtonText(t("通用_保存_文本"));
+            button.onClick(async () => {
+                const normalizedName = name.trim();
+                if (!normalizedName) {
+                    new Notice(t("外观总览_方案_名称不能为空"));
+                    return;
+                }
+                const enableSnippets = [...snippetChoices.entries()]
+                    .filter(([, value]) => value === "enable")
+                    .map(([id]) => id)
+                    .sort((a, b) => a.localeCompare(b));
+                const disableSnippets = [...snippetChoices.entries()]
+                    .filter(([, value]) => value === "disable")
+                    .map(([id]) => id)
+                    .sort((a, b) => a.localeCompare(b));
+                await this.onSave({
+                    ...this.profile,
+                    name: normalizedName,
+                    theme,
+                    mode,
+                    autoApplyOnTheme,
+                    enableSnippets,
+                    disableSnippets,
+                });
+                this.close();
+            });
+        });
+    }
+}
+
 
 
 // ==============================
@@ -165,6 +338,7 @@ export class ManagerModal extends Modal {
     // 安装模式
     installMode = false;
     private activePage: ManagerPage = "plugins";
+    private appearanceView: AppearanceView = "profiles";
     installType: "plugin" | "theme" = "plugin";
     installRepo = "";
     installVersion = "";
@@ -1476,6 +1650,16 @@ export class ManagerModal extends Modal {
         }, 50);
     }
 
+    private async openAppearanceMarket() {
+        await this.appSetting.open();
+        await this.appSetting.openTabById("appearance");
+        window.setTimeout(() => {
+            const tab = this.appSetting.activeTab;
+            const marketButton = tab?.containerEl?.querySelector<HTMLButtonElement>("button.mod-cta");
+            marketButton?.click();
+        }, 50);
+    }
+
     private async runSinglePluginUpdateCheck(pluginId: string) {
         const progress = this.showInlineProgress(this.manager.translator.t("通知_检测更新中文案"), pluginId);
         progress.update(0, 1, pluginId);
@@ -2044,7 +2228,7 @@ export class ManagerModal extends Modal {
             return tab;
         };
         this.pluginTabEl = createTab("plugins", t("管理器_Tab_插件管理"), "blocks");
-        this.themeTabEl = createTab("themes", t("主题总览_Tab_标题"), "palette");
+        this.themeTabEl = createTab("themes", t("外观总览_Tab_标题"), "palette");
         this.installTabEl = createTab("install", t("管理器_Tab_安装来源"), "download");
         this.sourcesTabEl = undefined;
         this.transferTabEl = createTab("transfer", t("导入导出_Tab_标题"), "archive-restore", t("导入导出_Tab_说明"));
@@ -2058,7 +2242,7 @@ export class ManagerModal extends Modal {
 
         const tools = toolbar.createDiv("manager-toolbar__tools");
         const actionBar = new Setting(tools).setClass("manager-bar__action").setName("");
-        const markTool = (btn: ButtonComponent, scope: "plugin" | "install" | "global" | "ribbon" | "layout" | "transfer" | "resource", order?: number) => {
+        const markTool = (btn: ButtonComponent, scope: "plugin" | "theme" | "install" | "global" | "ribbon" | "layout" | "transfer" | "resource", order?: number) => {
             btn.buttonEl.addClass("manager-tool");
             btn.buttonEl.addClass(`manager-tool--${scope}`);
             if (order !== undefined) btn.buttonEl.style.setProperty("--manager-tool-order", `${order}`);
@@ -2191,12 +2375,37 @@ export class ManagerModal extends Modal {
 
         // [操作行] 插件市场
         const marketButton = new ButtonComponent(actionBar.controlEl);
-        markTool(marketButton, "global", 70);
+        markTool(marketButton, "plugin", 70);
         marketButton.setIcon("store");
         marketButton.setTooltip(this.manager.translator.t("管理器_插件市场_描述"));
         this.bindLongPressTooltip(marketButton.buttonEl, this.manager.translator.t("管理器_插件市场_描述"));
         marketButton.onClick(() => {
             void this.openPluginMarket();
+        });
+
+        // [操作行] 外观市场
+        const appearanceMarketButton = new ButtonComponent(actionBar.controlEl);
+        markTool(appearanceMarketButton, "theme", 70);
+        appearanceMarketButton.setIcon("store");
+        appearanceMarketButton.setTooltip(this.manager.translator.t("管理器_外观市场_描述"));
+        this.bindLongPressTooltip(appearanceMarketButton.buttonEl, this.manager.translator.t("管理器_外观市场_描述"));
+        appearanceMarketButton.onClick(() => {
+            void this.openAppearanceMarket();
+        });
+
+        // [操作行] 保存当前外观为方案
+        const saveAppearanceProfileButton = new ButtonComponent(actionBar.controlEl);
+        markTool(saveAppearanceProfileButton, "theme", 60);
+        saveAppearanceProfileButton.buttonEl.addClass("manager-tool--appearance-profile");
+        saveAppearanceProfileButton.setIcon("plus");
+        saveAppearanceProfileButton.setTooltip(this.manager.translator.t("外观总览_方案_保存当前"));
+        this.bindLongPressTooltip(saveAppearanceProfileButton.buttonEl, this.manager.translator.t("外观总览_方案_保存当前"));
+        saveAppearanceProfileButton.onClick(async () => {
+            const [themes, snippets] = await Promise.all([
+                collectInstalledThemes(this.manager, undefined, false, true),
+                this.collectCssSnippets(),
+            ]);
+            this.openAppearanceProfileModal(this.createCurrentAppearanceProfileDraft(snippets), themes, snippets);
         });
 
         // [操作行] 插件设置
@@ -2416,9 +2625,13 @@ export class ManagerModal extends Modal {
         this.bindLongPressTooltip(moreBtn.buttonEl, t("管理器_更多操作_描述"));
         moreBtn.buttonEl.addEventListener("click", (ev) => {
             const menu = new Menu();
-            menu.addItem((item) => item.setTitle(t("批量编辑_入口")).setIcon("list-plus").onClick(() => {
-                this.setBulkEditMode(!this.bulkEditMode);
-            }));
+            const isPluginPage = this.activePage === "plugins";
+            const isThemePage = this.activePage === "themes";
+            if (isPluginPage) {
+                menu.addItem((item) => item.setTitle(t("批量编辑_入口")).setIcon("list-plus").onClick(() => {
+                    this.setBulkEditMode(!this.bulkEditMode);
+                }));
+            }
             menu.addItem((item) => item.setTitle(t("排查_按钮_描述")).setIcon("search-check").onClick(() => {
                 this.activePage = "troubleshoot";
                 this.installMode = false;
@@ -2426,7 +2639,7 @@ export class ManagerModal extends Modal {
                 this.renderContent();
                 this.showHeadMobile();
             }));
-            menu.addItem((item) => item.setTitle(t("主题总览_Tab_标题")).setIcon("palette").onClick(() => {
+            menu.addItem((item) => item.setTitle(t("外观总览_Tab_标题")).setIcon("palette").onClick(() => {
                 this.activePage = "themes";
                 this.installMode = false;
                 this.syncPageChrome();
@@ -2450,33 +2663,35 @@ export class ManagerModal extends Modal {
                 }));
             }
             menu.addSeparator();
-            // 重载插件
-            menu.addItem((item) => item.setTitle(t("管理器_重载插件_描述")).setIcon("refresh-ccw").onClick(async () => {
-                await this.appPlugins.loadManifests();
-                this.invalidatePluginCaches();
-                // 同步新发现的插件到 BPM 管理列表
-                this.manager.synchronizePlugins(
-                    Object.values(this.appPlugins.manifests).filter(
-                        (pm: PluginManifest) => pm.id !== this.manager.manifest.id
-                    )
-                );
-                await this.reloadShowData();
-            }));
-            // 隐藏插件
-            menu.addItem((item) => item.setTitle(t("菜单_隐藏插件_标题")).setIcon("eye-off").onClick(async () => {
-                const all = Object.values(this.appPlugins.manifests);
-                const plugins: PluginManifest[] = all.filter((pm) => pm.id !== this.manager.manifest.id);
-                plugins.sort((item1, item2) => item1.name.localeCompare(item2.name));
-                new HideModal(this.app, this.manager, this, plugins).open();
-            }));
-            if (this.activePage === "plugins" && this.editorMode && this.shouldRenderPluginLayoutSeparators()) {
-                menu.addItem((item) => item.setTitle(t("管理器_布局_添加分割线")).setIcon("separator-horizontal").onClick(async () => {
-                    await this.addPluginLayoutSeparator();
+            if (isPluginPage) {
+                // 重载插件
+                menu.addItem((item) => item.setTitle(t("管理器_重载插件_描述")).setIcon("refresh-ccw").onClick(async () => {
+                    await this.appPlugins.loadManifests();
+                    this.invalidatePluginCaches();
+                    // 同步新发现的插件到 BPM 管理列表
+                    this.manager.synchronizePlugins(
+                        Object.values(this.appPlugins.manifests).filter(
+                            (pm: PluginManifest) => pm.id !== this.manager.manifest.id
+                        )
+                    );
+                    await this.reloadShowData();
                 }));
-                menu.addItem((item) => item.setTitle(t("管理器_布局_按名称重置")).setIcon("rotate-ccw").onClick(async () => {
-                    if (!(await confirmWithModal(this.app, this.manager, t("管理器_布局_重置确认")))) return;
-                    await this.resetPluginLayout();
+                // 隐藏插件
+                menu.addItem((item) => item.setTitle(t("菜单_隐藏插件_标题")).setIcon("eye-off").onClick(async () => {
+                    const all = Object.values(this.appPlugins.manifests);
+                    const plugins: PluginManifest[] = all.filter((pm) => pm.id !== this.manager.manifest.id);
+                    plugins.sort((item1, item2) => item1.name.localeCompare(item2.name));
+                    new HideModal(this.app, this.manager, this, plugins).open();
                 }));
+                if (this.editorMode && this.shouldRenderPluginLayoutSeparators()) {
+                    menu.addItem((item) => item.setTitle(t("管理器_布局_添加分割线")).setIcon("separator-horizontal").onClick(async () => {
+                        await this.addPluginLayoutSeparator();
+                    }));
+                    menu.addItem((item) => item.setTitle(t("管理器_布局_按名称重置")).setIcon("rotate-ccw").onClick(async () => {
+                        if (!(await confirmWithModal(this.app, this.manager, t("管理器_布局_重置确认")))) return;
+                        await this.resetPluginLayout();
+                    }));
+                }
             }
             if (this.isRibbonManagerEnabled()) {
                 menu.addSeparator();
@@ -2486,10 +2701,24 @@ export class ManagerModal extends Modal {
                     new RibbonModal(this.app, this.manager).open();
                 }));
             }
-            // 插件市场
-            menu.addItem((item) => item.setTitle(t("管理器_插件市场_描述")).setIcon("store").onClick(() => {
-                void this.openPluginMarket();
-            }));
+            if (isPluginPage) {
+                // 插件市场
+                menu.addItem((item) => item.setTitle(t("管理器_插件市场_描述")).setIcon("store").onClick(() => {
+                    void this.openPluginMarket();
+                }));
+            } else if (isThemePage) {
+                menu.addItem((item) => item.setTitle(t("外观总览_方案_保存当前")).setIcon("plus").onClick(async () => {
+                    const [themes, snippets] = await Promise.all([
+                        collectInstalledThemes(this.manager, undefined, false, true),
+                        this.collectCssSnippets(),
+                    ]);
+                    this.openAppearanceProfileModal(this.createCurrentAppearanceProfileDraft(snippets), themes, snippets);
+                }));
+                // 外观市场
+                menu.addItem((item) => item.setTitle(t("管理器_外观市场_描述")).setIcon("store").onClick(() => {
+                    void this.openAppearanceMarket();
+                }));
+            }
             // 插件设置
             menu.addItem((item) => item.setTitle(t("管理器_插件设置_描述")).setIcon("settings").onClick(() => {
                 this.openSettingsTab(this.manager.manifest.id);
@@ -3949,6 +4178,7 @@ export class ManagerModal extends Modal {
         syncTabState(this.troubleshootTabEl, isTroubleshoot);
         this.desktopActionWrapper?.classList.toggle("is-plugin-page", isPlugins);
         this.desktopActionWrapper?.classList.toggle("is-theme-page", isThemes);
+        this.desktopActionWrapper?.classList.toggle("is-appearance-profiles-page", isThemes && this.appearanceView === "profiles");
         this.desktopActionWrapper?.classList.toggle("is-install-page", isInstall);
         this.desktopActionWrapper?.classList.toggle("is-sources-page", isSources);
         this.desktopActionWrapper?.classList.toggle("is-transfer-page", isTransfer);
@@ -4525,18 +4755,17 @@ export class ManagerModal extends Modal {
         return true;
     }
 
+    private getCustomCss(): CustomCssLike | undefined {
+        return (this.app as unknown as { customCss?: CustomCssLike }).customCss;
+    }
+
     private getActiveThemeName(): string {
-        const customCss = (this.app as unknown as {
-            customCss?: { theme?: string; getTheme?: () => string };
-        }).customCss;
+        const customCss = this.getCustomCss();
         return customCss?.theme || customCss?.getTheme?.() || "";
     }
 
     private setActiveThemeName(themeName: string) {
-        const customCss = (this.app as unknown as {
-            customCss?: { setTheme?: (name: string) => void };
-        }).customCss;
-        customCss?.setTheme?.(themeName);
+        this.getCustomCss()?.setTheme?.(themeName);
     }
 
     private getThemeFolderPath(themeName: string): string {
@@ -4546,18 +4775,213 @@ export class ManagerModal extends Modal {
         return basePath ? normalizePath(`${basePath}/${relativePath}`) : relativePath;
     }
 
-    private renderThemeStats(themes: ManagerTransferTheme[]) {
+    private getSnippetFolderPath(): string {
+        const getBasePath = (this.app.vault.adapter as VaultAdapterWithBasePath).getBasePath?.();
+        const basePath = getBasePath ? normalizePath(getBasePath) : "";
+        const relativePath = normalizePath(`${this.app.vault.configDir}/snippets`);
+        return basePath ? normalizePath(`${basePath}/${relativePath}`) : relativePath;
+    }
+
+    private getAppearanceConfigPath(): string {
+        return normalizePath(`${this.app.vault.configDir}/appearance.json`);
+    }
+
+    private async readAppearanceJson(): Promise<AppearanceJson> {
+        const adapter = this.app.vault.adapter;
+        const path = this.getAppearanceConfigPath();
+        try {
+            if (!(await adapter.exists(path))) return {};
+            return JSON.parse(await adapter.read(path)) as AppearanceJson;
+        } catch {
+            return {};
+        }
+    }
+
+    private getCustomCssEnabledSnippetIds(): Set<string> | null {
+        const enabledSnippets = this.getCustomCss()?.enabledSnippets;
+        if (enabledSnippets instanceof Set) return new Set(enabledSnippets);
+        if (Array.isArray(enabledSnippets)) return new Set(enabledSnippets);
+        return null;
+    }
+
+    private async getEnabledSnippetIds(): Promise<Set<string>> {
+        const fromCustomCss = this.getCustomCssEnabledSnippetIds();
+        if (fromCustomCss) return fromCustomCss;
+        const appearance = await this.readAppearanceJson();
+        return new Set(Array.isArray(appearance.enabledCssSnippets) ? appearance.enabledCssSnippets : []);
+    }
+
+    private async collectCssSnippets(): Promise<CssSnippetItem[]> {
+        const adapter = this.app.vault.adapter;
+        const snippetsDir = normalizePath(`${this.app.vault.configDir}/snippets`);
+        const enabledIds = await this.getEnabledSnippetIds();
+        try {
+            if (!(await adapter.exists(snippetsDir))) return [];
+            const listed = await adapter.list(snippetsDir) as { files?: string[]; folders?: string[] };
+            return (listed.files || [])
+                .filter((file) => file.toLowerCase().endsWith(".css"))
+                .map((file) => {
+                    const fileName = file.split("/").pop() || file;
+                    const id = fileName.replace(/\.css$/i, "");
+                    return {
+                        id,
+                        name: id,
+                        path: normalizePath(file),
+                        enabled: enabledIds.has(id),
+                    };
+                })
+                .sort((a, b) => a.name.localeCompare(b.name));
+        } catch {
+            return [];
+        }
+    }
+
+    private async setCssSnippetEnabled(snippetId: string, enabled: boolean): Promise<void> {
+        const customCss = this.getCustomCss();
+        if (customCss?.setCssEnabledStatus) {
+            customCss.setCssEnabledStatus(snippetId, enabled);
+            return;
+        }
+
+        const adapter = this.app.vault.adapter;
+        const path = this.getAppearanceConfigPath();
+        const appearance = await this.readAppearanceJson();
+        const enabledIds = new Set(Array.isArray(appearance.enabledCssSnippets) ? appearance.enabledCssSnippets : []);
+        if (enabled) enabledIds.add(snippetId);
+        else enabledIds.delete(snippetId);
+        appearance.enabledCssSnippets = [...enabledIds].sort((a, b) => a.localeCompare(b));
+        await adapter.write(path, JSON.stringify(appearance, null, 2));
+        await customCss?.loadSnippets?.();
+        (this.app.workspace as unknown as { trigger?: (name: string) => void }).trigger?.("css-change");
+    }
+
+    private normalizeSnippetIds(ids: string[]): string[] {
+        return [...new Set((ids || []).map((id) => id.trim()).filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b));
+    }
+
+    private getAppearanceProfiles(): AppearanceProfile[] {
+        if (!Array.isArray(this.manager.settings.APPEARANCE_PROFILES)) {
+            this.manager.settings.APPEARANCE_PROFILES = [];
+        }
+        return this.manager.settings.APPEARANCE_PROFILES;
+    }
+
+    private createAppearanceProfileId(): string {
+        return `appearance-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    private createCurrentAppearanceProfileDraft(snippets: CssSnippetItem[]): AppearanceProfileDraft {
+        const activeTheme = this.getActiveThemeName();
+        return {
+            id: "",
+            name: activeTheme ? `${activeTheme} ${this.manager.translator.t("外观总览_方案_默认名称")}` : this.manager.translator.t("外观总览_方案_默认名称"),
+            theme: activeTheme,
+            enableSnippets: snippets.filter((snippet) => snippet.enabled).map((snippet) => snippet.id),
+            disableSnippets: [],
+            mode: "merge",
+            autoApplyOnTheme: Boolean(activeTheme),
+        };
+    }
+
+    private async saveAppearanceProfile(profile: AppearanceProfileDraft): Promise<void> {
+        const profiles = this.getAppearanceProfiles();
+        const now = Date.now();
+        const enableSnippets = this.normalizeSnippetIds(profile.enableSnippets || []);
+        const normalized: AppearanceProfile = {
+            id: profile.id || this.createAppearanceProfileId(),
+            name: profile.name.trim(),
+            theme: profile.theme || "",
+            enableSnippets,
+            disableSnippets: this.normalizeSnippetIds(profile.disableSnippets || [])
+                .filter((id) => !enableSnippets.includes(id)),
+            mode: profile.mode || "merge",
+            autoApplyOnTheme: Boolean(profile.autoApplyOnTheme && profile.theme),
+            createdAt: profile.createdAt || now,
+            updatedAt: now,
+        };
+        const index = profiles.findIndex((item) => item.id === normalized.id);
+        if (index >= 0) profiles[index] = normalized;
+        else profiles.push(normalized);
+        profiles.sort((a, b) => a.name.localeCompare(b.name));
+        await this.manager.saveSettings();
+        await this.reloadShowData();
+    }
+
+    private async deleteAppearanceProfile(profileId: string): Promise<void> {
+        this.manager.settings.APPEARANCE_PROFILES = this.getAppearanceProfiles().filter((profile) => profile.id !== profileId);
+        await this.manager.saveSettings();
+        await this.reloadShowData();
+    }
+
+    private getAutoAppearanceProfileForTheme(themeName: string): AppearanceProfile | undefined {
+        if (!themeName) return undefined;
+        return this.getAppearanceProfiles().find((profile) => profile.autoApplyOnTheme && profile.theme === themeName);
+    }
+
+    private openAppearanceProfileModal(profile: AppearanceProfileDraft, themes: ManagerTransferTheme[], snippets: CssSnippetItem[]) {
+        new AppearanceProfileModal(this.app, this.manager, profile, themes, snippets, async (nextProfile) => {
+            await this.saveAppearanceProfile(nextProfile);
+        }).open();
+    }
+
+    private async writeEnabledSnippetIds(enabledIds: Set<string>): Promise<void> {
+        const sortedIds = [...enabledIds].sort((a, b) => a.localeCompare(b));
+        const adapter = this.app.vault.adapter;
+        const path = this.getAppearanceConfigPath();
+        const appearance = await this.readAppearanceJson();
+        appearance.enabledCssSnippets = sortedIds;
+        await adapter.write(path, JSON.stringify(appearance, null, 2));
+
+        const customCss = this.getCustomCss();
+        const customCssEnabledSnippets = customCss?.enabledSnippets;
+        if (customCssEnabledSnippets instanceof Set) {
+            customCssEnabledSnippets.clear();
+            sortedIds.forEach((id) => customCssEnabledSnippets.add(id));
+        } else if (customCss && Array.isArray(customCssEnabledSnippets)) {
+            customCss.enabledSnippets = sortedIds;
+        }
+        await customCss?.loadSnippets?.();
+        (this.app.workspace as unknown as { trigger?: (name: string) => void }).trigger?.("css-change");
+    }
+
+    private async applyAppearanceProfile(profile: AppearanceProfile, options: { quiet?: boolean } = {}): Promise<void> {
+        if (profile.theme) this.setActiveThemeName(profile.theme);
+        const currentEnabled = await this.getEnabledSnippetIds();
+        const nextEnabled = profile.mode === "exact" ? new Set<string>() : new Set(currentEnabled);
+        this.normalizeSnippetIds(profile.enableSnippets || []).forEach((id) => nextEnabled.add(id));
+        this.normalizeSnippetIds(profile.disableSnippets || []).forEach((id) => nextEnabled.delete(id));
+
+        const currentSorted = [...currentEnabled].sort((a, b) => a.localeCompare(b)).join("\n");
+        const nextSorted = [...nextEnabled].sort((a, b) => a.localeCompare(b)).join("\n");
+        if (currentSorted !== nextSorted) await this.writeEnabledSnippetIds(nextEnabled);
+        if (!options.quiet) new Notice(this.manager.translator.t("外观总览_方案_已应用", { name: profile.name }));
+        await this.reloadShowData();
+    }
+
+    private async activateThemeWithBoundProfile(themeName: string): Promise<void> {
+        const boundProfile = this.getAutoAppearanceProfileForTheme(themeName);
+        if (boundProfile) {
+            await this.applyAppearanceProfile(boundProfile);
+            return;
+        }
+        this.setActiveThemeName(themeName);
+        new Notice(this.manager.translator.t("外观总览_提示_主题已切换", { name: themeName }));
+        await this.reloadShowData();
+    }
+
+    private renderAppearanceStats(themes: ManagerTransferTheme[], snippets: CssSnippetItem[]) {
         if (!this.footEl) return;
         const activeTheme = this.getActiveThemeName();
         const trackedCount = themes.filter((theme) => Boolean(theme.repo || theme.source)).length;
-        const activeCount = themes.some((theme) => theme.active) ? 1 : 0;
+        const enabledSnippetCount = snippets.filter((snippet) => snippet.enabled).length;
         this.footEl.empty();
         const t = (key: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(key, vars);
         [
-            { cls: "bpm-stat-chip--total", icon: "palette", label: t("主题总览_统计_主题"), value: themes.length },
-            { cls: "bpm-stat-chip--enabled", icon: "badge-check", label: t("主题总览_统计_已启用"), value: activeCount },
-            { cls: "bpm-stat-chip--updates", icon: "radio-tower", label: t("主题总览_统计_已追踪"), value: trackedCount },
-            { cls: "bpm-stat-chip--hidden", icon: "monitor", label: t("主题总览_统计_当前"), value: activeTheme || t("主题总览_默认主题") },
+            { cls: "bpm-stat-chip--total", icon: "palette", label: t("外观总览_统计_主题"), value: themes.length },
+            { cls: "bpm-stat-chip--enabled", icon: "badge-check", label: t("外观总览_统计_片段启用"), value: enabledSnippetCount },
+            { cls: "bpm-stat-chip--updates", icon: "radio-tower", label: t("外观总览_统计_已追踪"), value: trackedCount },
+            { cls: "bpm-stat-chip--hidden", icon: "monitor", label: t("外观总览_统计_当前"), value: activeTheme || t("外观总览_默认主题") },
         ].forEach((item) => {
             const chip = this.footEl.createSpan({ cls: `bpm-stat-chip ${item.cls}` });
             chip.setAttribute("aria-label", `${item.label} ${item.value}`);
@@ -4575,11 +4999,24 @@ export class ManagerModal extends Modal {
         this.pageEl.empty();
         this.pageEl.addClass("manager-theme-overview");
 
-        const themes = await collectInstalledThemes(this.manager, undefined, false, true);
+        const [themes, snippets] = await Promise.all([
+            collectInstalledThemes(this.manager, undefined, false, true),
+            this.collectCssSnippets(),
+        ]);
         if (!this.isRenderCurrent(renderGeneration, page)) return;
-        this.renderThemeStats(themes);
+        const profiles = this.getAppearanceProfiles();
+        this.renderAppearanceStats(themes, snippets);
 
         const lowerSearchText = this.searchText.trim().toLowerCase();
+        const visibleProfiles = lowerSearchText
+            ? profiles.filter((profile) => [
+                profile.name,
+                profile.theme || "",
+                profile.mode,
+                ...(profile.enableSnippets || []),
+                ...(profile.disableSnippets || []),
+            ].join("\n").toLowerCase().includes(lowerSearchText))
+            : profiles;
         const visibleThemes = lowerSearchText
             ? themes.filter((theme) => [
                 theme.name,
@@ -4590,23 +5027,120 @@ export class ManagerModal extends Modal {
                 theme.source?.localVersion || "",
             ].join("\n").toLowerCase().includes(lowerSearchText))
             : themes;
+        const visibleSnippets = lowerSearchText
+            ? snippets.filter((snippet) => [
+                snippet.name,
+                snippet.id,
+                snippet.path,
+                snippet.enabled ? t("外观总览_状态_已启用") : t("外观总览_状态_已禁用"),
+            ].join("\n").toLowerCase().includes(lowerSearchText))
+            : snippets;
 
-        if (visibleThemes.length === 0) {
-            const empty = this.pageEl.createDiv("bpm-empty-state manager-theme-page__empty");
-            const icon = empty.createDiv("bpm-empty-state__icon");
-            setIcon(icon, lowerSearchText ? "search-x" : "palette");
-            empty.createDiv({ cls: "bpm-empty-state__title", text: lowerSearchText ? t("主题总览_空_无匹配标题") : t("主题总览_空_无主题标题") });
-            empty.createDiv({
-                cls: "bpm-empty-state__text",
-                text: lowerSearchText
-                    ? t("主题总览_空_无匹配说明")
-                    : t("主题总览_空_无主题说明"),
+        const workspace = this.pageEl.createDiv("manager-repo-page manager-appearance-workspace");
+        const toolbar = workspace.createDiv("manager-repo-page__toolbar manager-appearance-toolbar");
+        const tabs = toolbar.createDiv("manager-repo-page__switcher manager-appearance-tabs");
+        tabs.setAttribute("role", "tablist");
+        tabs.setAttribute("data-slot", "tabs-list");
+        const createAppearanceTab = (view: AppearanceView, icon: string, label: string, count: number) => {
+            const button = tabs.createEl("button", { cls: "manager-repo-page__switch manager-appearance-tab" });
+            const selected = this.appearanceView === view;
+            button.type = "button";
+            button.setAttribute("role", "tab");
+            button.setAttribute("data-slot", "tabs-trigger");
+            button.toggleClass("is-active", selected);
+            button.setAttribute("aria-pressed", `${selected}`);
+            button.setAttribute("aria-selected", `${selected}`);
+            button.setAttribute("data-state", selected ? "active" : "inactive");
+            const iconEl = button.createSpan({ cls: "manager-repo-page__switch-icon" });
+            setIcon(iconEl, icon);
+            button.createSpan({ cls: "manager-repo-page__switch-label", text: label });
+            button.createSpan({ cls: "manager-repo-page__switch-count", text: `${count}` });
+            button.addEventListener("click", () => {
+                if (this.appearanceView === view) return;
+                this.appearanceView = view;
+                this.syncPageChrome();
+                this.renderContent();
             });
+        };
+        createAppearanceTab("profiles", "layers-3", t("外观总览_分区_外观方案"), visibleProfiles.length);
+        createAppearanceTab("themes", "palette", t("外观总览_分区_主题"), visibleThemes.length);
+        createAppearanceTab("snippets", "file-code-2", t("外观总览_分区_CSS片段"), visibleSnippets.length);
+        const body = workspace.createDiv("manager-repo-page__body manager-appearance-body");
+
+        if (this.appearanceView === "profiles") {
+        const profileSection = body.createDiv("manager-appearance-section manager-appearance-section--profiles");
+        const profileList = profileSection.createDiv("manager-appearance-section__list");
+        if (visibleProfiles.length === 0) {
+            const empty = profileList.createDiv("manager-appearance-inline-empty");
+            empty.createSpan({ text: lowerSearchText ? t("外观总览_方案_无匹配") : t("外观总览_方案_空") });
+        }
+        for (const profile of visibleProfiles) {
+            if (!this.isRenderCurrent(renderGeneration, page)) return;
+            const itemEl = new Setting(profileList);
+            itemEl.setClass("manager-item");
+            itemEl.settingEl.addClass("manager-theme-card");
+            itemEl.settingEl.addClass("manager-appearance-profile-card");
+            itemEl.settingEl.toggleClass("is-active-theme", Boolean(profile.theme && profile.theme === this.getActiveThemeName()));
+            itemEl.nameEl.addClass("manager-item__name-container");
+            itemEl.nameEl.addClass("manager-theme-card__header");
+            itemEl.descEl.addClass("manager-item__description-container");
+            itemEl.descEl.addClass("manager-theme-card__body");
+            itemEl.controlEl.addClass("manager-item__controls");
+            itemEl.controlEl.addClass("manager-theme-card__actions");
+
+            const titleRow = itemEl.nameEl.createDiv("manager-theme-card__title-row");
+            const iconWrap = titleRow.createSpan({ cls: "manager-theme-card__icon" });
+            setIcon(iconWrap, "layers-3");
+            titleRow.createSpan({ cls: "manager-theme-card__name", text: profile.name, title: profile.name });
+            if (profile.theme) titleRow.createSpan({ cls: "manager-theme-card__chip is-source", text: profile.theme });
+            titleRow.createSpan({ cls: "manager-theme-card__chip", text: t(profile.mode === "exact" ? "外观总览_方案_精确模式" : "外观总览_方案_合并模式") });
+            if (profile.autoApplyOnTheme) titleRow.createSpan({ cls: "manager-theme-card__chip is-active", text: t("外观总览_方案_自动应用短") });
+
+            const meta = itemEl.descEl.createDiv("manager-theme-card__meta");
+            const addMeta = (iconName: string, label: string, value: string) => {
+                const row = meta.createDiv("manager-theme-card__meta-row");
+                const rowIcon = row.createSpan({ cls: "manager-theme-card__meta-icon" });
+                setIcon(rowIcon, iconName);
+                row.createSpan({ cls: "manager-theme-card__meta-label", text: label });
+                row.createSpan({ cls: "manager-theme-card__meta-value", text: value, title: value });
+            };
+            addMeta("badge-check", t("外观总览_方案_启用片段数"), `${profile.enableSnippets.length}`);
+            addMeta("circle-minus", t("外观总览_方案_禁用片段数"), `${profile.disableSnippets.length}`);
+
+            const applyBtn = new ButtonComponent(itemEl.controlEl);
+            applyBtn.setIcon("wand-sparkles");
+            applyBtn.setTooltip(t("外观总览_方案_应用"));
+            applyBtn.onClick(async () => {
+                await this.applyAppearanceProfile(profile);
+            });
+
+            const editBtn = new ButtonComponent(itemEl.controlEl);
+            editBtn.setIcon("pencil");
+            editBtn.setTooltip(t("外观总览_方案_编辑"));
+            editBtn.onClick(() => {
+                this.openAppearanceProfileModal(profile, themes, snippets);
+            });
+
+            const deleteBtn = new ButtonComponent(itemEl.controlEl);
+            deleteBtn.setIcon("trash-2");
+            deleteBtn.setTooltip(t("外观总览_方案_删除"));
+            deleteBtn.onClick(async () => {
+                if (!(await confirmWithModal(this.app, this.manager, t("外观总览_方案_删除确认", { name: profile.name })))) return;
+                await this.deleteAppearanceProfile(profile.id);
+            });
+        }
+        }
+
+        if (this.appearanceView === "themes") {
+        const themeSection = body.createDiv("manager-appearance-section manager-appearance-section--themes");
+        const themeList = themeSection.createDiv("manager-appearance-section__list");
+        if (visibleThemes.length === 0) {
+            const empty = themeList.createDiv("manager-appearance-inline-empty");
+            empty.createSpan({ text: lowerSearchText ? t("外观总览_空_无匹配主题") : t("外观总览_空_无主题") });
             if (!lowerSearchText) {
-                const actionWrap = empty.createDiv("manager-theme-page__empty-action");
-                const installBtn = new ButtonComponent(actionWrap);
+                const installBtn = new ButtonComponent(empty);
                 installBtn.setIcon("download");
-                installBtn.setButtonText(t("主题总览_操作_安装主题"));
+                installBtn.setButtonText(t("外观总览_操作_安装主题"));
                 installBtn.onClick(() => {
                     this.installType = "theme";
                     this.activePage = "install";
@@ -4614,12 +5148,11 @@ export class ManagerModal extends Modal {
                     this.renderContent();
                 });
             }
-            return;
         }
-
         for (const theme of visibleThemes) {
             if (!this.isRenderCurrent(renderGeneration, page)) return;
-            const itemEl = new Setting(this.pageEl);
+            const boundProfile = this.getAutoAppearanceProfileForTheme(theme.name);
+            const itemEl = new Setting(themeList);
             itemEl.setClass("manager-item");
             itemEl.settingEl.addClass("manager-theme-card");
             itemEl.settingEl.toggleClass("is-active-theme", theme.active);
@@ -4629,15 +5162,16 @@ export class ManagerModal extends Modal {
             itemEl.descEl.addClass("manager-theme-card__body");
             itemEl.controlEl.addClass("manager-item__controls");
             itemEl.controlEl.addClass("manager-theme-card__actions");
-            itemEl.controlEl.setAttribute("aria-label", t("主题总览_操作_区域", { name: theme.name }));
+            itemEl.controlEl.setAttribute("aria-label", t("外观总览_操作_主题区域", { name: theme.name }));
 
             const titleRow = itemEl.nameEl.createDiv("manager-theme-card__title-row");
             const iconWrap = titleRow.createSpan({ cls: "manager-theme-card__icon" });
             setIcon(iconWrap, theme.active ? "badge-check" : "palette");
             titleRow.createSpan({ cls: "manager-theme-card__name", text: theme.name, title: theme.name });
-            if (theme.active) titleRow.createSpan({ cls: "manager-theme-card__chip is-active", text: t("主题总览_状态_当前") });
+            if (theme.active) titleRow.createSpan({ cls: "manager-theme-card__chip is-active", text: t("外观总览_状态_当前") });
             if (theme.version) titleRow.createSpan({ cls: "manager-theme-card__chip", text: `v${theme.version}` });
-            if (theme.repo || theme.source) titleRow.createSpan({ cls: "manager-theme-card__chip is-source", text: t("主题总览_状态_已追踪") });
+            if (theme.repo || theme.source) titleRow.createSpan({ cls: "manager-theme-card__chip is-source", text: t("外观总览_状态_已追踪") });
+            if (boundProfile) titleRow.createSpan({ cls: "manager-theme-card__chip is-active", text: t("外观总览_方案_已绑定") });
 
             const meta = itemEl.descEl.createDiv("manager-theme-card__meta");
             const addMeta = (iconName: string, label: string, value: string) => {
@@ -4648,27 +5182,34 @@ export class ManagerModal extends Modal {
                 row.createSpan({ cls: "manager-theme-card__meta-label", text: label });
                 row.createSpan({ cls: "manager-theme-card__meta-value", text: value, title: value });
             };
-            addMeta("user", t("主题总览_字段_作者"), theme.author || "");
-            addMeta("tag", t("主题总览_字段_版本"), theme.version || "");
-            addMeta("github", t("主题总览_字段_仓库"), theme.repo || "");
+            addMeta("user", t("外观总览_字段_作者"), theme.author || "");
+            addMeta("tag", t("外观总览_字段_版本"), theme.version || "");
+            addMeta("github", t("外观总览_字段_仓库"), theme.repo || "");
             if (theme.source) {
-                addMeta("clock", t("主题总览_字段_安装时间"), this.formatSourceDate(theme.source.installedAt));
-                addMeta("radio-tower", t("主题总览_字段_最新"), theme.source.latestReleaseTag || theme.source.latestVersion || "");
+                addMeta("clock", t("外观总览_字段_安装时间"), this.formatSourceDate(theme.source.installedAt));
+                addMeta("radio-tower", t("外观总览_字段_最新"), theme.source.latestReleaseTag || theme.source.latestVersion || "");
             }
 
             const activateBtn = new ButtonComponent(itemEl.controlEl);
             activateBtn.setIcon(theme.active ? "badge-check" : "paintbrush");
-            activateBtn.setTooltip(theme.active ? t("主题总览_操作_当前主题") : t("主题总览_操作_使用主题"));
+            activateBtn.setTooltip(boundProfile ? t("外观总览_方案_应用绑定", { name: boundProfile.name }) : (theme.active ? t("外观总览_操作_当前主题") : t("外观总览_操作_使用主题")));
             activateBtn.setDisabled(theme.active);
             activateBtn.onClick(async () => {
-                this.setActiveThemeName(theme.name);
-                new Notice(t("主题总览_提示_已切换", { name: theme.name }));
-                await this.reloadShowData();
+                await this.activateThemeWithBoundProfile(theme.name);
             });
+
+            if (boundProfile && theme.active) {
+                const applyBoundBtn = new ButtonComponent(itemEl.controlEl);
+                applyBoundBtn.setIcon("wand-sparkles");
+                applyBoundBtn.setTooltip(t("外观总览_方案_应用绑定", { name: boundProfile.name }));
+                applyBoundBtn.onClick(async () => {
+                    await this.applyAppearanceProfile(boundProfile);
+                });
+            }
 
             const openDirBtn = new ButtonComponent(itemEl.controlEl);
             openDirBtn.setIcon("folder-open");
-            openDirBtn.setTooltip(t("主题总览_操作_打开目录"));
+            openDirBtn.setTooltip(t("外观总览_操作_打开主题目录"));
             openDirBtn.onClick(() => {
                 managerOpen(this.getThemeFolderPath(theme.name), this.manager);
             });
@@ -4676,11 +5217,96 @@ export class ManagerModal extends Modal {
             if (theme.repo) {
                 const githubBtn = new ButtonComponent(itemEl.controlEl);
                 githubBtn.setIcon("github");
-                githubBtn.setTooltip(t("主题总览_操作_打开GitHub"));
+                githubBtn.setTooltip(t("外观总览_操作_打开GitHub"));
                 githubBtn.onClick(() => {
                     window.open(`https://github.com/${theme.repo}`);
                 });
             }
+        }
+        }
+
+        if (this.appearanceView === "snippets") {
+        const snippetSection = body.createDiv("manager-appearance-section manager-appearance-section--snippets");
+        const snippetList = snippetSection.createDiv("manager-appearance-section__list");
+        if (visibleSnippets.length === 0) {
+            const empty = snippetList.createDiv("manager-appearance-inline-empty");
+            empty.createSpan({ text: lowerSearchText ? t("外观总览_空_无匹配片段") : t("外观总览_空_无CSS片段") });
+            if (!lowerSearchText) {
+                const openBtn = new ButtonComponent(empty);
+                openBtn.setIcon("folder-open");
+                openBtn.setButtonText(t("外观总览_操作_打开片段目录"));
+                openBtn.onClick(() => {
+                    managerOpen(this.getSnippetFolderPath(), this.manager);
+                });
+            }
+        }
+
+        for (const snippet of visibleSnippets) {
+            if (!this.isRenderCurrent(renderGeneration, page)) return;
+            const itemEl = new Setting(snippetList);
+            itemEl.setClass("manager-item");
+            itemEl.settingEl.addClass("manager-theme-card");
+            itemEl.settingEl.addClass("manager-css-snippet-card");
+            itemEl.settingEl.toggleClass("is-active-theme", snippet.enabled);
+            itemEl.nameEl.addClass("manager-item__name-container");
+            itemEl.nameEl.addClass("manager-theme-card__header");
+            itemEl.descEl.addClass("manager-item__description-container");
+            itemEl.descEl.addClass("manager-theme-card__body");
+            itemEl.controlEl.addClass("manager-item__controls");
+            itemEl.controlEl.addClass("manager-theme-card__actions");
+            itemEl.controlEl.setAttribute("aria-label", t("外观总览_操作_片段区域", { name: snippet.name }));
+
+            const titleRow = itemEl.nameEl.createDiv("manager-theme-card__title-row");
+            const iconWrap = titleRow.createSpan({ cls: "manager-theme-card__icon" });
+            setIcon(iconWrap, snippet.enabled ? "badge-check" : "file-code-2");
+            titleRow.createSpan({ cls: "manager-theme-card__name", text: snippet.name, title: snippet.name });
+            const statusChip = titleRow.createSpan({
+                cls: `manager-theme-card__chip ${snippet.enabled ? "is-active" : ""}`,
+                text: snippet.enabled ? t("外观总览_状态_已启用") : t("外观总览_状态_已禁用"),
+            });
+
+            const meta = itemEl.descEl.createDiv("manager-theme-card__meta");
+            const row = meta.createDiv("manager-theme-card__meta-row manager-theme-card__meta-row--wide");
+            const rowIcon = row.createSpan({ cls: "manager-theme-card__meta-icon" });
+            setIcon(rowIcon, "file");
+            row.createSpan({ cls: "manager-theme-card__meta-label", text: t("外观总览_字段_文件") });
+            row.createSpan({ cls: "manager-theme-card__meta-value", text: `${snippet.id}.css`, title: snippet.path });
+
+            const toggle = new ToggleComponent(itemEl.controlEl);
+            toggle.setTooltip(snippet.enabled ? t("外观总览_操作_禁用片段") : t("外观总览_操作_启用片段"));
+            toggle.setValue(snippet.enabled);
+            const syncSnippetCardState = (enabled: boolean) => {
+                snippet.enabled = enabled;
+                itemEl.settingEl.toggleClass("is-active-theme", enabled);
+                statusChip.toggleClass("is-active", enabled);
+                statusChip.setText(enabled ? t("外观总览_状态_已启用") : t("外观总览_状态_已禁用"));
+                setIcon(iconWrap, enabled ? "badge-check" : "file-code-2");
+                toggle.setTooltip(enabled ? t("外观总览_操作_禁用片段") : t("外观总览_操作_启用片段"));
+                this.renderAppearanceStats(themes, snippets);
+            };
+            toggle.onChange(async (enabled) => {
+                const previousEnabled = snippet.enabled;
+                toggle.setDisabled(true);
+                try {
+                    await this.setCssSnippetEnabled(snippet.id, enabled);
+                    syncSnippetCardState(enabled);
+                    new Notice(t(enabled ? "外观总览_提示_片段已启用" : "外观总览_提示_片段已禁用", { name: snippet.name }));
+                } catch (error) {
+                    toggle.setValue(previousEnabled);
+                    syncSnippetCardState(previousEnabled);
+                    throw error;
+                } finally {
+                    toggle.setDisabled(false);
+                }
+            });
+
+            const openDirBtn = new ButtonComponent(itemEl.controlEl);
+            openDirBtn.setIcon("folder-open");
+            openDirBtn.setTooltip(t("外观总览_操作_打开片段目录"));
+            openDirBtn.onClick(() => {
+                managerOpen(this.getSnippetFolderPath(), this.manager);
+            });
+        }
         }
     }
 
