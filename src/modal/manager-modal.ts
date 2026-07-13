@@ -7920,6 +7920,13 @@ export class ManagerModal extends Modal {
         this.renderContent();
     }
 
+    public async refreshStyleSettings() {
+        if (this.modalContainer && !Platform.isMobileApp) {
+            this.modalContainer.toggleClass("manager-container__top", !this.settings.CENTER);
+        }
+        await this.reloadShowData();
+    }
+
     public onOpen() {
         void this.openAsync();
     }

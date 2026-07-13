@@ -12385,6 +12385,33 @@ body.theme-dark .manager-transfer-segment[data-state="active"]:hover {
     scroll-padding-top: 0;
 }
 
+.manager-container.manager-container--main .manager-modal-page.manager-item-container.manager-plugin-overview--two-column {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    align-items: start;
+}
+
+.manager-container.manager-container--main .manager-modal-page.manager-item-container.manager-plugin-overview--two-column > .manager-bulk-bar-host,
+.manager-container.manager-container--main .manager-modal-page.manager-item-container.manager-plugin-overview--two-column > .manager-plugin-separator,
+.manager-container.manager-container--main .manager-modal-page.manager-item-container.manager-plugin-overview--two-column > .manager-plugin-separator-editor,
+.manager-container.manager-container--main .manager-modal-page.manager-item-container.manager-plugin-overview--two-column > .manager-plugin-page__empty {
+    grid-column: 1 / -1;
+}
+
+.manager-container.manager-container--main.manager-container--mobile .manager-modal-page.manager-item-container.manager-plugin-overview--two-column {
+    display: flex;
+    flex-direction: column;
+}
+
+.manager-container .manager-plugin-card__body.manager-display-block:not(.manager-plugin-card__body--empty) {
+    display: flex;
+}
+
+.manager-container .manager-plugin-card__body.manager-display-none {
+    display: none;
+}
+
 .manager-container.manager-container--main .manager-modal-page>.manager-troubleshoot-page {
     padding: 0;
 }

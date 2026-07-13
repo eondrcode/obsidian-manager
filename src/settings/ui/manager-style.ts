@@ -29,6 +29,11 @@ export default class ManagerBasis extends BaseSetting {
     }
 
 
+    private async saveAndRefreshManager() {
+        await this.manager.saveSettings();
+        await this.manager.managerModal?.refreshStyleSettings();
+    }
+
     main(): void {
 
         const overviewLayoutBar = new Setting(this.containerEl)
@@ -39,7 +44,7 @@ export default class ManagerBasis extends BaseSetting {
         overviewLayoutDropdown.setValue(this.settings.PLUGIN_OVERVIEW_LAYOUT || 'list');
         overviewLayoutDropdown.onChange((value) => {
             this.settings.PLUGIN_OVERVIEW_LAYOUT = value as PluginOverviewLayout;
-            void this.manager.saveSettings();
+            void this.saveAndRefreshManager();
         });
 
         const itemStyleBar = new Setting(this.containerEl)
@@ -50,7 +55,7 @@ export default class ManagerBasis extends BaseSetting {
         itemStyleDropdown.setValue(this.settings.ITEM_STYLE);
         itemStyleDropdown.onChange((value) => {
             this.settings.ITEM_STYLE = value;
-            void this.manager.saveSettings();
+            void this.saveAndRefreshManager();
         });
 
         const groupStyleBar = new Setting(this.containerEl)
@@ -61,7 +66,7 @@ export default class ManagerBasis extends BaseSetting {
         groupStyleDropdown.setValue(this.settings.GROUP_STYLE);
         groupStyleDropdown.onChange((value) => {
             this.settings.GROUP_STYLE = value;
-            void this.manager.saveSettings();
+            void this.saveAndRefreshManager();
         });
 
         const tagStyleBar = new Setting(this.containerEl)
@@ -72,7 +77,7 @@ export default class ManagerBasis extends BaseSetting {
         tagStyleDropdown.setValue(this.settings.TAG_STYLE);
         tagStyleDropdown.onChange((value) => {
             this.settings.TAG_STYLE = value;
-            void this.manager.saveSettings();
+            void this.saveAndRefreshManager();
         });
 
         const topBar = new Setting(this.containerEl)
@@ -82,7 +87,7 @@ export default class ManagerBasis extends BaseSetting {
         topToggle.setValue(this.settings.CENTER);
         topToggle.onChange((value) => {
             this.settings.CENTER = value;
-            void this.manager.saveSettings();
+            void this.saveAndRefreshManager();
         });
 
         const fadeOutDisabledPluginsBar = new Setting(this.containerEl)
@@ -92,7 +97,7 @@ export default class ManagerBasis extends BaseSetting {
         fadeOutDisabledPluginsToggle.setValue(this.settings.FADE_OUT_DISABLED_PLUGINS);
         fadeOutDisabledPluginsToggle.onChange((value) => {
             this.settings.FADE_OUT_DISABLED_PLUGINS = value;
-            void this.manager.saveSettings();
+            void this.saveAndRefreshManager();
         });
 
     }

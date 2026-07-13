@@ -109,9 +109,9 @@ export interface ManagerSettings {
     /** 是否为每个标签注册批量启用/禁用命令。 */
     COMMAND_TAG: boolean;
     /** 是否为保存的插件状态方案注册一键应用命令。 */
-    COMMAND_PROFILE: boolean;
+    COMMAND_PROFILE: boolean; 
     /** 命令面板保存的插件状态方案。 */
-    COMMAND_PROFILES: PluginCommandProfile[];
+    COMMAND_PROFILES: PluginCommandProfile[]; 
     /** 外观总览保存的主题与 CSS 片段组合方案。 */
     APPEARANCE_PROFILES: AppearanceProfile[];
     /** 命令面板批量操作前的上一份状态快照，用于撤销。 */
