@@ -1,10 +1,10 @@
 {
 	"id": "better-plugins-manager",
 	"name": "Better Manager",
-	"version": "1.0.13",
+	"version": "1.0.14",
 	"minAppVersion": "1.5.8",
 	"description": "Make plugin management more intuitive and efficient.",
-	"author": "zero", 
+	"author": "zero",
 	"authorUrl": "https://github.com/eondrcode/",
 	"fundingUrl": "https://ifdian.net/a/eondr",
 	"isDesktopOnly": false
