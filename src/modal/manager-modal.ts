@@ -16,7 +16,7 @@ import {
 } from "obsidian";
 
 import { BetaSource, BPM_IGNORE_TAG, EONDR_PLUGIN_TAG_ID, InstallHistoryItem, ManagerPlugin, PluginLayoutItem } from "../data/types";
-import { AppearanceProfile, AppearanceProfileMode, DEFAULT_MAIN_PAGE_ACTION_PLACEMENT, FilterOperator, MainPageActionId, ManagerSettings } from "../settings/data";
+import { AppearanceProfile, AppearanceProfileMode, DEFAULT_MAIN_PAGE_ACTION_PLACEMENT, FilterOperator, MainPageActionId, ManagerSettings, PluginOverviewSort } from "../settings/data";
 import { confirmWithModal, managerOpen } from "../utils";
 
 import Manager from "main";
@@ -95,6 +95,11 @@ type PluginRepoActionState = {
 type PluginSearchIndexEntry = {
     key: string;
     text: string;
+};
+
+type PluginDateMeta = {
+    installedAt?: number;
+    updatedAt?: number;
 };
 
 type StatusFilterValue = "all" | "enabled" | "disabled" | "grouped" | "ungrouped" | "tagged" | "untagged" | "noted" | "has-update" | "hidden";
@@ -447,6 +452,43 @@ export class ManagerModal extends Modal {
     private getPluginOverviewLayout(): string {
         const layout = this.settings.PLUGIN_OVERVIEW_LAYOUT;
         return layout === "two-column" ? layout : "list";
+    }
+
+    private normalizePluginOverviewSort(value?: string): PluginOverviewSort {
+        switch (value) {
+            case "name-asc":
+            case "name-desc":
+            case "installed-desc":
+            case "installed-asc":
+            case "updated-desc":
+            case "updated-asc":
+                return value;
+            default:
+                return "layout";
+        }
+    }
+
+    private getPluginOverviewSort(): PluginOverviewSort {
+        return this.normalizePluginOverviewSort(this.settings.PLUGIN_OVERVIEW_SORT);
+    }
+
+    private getPluginOverviewSortOptions(): Array<[PluginOverviewSort, string]> {
+        const t = (key: string) => this.manager.translator.t(key);
+        return [
+            ["layout", t("排序_自定义布局")],
+            ["name-asc", t("排序_名称升序")],
+            ["name-desc", t("排序_名称降序")],
+            ["installed-desc", t("排序_安装日期新到旧")],
+            ["installed-asc", t("排序_安装日期旧到新")],
+            ["updated-desc", t("排序_更新日期新到旧")],
+            ["updated-asc", t("排序_更新日期旧到新")],
+        ];
+    }
+
+    private async setPluginOverviewSort(value: string) {
+        this.settings.PLUGIN_OVERVIEW_SORT = this.normalizePluginOverviewSort(value);
+        await this.manager.saveSettings();
+        await this.reloadShowData();
     }
 
     private syncPluginOverviewLayoutClass() {
@@ -1450,9 +1492,11 @@ export class ManagerModal extends Modal {
         }
         const hasDescription = managerPlugin.desc.trim().length > 0;
         const hasVisibleTags = this.editorMode || visibleTagCount > 0;
-        const hasExpandedDetails = this.editorMode || hasDescription || hasVisibleTags;
+        const hasDateMeta = Boolean(card.querySelector(".manager-plugin-card__date-meta"));
+        const hasExpandedDetails = this.editorMode || hasDescription || hasVisibleTags || hasDateMeta;
         card.toggleClass("has-description", hasDescription);
         card.toggleClass("has-visible-tags", hasVisibleTags);
+        card.toggleClass("has-date-meta", hasDateMeta);
         card.querySelector<HTMLElement>(".manager-plugin-card__body")
             ?.toggleClass("manager-plugin-card__body--empty", !hasExpandedDetails);
 
@@ -2453,9 +2497,10 @@ export class ManagerModal extends Modal {
         const searchBar = new Setting(filterContent).setClass("manager-bar__search").setName("");
         this.searchBarEl = searchBar.settingEl;
         this.syncPageChrome();
+        const searchLine = searchBar.controlEl.createDiv("manager-search-line");
         const filterControlGroup = searchBar.controlEl.createDiv("manager-filter-control-group");
         const createFilterField = (label: string, icon: string, variant: "select" | "search" | "compound" = "select") => {
-            const parent = variant === "search" ? searchBar.controlEl : filterControlGroup;
+            const parent = variant === "search" ? searchLine : filterControlGroup;
             const field = parent.createDiv("manager-filter-field");
             field.addClass(`manager-filter-field--${variant}`);
             const labelEl = field.createDiv("manager-filter-field__label");
@@ -2465,7 +2510,7 @@ export class ManagerModal extends Modal {
             const controlEl = field.createDiv("manager-filter-field__control");
             return controlEl;
         };
-        const createFilterSelectField = (label: string, icon: string, variant: "select" | "compound" = "select") => {
+        const createFilterSelectField = (label: string, icon: string, variant: "select" | "search" | "compound" = "select") => {
             const controlEl = createFilterField(label, icon, variant);
             const selectGroup = controlEl.createDiv("manager-filter-select-group");
             return selectGroup;
@@ -2516,6 +2561,15 @@ export class ManagerModal extends Modal {
             this.handleSearchChange(value);
         });
         searchBar.controlEl.appendChild(filterControlGroup);
+
+        const sortControl = createFilterSelectField(t("通用_排序_文本"), "arrow-up-down", "search");
+        sortControl.closest(".manager-filter-field")?.addClass("manager-filter-field--sort");
+        const sortDropdown = new DropdownComponent(sortControl);
+        this.addOrderedOptions(sortDropdown, this.getPluginOverviewSortOptions());
+        sortDropdown.setValue(this.getPluginOverviewSort());
+        sortDropdown.onChange((value) => {
+            void this.setPluginOverviewSort(value);
+        });
 
         // 过滤器
         const statusControl = createFilterSelectField(t("通用_状态_文本"), "list-filter", "compound");
@@ -2854,6 +2908,17 @@ export class ManagerModal extends Modal {
         };
 
         // 状态
+        const sortSetting = new Setting(filterPanel).setName(t("通用_排序_文本"));
+        const sortDropdown = new DropdownComponent(sortSetting.controlEl);
+        this.addOrderedOptions(sortDropdown, this.getPluginOverviewSortOptions());
+        sortDropdown.setValue(this.getPluginOverviewSort());
+        sortDropdown.onChange((value) => {
+            void (async () => {
+                await this.setPluginOverviewSort(value);
+                this.showHeadMobile();
+            })();
+        });
+
         const statusSetting = new Setting(filterPanel).setName(t("通用_状态_文本"));
         addMobileOperatorToggle(statusSetting, this.getStatusFilterOperator(), t("筛选_状态取反_标签"), (value) => this.setStatusFilterOperator(value));
         const statusOptions = Object.entries(this.getStatusFilterOptions());
@@ -2989,8 +3054,10 @@ export class ManagerModal extends Modal {
         if (this.settings.DEBUG) console.log("[BPM] render showData manifests size:", Object.keys(this.appPlugins.manifests).length);
         const uniquePlugins = this.getUniquePluginManifests();
         const manifestById = new Map(uniquePlugins.map((plugin) => [plugin.id, plugin]));
-        const layoutItems = this.getPluginLayout(uniquePlugins);
         const pluginSettingsById = new Map(this.manager.settings.Plugins.map((plugin) => [plugin.id, plugin]));
+        const dateMetaById = await this.getPluginDateMetaMap(uniquePlugins);
+        if (!this.isRenderCurrent(renderGeneration, page)) return;
+        const layoutItems = this.getSortedPluginLayoutItems(this.getPluginLayout(uniquePlugins), manifestById, pluginSettingsById, dateMetaById);
         const groupSettingsById = new Map(this.settings.GROUPS.map((group) => [group.id, group]));
         const tagSettingsById = new Map(this.settings.TAGS.map((tag) => [tag.id, tag]));
         const delaySettingsById = new Map(this.settings.DELAYS.map((delay) => [delay.id, delay]));
@@ -3487,6 +3554,23 @@ export class ManagerModal extends Modal {
             }
             itemEl.descEl.appendChild(desc);
 
+            const dateMeta = dateMetaById.get(plugin.id);
+            const dateMetaItems: Array<{ icon: string; label: string; value?: string }> = [
+                { icon: "calendar-plus", label: t("排序_安装日期_标签"), value: this.formatSourceDate(dateMeta?.installedAt) },
+                { icon: "calendar-clock", label: t("排序_更新日期_标签"), value: this.formatSourceDate(dateMeta?.updatedAt) },
+            ].filter((item) => Boolean(item.value));
+            const hasDateMeta = dateMetaItems.length > 0;
+            if (hasDateMeta) {
+                const dateMetaEl = createDiv({ cls: "manager-plugin-card__date-meta" });
+                for (const item of dateMetaItems) {
+                    const metaItem = dateMetaEl.createSpan({ cls: "manager-plugin-card__date-meta-item" });
+                    const icon = metaItem.createSpan({ cls: "manager-plugin-card__date-meta-icon" });
+                    setIcon(icon, item.icon);
+                    metaItem.createSpan({ text: `${item.label} ${item.value}` });
+                }
+                itemEl.descEl.appendChild(dateMetaEl);
+            }
+
             // [默认] 标签组
             const tags = createDiv();
             tags.addClass("manager-plugin-card__tags");
@@ -3514,9 +3598,10 @@ export class ManagerModal extends Modal {
             }
 
             const hasVisibleTags = this.editorMode || visibleTagCount > 0;
-            const hasExpandedDetails = this.editorMode || hasDescription || hasVisibleTags;
+            const hasExpandedDetails = this.editorMode || hasDescription || hasVisibleTags || hasDateMeta;
             itemEl.settingEl.toggleClass("has-description", hasDescription);
             itemEl.settingEl.toggleClass("has-visible-tags", hasVisibleTags);
+            itemEl.settingEl.toggleClass("has-date-meta", hasDateMeta);
             itemEl.descEl.toggleClass("manager-plugin-card__body--empty", !hasExpandedDetails);
 
             if (!this.editorMode) {
@@ -4257,6 +4342,132 @@ export class ManagerModal extends Modal {
         return text;
     }
 
+    private toTimestamp(value?: number | string | null): number | undefined {
+        if (!value) return undefined;
+        const time = typeof value === "number" ? value : new Date(value).getTime();
+        return Number.isFinite(time) && time > 0 ? time : undefined;
+    }
+
+    private pickFirstTimestamp(values: Array<number | string | undefined | null>): number | undefined {
+        for (const value of values) {
+            const time = this.toTimestamp(value);
+            if (time) return time;
+        }
+        return undefined;
+    }
+
+    private pickLatestTimestamp(values: Array<number | string | undefined | null>): number | undefined {
+        const times = values
+            .map((value) => this.toTimestamp(value))
+            .filter((value): value is number => Boolean(value));
+        return times.length > 0 ? Math.max(...times) : undefined;
+    }
+
+    private getPluginSourceById(): Map<string, BetaSource> {
+        const sources = new Map<string, BetaSource>();
+        for (const source of this.getBetaSources()) {
+            if (source.type !== "plugin") continue;
+            const pluginId = this.getPluginIdByRepo(source.repo) || source.id;
+            if (pluginId && !sources.has(pluginId)) sources.set(pluginId, source);
+        }
+        return sources;
+    }
+
+    private async statPath(path: string): Promise<{ ctime?: number; mtime?: number } | null> {
+        try {
+            return await this.app.vault.adapter.stat(path);
+        } catch {
+            return null;
+        }
+    }
+
+    private async readPluginDateMeta(plugin: PluginManifest, sourceById: Map<string, BetaSource>): Promise<PluginDateMeta> {
+        const folder = normalizePath(`${this.app.vault.configDir}/plugins/${plugin.id}`);
+        const [folderStat, manifestStat, mainStat, stylesStat] = await Promise.all([
+            this.statPath(folder),
+            this.statPath(normalizePath(`${folder}/manifest.json`)),
+            this.statPath(normalizePath(`${folder}/main.js`)),
+            this.statPath(normalizePath(`${folder}/styles.css`)),
+        ]);
+        const source = sourceById.get(plugin.id);
+        return {
+            installedAt: this.pickFirstTimestamp([folderStat?.ctime, source?.installedAt, manifestStat?.ctime, folderStat?.mtime]),
+            updatedAt: this.pickLatestTimestamp([
+                manifestStat?.mtime,
+                mainStat?.mtime,
+                stylesStat?.mtime,
+                source?.installedReleasePublishedAt,
+                folderStat?.mtime,
+            ]),
+        };
+    }
+
+    private async getPluginDateMetaMap(plugins: PluginManifest[]): Promise<Map<string, PluginDateMeta>> {
+        const sourceById = this.getPluginSourceById();
+        const entries = await Promise.all(plugins.map(async (plugin): Promise<[string, PluginDateMeta]> => [
+            plugin.id,
+            await this.readPluginDateMeta(plugin, sourceById),
+        ]));
+        return new Map(entries);
+    }
+
+    private comparePluginsByName(a: PluginManifest, b: PluginManifest, pluginSettingsById: Map<string, ManagerPlugin>, direction: "asc" | "desc" = "asc"): number {
+        const nameA = pluginSettingsById.get(a.id)?.name || a.name || a.id;
+        const nameB = pluginSettingsById.get(b.id)?.name || b.name || b.id;
+        const result = nameA.localeCompare(nameB, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id);
+        return direction === "asc" ? result : -result;
+    }
+
+    private comparePluginsByDate(
+        a: PluginManifest,
+        b: PluginManifest,
+        pluginSettingsById: Map<string, ManagerPlugin>,
+        dateMetaById: Map<string, PluginDateMeta>,
+        field: keyof PluginDateMeta,
+        direction: "asc" | "desc"
+    ): number {
+        const valueA = dateMetaById.get(a.id)?.[field] || 0;
+        const valueB = dateMetaById.get(b.id)?.[field] || 0;
+        if (valueA && !valueB) return -1;
+        if (!valueA && valueB) return 1;
+        if (valueA !== valueB) return direction === "asc" ? valueA - valueB : valueB - valueA;
+        return this.comparePluginsByName(a, b, pluginSettingsById);
+    }
+
+    private getSortedPluginLayoutItems(
+        layoutItems: PluginLayoutItem[],
+        manifestById: Map<string, PluginManifest>,
+        pluginSettingsById: Map<string, ManagerPlugin>,
+        dateMetaById: Map<string, PluginDateMeta>
+    ): PluginLayoutItem[] {
+        const sort = this.getPluginOverviewSort();
+        if (sort === "layout") return layoutItems;
+
+        const plugins = layoutItems
+            .filter((item) => item.type === "plugin")
+            .map((item) => manifestById.get(item.id))
+            .filter((plugin): plugin is PluginManifest => Boolean(plugin));
+
+        plugins.sort((a, b) => {
+            switch (sort) {
+                case "name-desc":
+                    return this.comparePluginsByName(a, b, pluginSettingsById, "desc");
+                case "installed-desc":
+                    return this.comparePluginsByDate(a, b, pluginSettingsById, dateMetaById, "installedAt", "desc");
+                case "installed-asc":
+                    return this.comparePluginsByDate(a, b, pluginSettingsById, dateMetaById, "installedAt", "asc");
+                case "updated-desc":
+                    return this.comparePluginsByDate(a, b, pluginSettingsById, dateMetaById, "updatedAt", "desc");
+                case "updated-asc":
+                    return this.comparePluginsByDate(a, b, pluginSettingsById, dateMetaById, "updatedAt", "asc");
+                default:
+                    return this.comparePluginsByName(a, b, pluginSettingsById, "asc");
+            }
+        });
+
+        return plugins.map((plugin) => ({ id: plugin.id, type: "plugin" }));
+    }
+
     private getPluginLayout(manifests: PluginManifest[] = this.getUniquePluginManifests()): PluginLayoutItem[] {
         if (!Array.isArray(this.manager.settings.PLUGIN_LAYOUT)) this.manager.settings.PLUGIN_LAYOUT = [];
 
@@ -4301,7 +4512,8 @@ export class ManagerModal extends Modal {
     }
 
     private shouldRenderPluginLayoutSeparators(): boolean {
-        return !this.hasActiveStatusFilter()
+        return this.getPluginOverviewSort() === "layout"
+            && !this.hasActiveStatusFilter()
             && this.getGroupFilterValues().length === 0
             && this.getTagFilterValues().length === 0
             && this.getDelayFilterValues().length === 0

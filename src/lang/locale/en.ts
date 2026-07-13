@@ -687,6 +687,16 @@ export default {
     筛选_延迟取反_标签: 'Include or exclude delay',
     筛选_操作符_包含: 'Include',
     筛选_操作符_排除: 'Exclude',
+    通用_排序_文本: 'Sort',
+    排序_自定义布局: 'Custom layout',
+    排序_名称升序: 'Name A-Z',
+    排序_名称降序: 'Name Z-A',
+    排序_安装日期新到旧: 'Install date newest first',
+    排序_安装日期旧到新: 'Install date oldest first',
+    排序_更新日期新到旧: 'Update date newest first',
+    排序_更新日期旧到新: 'Update date oldest first',
+    排序_安装日期_标签: 'Installed',
+    排序_更新日期_标签: 'Updated',
 
     // Layout and hidden items
     管理器_布局_分割线: 'Separator',

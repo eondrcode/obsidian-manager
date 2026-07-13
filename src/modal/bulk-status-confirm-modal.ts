@@ -161,7 +161,7 @@ class BulkStatusConfirmModal extends Modal {
     }
 
     onClose() {
-        this.contentEl.empty();
+        this.contentEl.empty(); 
         this.finish(false);
     }
 }

@@ -24,6 +24,7 @@ export type MainPageActionPlacementSettings = Partial<Record<MainPageActionId, M
 export type FilterOperator = "contains" | "not-contains";
 export type TagFilterOperator = FilterOperator;
 export type PluginOverviewLayout = "list" | "two-column";
+export type PluginOverviewSort = "layout" | "name-asc" | "name-desc" | "installed-desc" | "installed-asc" | "updated-desc" | "updated-asc"; 
 export type PluginUpdateCheckMode = NonNullable<BetaSource["updateCheckMode"]>;
 export type ReleaseCompatibilityMode = NonNullable<BetaSource["compatibilityMode"]>;
 export type PluginCommandState = Record<string, boolean>;
@@ -154,6 +155,7 @@ export interface ManagerSettings {
     // 样式设置页
     /** 插件总览的显示模式：列表或双列。 */
     PLUGIN_OVERVIEW_LAYOUT: PluginOverviewLayout;
+    PLUGIN_OVERVIEW_SORT: PluginOverviewSort;
     /** 插件卡片展开样式，控制描述、标签、备注等详情的显示策略。 */
     ITEM_STYLE: string;
     /** 分组标签的视觉样式。 */
@@ -256,6 +258,7 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
 
     // 样式设置页
     PLUGIN_OVERVIEW_LAYOUT: "list",
+    PLUGIN_OVERVIEW_SORT: "layout",
     ITEM_STYLE: "alwaysExpand",
     GROUP_STYLE: "a",
     TAG_STYLE: "b",

@@ -2789,6 +2789,23 @@ body.theme-dark {
     overflow: visible;
 }
 
+.manager-search-line {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+.manager-search-line .manager-filter-field--search:not(.manager-filter-field--sort) {
+    flex: 1 1 auto;
+}
+
+.manager-search-line .manager-filter-field--sort {
+    flex: 0 0 230px;
+    max-width: 230px;
+}
+
 .manager-filter-control-group {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -6875,6 +6892,35 @@ body.theme-dark {
     line-height: 1.45;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
+}
+
+.manager-container .manager-plugin-card__date-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: var(--text-faint);
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.manager-container .manager-plugin-card__date-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.manager-container .manager-plugin-card__date-meta-icon {
+    display: inline-flex;
+    width: 13px;
+    height: 13px;
+}
+
+.manager-container .manager-plugin-card__date-meta-icon svg {
+    width: 13px;
+    height: 13px;
+    stroke-width: 2;
 }
 
 .manager-container .manager-plugin-card:not(.has-description) .manager-plugin-card__desc,
@@ -12327,6 +12373,16 @@ body.theme-dark .manager-transfer-segment[data-state="active"]:hover {
 .manager-container.manager-container--main.manager-container--mobile .manager-modal-page.manager-item-container.manager-plugin-overview--two-column {
     padding: var(--bpm-ui-content-padding-mobile);
     scroll-padding-top: var(--bpm-ui-content-padding-mobile);
+}
+
+.manager-container.manager-container--main .manager-modal-page.manager-item-container.manager-plugin-overview--list {
+    padding: 0;
+    scroll-padding-top: 0;
+}
+
+.manager-container.manager-container--main.manager-container--mobile .manager-modal-page.manager-item-container.manager-plugin-overview--list {
+    padding: 0;
+    scroll-padding-top: 0;
 }
 
 .manager-container.manager-container--main .manager-modal-page>.manager-troubleshoot-page {
