@@ -1,0 +1,3 @@
+[submodule ".agent/references/obsidian-sample-plugin-plus"]
+	path = .agent/references/obsidian-sample-plugin-plus
+	url = https://github.com/dangehub/obsidian-sample-plugin-plus.git

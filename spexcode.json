@@ -2,5 +2,14 @@
   "lint": {
     "governedRoots": ["src", "main.ts", "manifest.json"],
     "sourceExtensions": [".ts"]
+  },
+  "harnesses": ["pi"],
+  "sessions": {
+    "launchers": {
+      "claude": { "harness": "claude", "cmd": "claude --dangerously-skip-permissions" },
+      "codex": { "harness": "codex", "cmd": "codex --yolo" },
+      "pi": { "harness": "pi", "cmd": "pi" }
+    },
+    "defaultLauncher": "pi"
   }
 }
