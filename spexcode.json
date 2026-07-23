@@ -1,0 +1,6 @@
+{
+  "lint": {
+    "governedRoots": ["src", "main.ts", "manifest.json"],
+    "sourceExtensions": [".ts"]
+  }
+}
