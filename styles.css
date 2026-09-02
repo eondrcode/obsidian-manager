@@ -13863,3 +13863,94 @@ body.theme-dark .manager-transfer-segment[data-state="active"]:hover {
         padding-top: 2px;
     }
 }
+
+
+/* ===== 备注 Tooltip（悬停 Ribbon 图标展示插件备注） ===== */
+.bpm-notetip {
+    position: fixed;
+    z-index: 10000;
+    max-width: 340px;
+    max-height: 70vh;
+    overflow: auto;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    padding: 10px 12px;
+    font-size: 12px;
+    pointer-events: none;
+}
+.bpm-notetip-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text-normal);
+}
+.bpm-notetip-row {
+    display: flex;
+    gap: 8px;
+    margin: 3px 0;
+    line-height: 1.5;
+}
+.bpm-notetip-name {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--text-accent);
+    max-width: 45%;
+}
+.bpm-notetip-note {
+    color: var(--text-muted);
+    word-break: break-all;
+}
+.bpm-notetip-more {
+    color: var(--text-faint);
+    margin-top: 4px;
+}
+.bpm-notetip-foot {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--background-modifier-border);
+    color: var(--text-faint);
+    font-size: 11px;
+}
+
+/* 右键配置面板 */
+.bpm-notetip-cfg {
+    position: fixed;
+    z-index: 10001;
+    width: 260px;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    padding: 12px;
+    font-size: 12px;
+}
+.bpm-notetip-cfg-title {
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--text-normal);
+}
+.bpm-notetip-cfg-row {
+    margin: 6px 0;
+}
+.bpm-notetip-cfg-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+.bpm-notetip-cfg-label {
+    color: var(--text-muted);
+    margin: 8px 0 4px;
+}
+.bpm-notetip-cfg-input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 4px;
+}
+.bpm-notetip-cfg-btns {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
