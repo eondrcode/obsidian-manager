@@ -2,6 +2,7 @@ import { normalizePath, ObsidianProtocolData, Plugin, PluginManifest, Workspace 
 import { DEFAULT_SETTINGS, ManagerSettings, PluginUpdateCheckMode, ReleaseCompatibilityMode } from './settings/data';
 import { ManagerSettingTab } from './settings';
 import { Translator } from './lang/inxdex';
+import { NoteTipFeature } from './note-tip';
 import { ManagerModal } from './modal/manager-modal';
 import Commands from './command';
 import Agreement from 'src/agreement';
@@ -66,6 +67,7 @@ type SecretStorageLike = {
 type CommunityPluginStatsEntry = Record<string, number | string | undefined>;
 
 export default class Manager extends Plugin {
+    private noteTip!: NoteTipFeature;
     public settings!: ManagerSettings;
     public managerModal: ManagerModal | null = null;
     public ribbonModal: RibbonModal | null = null;
@@ -140,7 +142,10 @@ export default class Manager extends Plugin {
         }
 
         // 初始化侧边栏图标
-        this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), () => { this.managerModal = new ManagerModal(this.app, this); this.managerModal.open(); });
+        const ribbonEl = this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), () => { this.managerModal = new ManagerModal(this.app, this); this.managerModal.open(); });
+        // 悬停备注 Tooltip：悬停图标速览插件备注，右键可自定义
+        this.noteTip = new NoteTipFeature(this, ribbonEl);
+        this.noteTip.start();
         // 初始化设置界面
         this.addSettingTab(new ManagerSettingTab(this.app, this));
         const pluginsChanged = this.settings.DELAY

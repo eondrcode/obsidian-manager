@@ -208,7 +208,39 @@ export interface ManagerSettings {
     // 冲突排查页
     /** 插件冲突排查流程的持久化状态，用于关闭弹窗或重启后恢复进度。 */
     TROUBLESHOOT_STATE?: TroubleshootState;
+
+    // 备注 Tooltip
+    /** 悬停 Ribbon 图标时的插件备注 tooltip 配置；缺省时用 DEFAULT_NOTE_TIP。 */
+    NOTE_TIP?: NoteTipSettings;
 }
+
+/** 备注 Tooltip 的显示范围。 */
+export type NoteTipFilter = "enabled" | "all" | "disabled" | "group" | "tag";
+
+/** 悬停 Ribbon 图标时展示的插件备注 tooltip 配置。 */
+export interface NoteTipSettings {
+    /** 是否启用悬停 tooltip。 */
+    enabled: boolean;
+    /** 列出哪些插件的备注。 */
+    filter: NoteTipFilter;
+    /** filter 为 group 时使用的分组 id。 */
+    groupId: string;
+    /** filter 为 tag 时使用的标签 id。 */
+    tagId: string;
+    /** tooltip 标题文本。 */
+    title: string;
+    /** 最多展示的条数。 */
+    max: number;
+}
+
+export const DEFAULT_NOTE_TIP: NoteTipSettings = {
+    enabled: true,
+    filter: "enabled",
+    groupId: "",
+    tagId: "",
+    title: "📌 插件备注",
+    max: 20,
+};
 
 export const DEFAULT_SETTINGS: ManagerSettings = {
     // 系统 / 生命周期
