@@ -12,7 +12,7 @@ import {
 import { ManagerSettings, TagFilterOperator } from "../settings/data";
 
 import Manager from "main";
-import { ManagerModal } from "./manager-modal";
+import type { ManagerModal } from "./manager-modal";
 import { ObsidianAppWithInternals } from "src/obsidian-internals";
 
 export class HideModal extends Modal {

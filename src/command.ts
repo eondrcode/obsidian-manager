@@ -9,8 +9,10 @@ import {
 } from "obsidian";
 import Manager from "./main";
 import { describeHeapDelta, readHeapMB, RECLAIM_NOTICE_THRESHOLD_MB, RECLAIM_SETTLE_MS } from "./memory-reclaim";
-import { ManagerModal } from "./modal/manager-modal";
-import { TroubleshootModal } from "./troubleshoot/troubleshoot-modal";
+// 类型引用编译期擦除；真正 new ManagerModal 时走下方动态 import，
+// 让主面板代码推迟到用户真正打开时才求值（V8 懒解析函数体）
+import type { ManagerModal } from "./modal/manager-modal";
+// Conflict diagnostics are initialized only when explicitly opened.
 import { BPM_IGNORE_TAG, ManagerPlugin } from "./data/types";
 import { managerOpen } from "./utils";
 import { ObsidianAppWithInternals, VaultAdapterWithBasePath } from "./obsidian-internals";
@@ -258,9 +260,11 @@ class ManagerCommandService {
         this.addStaticCommand({
             id: "manager-view",
             name: this.manager.translator.t("命令_管理面板_描述"),
-            callback: () => {
-                this.manager.managerModal = new ManagerModal(this.app, this.manager);
-                this.manager.managerModal.open();
+            callback: async () => {
+                const { ManagerModal } = await import("./modal/manager-modal.js");
+                const modal = new ManagerModal(this.app, this.manager);
+                this.manager.managerModal = modal;
+                modal.open();
             },
         });
 
@@ -290,7 +294,10 @@ class ManagerCommandService {
         this.addStaticCommand({
             id: "troubleshoot-conflicts",
             name: this.manager.translator.t("排查_按钮_描述"),
-            callback: () => { new TroubleshootModal(this.app, this.manager).open(); },
+            callback: async () => {
+                const { TroubleshootModal } = await import("./troubleshoot/troubleshoot-modal.js");
+                new TroubleshootModal(this.app, this.manager).open();
+            },
         });
 
         // 手动兜底：把 RIBBON_SETTINGS 重新推入 Obsidian 原生侧边栏状态

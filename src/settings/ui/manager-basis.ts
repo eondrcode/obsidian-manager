@@ -21,9 +21,12 @@ export default class ManagerBasis extends BaseSetting {
         const languageDropdown = new DropdownComponent(languageBar.controlEl);
         languageDropdown.addOptions(this.manager.translator.language);
         languageDropdown.setValue(this.settings.LANGUAGE);
-        languageDropdown.onChange((value) => {
+        languageDropdown.onChange(async (value) => {
             this.settings.LANGUAGE = value;
             void this.manager.saveSettings();
+            // 非 en/zh-cn 的语言表是懒加载的，必须先物化再重绘，
+            // 否则这一轮重绘会全部命中英文回退
+            await this.manager.translator.ensureLanguage(value);
             this.settingTab.basisDisplay();
             Commands(this.app, this.manager);
             this.settingTab.renderSettings();

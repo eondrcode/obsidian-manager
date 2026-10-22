@@ -25,8 +25,11 @@ related:
 - **模板插值**：翻译字符串支持 `{name}`、`{count}` 等变量插值，在翻译调用时传入变量字典。
 - **语言归一化**：将 Obsidian 的 locale（如 `en-gb`、`zh-tw`）归一化为 BPM 支持的语言代码。
 - **语言文件结构**：每个语言文件导出与简体中文 key 集一致的翻译对象，TypeScript 类型安全。
+- **加载分层**：回退链必然命中的 `en` 与 `zh_cn` 由 `inxdex.ts` **静态引入**并常驻；其余 5 种语言（`ru`/`ja`/`ko`/`fr`/`es`）登记在模块级 `LAZY_LOCALES` 表中，由 `Translator.ensureLanguage()` 按需物化。`t()` 在语言表尚未物化时回退到英文，因此切换语言的调用方**必须先 `await ensureLanguage()` 再重绘**。
+  采用懒加载的原因：esbuild 以 `bundle + cjs` 打包时动态 `import()` 虽被内联，但模块体进入 `__esm` 包装、推迟到首次访问才求值，V8 因此走函数体懒解析 —— 按 locale 形状实测编译耗时降约 50%。
+- **产物编码**：`esbuild.config.mjs` 固定 `charset: "utf8"`，本地化表以真 UTF-8 落盘。esbuild 默认的 `\uXXXX` 转义会让中/日/韩/俄文体积翻倍（实测 103888 处转义、约 336 KB）。
 
 ## 边界
 
 - 翻译系统不负责 UI 布局的 RTL 适配。
-- 添加新语言需要创建新的 locale 文件并在 `Translator.localeMap` 和 `Translator.language` 中注册。
+- 添加新语言需要创建新的 locale 文件，并在 `Translator.language`（语言名表）与 `LAZY_LOCALES`（懒加载表）中登记；若希望某语言常驻、不走懒加载，则同时加入 `Translator.loaded` 的初始值。

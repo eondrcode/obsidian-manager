@@ -6968,13 +6968,53 @@ body.theme-dark {
     margin-left: 4px;
 }
 
-.manager-container--editing .manager-plugin-card--layout-editing {
-    align-items: stretch;
+/* Editing controls need their own row in both list and two-column layouts. */
+.manager-container.manager-container--main.manager-container--editing .manager-plugin-card {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    align-items: start;
 }
 
-.manager-container--editing .manager-plugin-card__layout-drag {
-    align-self: center;
-    order: -1;
+.manager-container.manager-container--main.manager-container--editing .manager-plugin-card > .setting-item-info {
+    grid-column: 1 / -1;
+    min-width: 0;
+    width: 100%;
+    margin-right: 0;
+}
+
+.manager-container.manager-container--main.manager-container--editing .manager-plugin-card--layout-editing > .setting-item-info {
+    grid-column: 2;
+}
+
+.manager-container.manager-container--main.manager-container--editing .manager-plugin-card__layout-drag {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+    order: 0;
+}
+
+.manager-container.manager-container--main.manager-container--editing .manager-plugin-card > .manager-plugin-card__actions.setting-item-control {
+    grid-column: 1 / -1;
+    align-self: stretch;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    min-width: 0;
+    width: 100%;
+    margin: 0;
+    padding: 10px 0 0;
+    border-left: 0;
+    border-top: 1px solid color-mix(in srgb, var(--bpm-border) 78%, transparent);
+}
+
+.manager-container.manager-container--main.manager-container--editing .manager-plugin-card__actions > select {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.manager-container.manager-container--main.manager-container--editing .manager-plugin-card .manager-item__name-desc[contenteditable="true"] {
+    display: block;
+    overflow: visible;
+    overflow-wrap: anywhere;
 }
 
 .manager-container .manager-plugin-card__layout-order {

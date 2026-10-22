@@ -2,7 +2,9 @@ import { normalizePath, ObsidianProtocolData, Plugin, PluginManifest, Workspace 
 import { DEFAULT_SETTINGS, ManagerSettings, PluginUpdateCheckMode, ReleaseCompatibilityMode } from './settings/data';
 import { ManagerSettingTab } from './settings';
 import { Translator } from './lang/inxdex';
-import { ManagerModal } from './modal/manager-modal';
+// 类型引用编译期擦除；ribbon 回调里用动态 import 取构造器，
+// 让 8000 行的主面板推迟到用户真正打开时才求值（V8 懒解析函数体）
+import type { ManagerModal } from './modal/manager-modal';
 import Commands from './command';
 import Agreement from 'src/agreement';
 import { RepoResolver, ensureBpmTagExists, BPM_TAG_ID } from './repo-resolver';
@@ -15,7 +17,7 @@ import { SystemRibbonManager } from './manager/system-ribbon-manager';
 import { RibbonItem } from './data/types';
 import { markSourceInstalledRelease, sourceHasUpdate as sourceHasConfiguredUpdate, syncSourceReleaseCheck } from './source-release';
 import { LeftRibbonLike, ObsidianAppWithInternals, ObsidianPluginRegistry, RibbonNativeItem, WindowWithMoment, WorkspaceWithRibbon } from './obsidian-internals';
-import { RibbonModal } from './modal/ribbon-modal';
+import type { RibbonModal } from './modal/ribbon-modal';
 import { githubProxyEnabled, resolveGithubUrl } from './github-url';
 
 type UpdateSource = 'official' | 'github' | 'unknown';
@@ -55,6 +57,41 @@ const EONDR_PLUGIN_RULES = [
 const EONDR_REPO_OWNER = "eondrcode";
 const GITHUB_TOKEN_SECRET_ID = "github-token";
 
+/**
+ * ribbon 补应用的防抖窗口（毫秒 / debounce window for coalesced ribbon applies）
+ * 取 200：既能吞掉启动期几十次连发，也不让用户可感地拖后设置生效
+ */
+const RIBBON_APPLY_DEBOUNCE_MS = 200;
+
+/**
+ * 帧让出的兜底超时（毫秒 / fallback for the frame yield）
+ * requestAnimationFrame 在窗口最小化或离屏时不触发（无帧即无回调），
+ * 没有兜底会把整个延时启动队列卡死；到点直接放行。
+ */
+const DELAY_YIELD_TIMEOUT_MS = 50;
+
+/** 延时启动队列的一项 / one entry of the delayed-start queue */
+interface DelayQueueItem {
+    id: string;
+    /** 最早启动时刻（毫秒时间戳），由延迟档位换算 / earliest start, from the delay group */
+    earliestAt: number;
+}
+
+/**
+ * 单个插件的延时启动结果 / outcome of one delayed start
+ * 「启动成功」= 实例存在，且 Obsidian 原生加载标记没说它没加载完。
+ */
+interface DelayStartResult {
+    id: string;
+    ok: boolean;
+    /** enablePlugin 的返回值；false 表示已在运行或 manifest 缺失，不等于失败 */
+    started: boolean;
+    /** Obsidian 原生 `_loaded`；null 表示拿不到实例 */
+    loaded: boolean | null;
+    /** 失败原因；成功时为空 */
+    error: string;
+}
+
 type SecretStorageLike = {
     setSecret?: (id: string, secret: string) => void;
     getSecret?: (id: string) => string | null;
@@ -87,6 +124,8 @@ export default class Manager extends Plugin {
 
     /** 卸载后禁止一切延迟回调再动 ribbon（避免在已卸载的插件上复活） */
     private isUnloaded = false;
+    /** Background startup work must never execute inside onload, even on a hot reload. */
+    private startupTimers = new Set<number>();
 
     /** 原生条目创建入口的原始引用（挂钩子用），卸载时原样还原 */
     private ribbonAddItemOriginal: LeftRibbonLike["addRibbonItemButton"] | null = null;
@@ -94,6 +133,21 @@ export default class Manager extends Plugin {
     private ribbonItemApplyTimer: number | null = null;
     /** 启动后分批加载的补应用句柄 */
     private ribbonSettleTimers: number[] = [];
+
+    // ==================== 延时启动队列（串行排空） ====================
+    /** 待启动队列，按 earliestAt 升序 */
+    private delayQueue: DelayQueueItem[] = [];
+    private delayQueueRunning = false;
+    /** 睡到 earliestAt 的句柄，卸载时清除 */
+    private delaySleepTimer: number | null = null;
+    /** 休眠的放行回调：cancelDelayQueue 用它 resolve，避免 await 永不返回 */
+    private delaySleepResolve: (() => void) | null = null;
+    /** 帧让出的兜底超时句柄 */
+    private delayYieldTimer: number | null = null;
+    /** 帧让出的放行回调，用途同 delaySleepResolve */
+    private delayYieldResolve: (() => void) | null = null;
+    /** 最近一次延时启动的结果汇总，供排查 */
+    public lastDelayStartReport: DelayStartResult[] = [];
 
     public async onload() {
         this.appPlugins = (this.app as ObsidianAppWithInternals).plugins;
@@ -106,7 +160,7 @@ export default class Manager extends Plugin {
             settingsDirty = true;
         };
 
-        await runMigrations(this);
+        settingsDirty = await runMigrations(this, { save: false });
         // 首次安装或未设置语言时，自动跟随 Obsidian 语言
         if (!this.settings.LANGUAGE_INITIALIZED || !this.settings.LANGUAGE) {
             this.settings.LANGUAGE = this.getAppLanguage();
@@ -115,6 +169,9 @@ export default class Manager extends Plugin {
         }
         // 初始化语言系统
         this.translator = new Translator(this);
+        // 物化当前语言表：en / zh_cn 已常驻，其余语言在这里懒加载完成，
+        // 后续 t() 才能直接命中；不 await 会让切换到 ru/ja/... 的用户先看到英文
+        await this.translator.ensureLanguage(this.settings.LANGUAGE);
         let builtinTagsChanged = false;
         const tagCountBeforeBpmEnsure = this.settings.TAGS.length;
         ensureBpmTagExists(this);
@@ -148,7 +205,12 @@ export default class Manager extends Plugin {
         this.clearLegacyRibbonOverrides();
 
         // 初始化侧边栏图标
-        this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), () => { this.managerModal = new ManagerModal(this.app, this); this.managerModal.open(); });
+        this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), async () => {
+            const { ManagerModal } = await import('./modal/manager-modal.js');
+            const modal = new ManagerModal(this.app, this);
+            this.managerModal = modal;
+            modal.open();
+        });
         // 初始化设置界面
         this.addSettingTab(new ManagerSettingTab(this.app, this));
         const pluginsChanged = this.settings.DELAY
@@ -162,8 +224,11 @@ export default class Manager extends Plugin {
         }
 
         this.agreement = new Agreement(this);
-        void this.startupCheckForUpdates();
-        void this.startupMaintainBetaSources();
+        // Keep network activity and source installation out of the Windows cold-start I/O burst.
+        this.app.workspace.onLayoutReady(() => {
+            this.scheduleStartupTask("plugin updates", () => this.startupCheckForUpdates(), 3000);
+            this.scheduleStartupTask("source maintenance", () => this.startupMaintainBetaSources(), 3000);
+        });
 
         this.registerObsidianProtocolHandler("BPM-plugin-install", (params: ObsidianProtocolData) => {
             void this.agreement.parsePluginInstall(params);
@@ -173,24 +238,49 @@ export default class Manager extends Plugin {
         });
 
         this.app.workspace.onLayoutReady(() => {
+            if (this.isUnloaded) return;
+            // Schedule only after the final awaited save: a hot reload may already have a layout.
+            // Zero-delay enablePlugin calls must not run while BPM.onload is still awaiting I/O.
+            this.scheduleStartupTask("delayed plugins", async () => {
+                if (this.settings.DELAY) await this.drainDelayQueue();
+            });
             this.startRibbonRuntimeFeatures();
 
             // 延迟加载的插件可能带来新图标，需要登记进 RIBBON_SETTINGS；
             // 显隐与顺序由 Obsidian 原生状态承载，这里只补登记，不再需要「重绘后重新打补丁」
+            // 启动期 layout-change 会随延时插件分批到位而连续触发，走防抖合并
             this.registerEvent(this.app.workspace.on("layout-change", () => {
-                if (this.isRibbonManagerEnabled()) this.applyRibbonSettings();
+                if (this.isRibbonManagerEnabled()) this.scheduleRibbonApply("layout-change");
             }));
 
             // 延迟启动自检，确保 Obsidian 初始化完成，避免自动接管被覆盖
-            window.setTimeout(() => {
-                if (this.settings.DELAY) void performSelfCheck(this);
+            this.scheduleStartupTask("self check", async () => {
+                if (this.settings.DELAY) await performSelfCheck(this);
             }, 2000);
         });
+    }
+
+    /** A macrotask is required: onLayoutReady runs inline when the layout is already ready. */
+    private scheduleStartupTask(name: string, task: () => void | Promise<unknown>, delay = 0): void {
+        if (this.isUnloaded) return;
+        const handle = window.setTimeout(() => {
+            this.startupTimers.delete(handle);
+            if (this.isUnloaded) return;
+            // Promise.resolve().then also catches synchronous exceptions in the task.
+            void Promise.resolve().then(task).catch(error => {
+                console.error(`[BPM] startup task failed: ${name}`, error);
+            });
+        }, delay);
+        this.startupTimers.add(handle);
     }
 
     public onunload() {
         // 卸载后一切延迟回调必须停手，否则会在已卸载的插件上继续操作 ribbon
         this.isUnloaded = true;
+        this.startupTimers.forEach(handle => window.clearTimeout(handle));
+        this.startupTimers.clear();
+        // 打断延时启动队列：清掉休眠/让出句柄，让排空循环立即退出
+        this.cancelDelayQueue();
         this.stopRibbonRuntimeFeatures();
 
         // 注意：卸载时【绝不】改动插件的启用状态。
@@ -395,17 +485,36 @@ export default class Manager extends Plugin {
     }
 
     /**
-     * 条目创建后的补应用（防抖）
-     * 启动时几十个插件会连续注册图标，合并成一次应用；200ms 也留出了
-     * 插件在 addRibbonIcon 之后继续改标题/图标的余量
+     * 补应用防抖（共用模板 / shared debounced apply）
+     *
+     * 启动期会有多条路径在短时间内反复要求应用 ribbon 设置：
+     * - 每个延时插件 `enablePlugin()` 完成后各一次（实测 41 次）
+     * - `layout-change` 事件（延时插件分批到位时连续触发）
+     * - `addRibbonItemButton` 条目创建钩子（几十个图标连续注册）
+     *
+     * 每次 `applyRibbonSettings()` 末尾都会走 `persistRibbonConfigFile()`
+     * （读 + 解析 + 比较 workspace.json），启动期直接连发等于把磁盘 I/O
+     * 和 ribbon 重绘叠在「几十 MB 插件 JS 正在求值」的同一时间窗里。
+     *
+     * 这里把三处爆发统一收口到一个 200ms 防抖器：200ms 既够合并连发，
+     * 也留出插件在 addRibbonIcon 之后继续改标题/图标的余量。
+     * 用户显式动作（命令面板、面板按钮、拖拽隐藏）仍走同步的 applyRibbonSettings()。
+     *
+     * @param reason 触发来源，只用于调试日志
      */
-    private scheduleRibbonApplyAfterItemAdded(): void {
+    private scheduleRibbonApply(reason: string): void {
         if (this.isUnloaded) return;
         if (this.ribbonItemApplyTimer !== null) window.clearTimeout(this.ribbonItemApplyTimer);
         this.ribbonItemApplyTimer = window.setTimeout(() => {
             this.ribbonItemApplyTimer = null;
+            if (this.settings.DEBUG) console.log("[BPM] debounced ribbon apply fired", reason);
             this.applyRibbonSettings();
-        }, 200);
+        }, RIBBON_APPLY_DEBOUNCE_MS);
+    }
+
+    /** 条目创建后的补应用：与其它爆发路径共用同一防抖器 */
+    private scheduleRibbonApplyAfterItemAdded(): void {
+        this.scheduleRibbonApply("item-added");
     }
 
     /**
@@ -1157,8 +1266,10 @@ export default class Manager extends Plugin {
         const plugins = Object.values(this.appPlugins.manifests).filter((pm: PluginManifest) => pm.id !== this.manifest.id);
         // 同步插件
         const changed = this.synchronizePlugins(plugins, options);
-        // 开始延时启动插件
-        this.getDelayManagedPluginManifests().forEach((plugin: PluginManifest) => this.startPluginWithDelay(plugin.id));
+        // 先算清「谁、最早何时」，再由 drainDelayQueue 串行排空、逐个确认启动结果
+        this.lastDelayStartReport = [];
+        this.delayQueue = this.buildDelayQueue(Date.now());
+        // onload schedules draining only after initialization and its final settings save.
         return changed;
     }
 
@@ -1221,23 +1332,195 @@ export default class Manager extends Plugin {
         if (this.isRibbonManagerEnabled()) this.applyRibbonSettings();
     }
 
-    // 延时启动指定插件
-    private startPluginWithDelay(id: string) {
-        if (id === this.manifest.id) return;
-        if (this.isBpmIgnoredPlugin(id)) return;
-        const plugin = this.settings.Plugins.find(p => p.id === id);
-        if (plugin && plugin.enabled) {
-            const delay = this.settings.DELAYS.find(item => item.id === plugin.delay);
-            const time = delay ? delay.time : 0;
-            window.setTimeout(() => {
+    // ==================== 延时启动：建队列 → 串行排空 ====================
+
+    /**
+     * 构建延时启动队列
+     *
+     * 取代旧的「每个插件一个独立 setTimeout」。旧写法下延迟档位只是三波惊群：
+     * 同档的插件在同一宏任务批次里全部 `enablePlugin()`，0 秒档实测 18 个插件
+     * 共 24 MB 的 main.js 要在启动窗口内连续编译求值，中间不让出主线程。
+     *
+     * 这里只负责把「要启动谁、最早何时启动」算清楚并排序，
+     * 真正的启动与节奏交给 drainDelayQueue。
+     *
+     * @param now 建队列的基准时刻，各档 earliestAt 由此换算
+     */
+    private buildDelayQueue(now: number): DelayQueueItem[] {
+        const items: DelayQueueItem[] = [];
+        for (const plugin of this.getDelayManagedPluginManifests()) {
+            if (plugin.id === this.manifest.id) continue;
+            const record = this.settings.Plugins.find(p => p.id === plugin.id);
+            if (!record || !record.enabled) continue;
+
+            const delay = this.settings.DELAYS.find(item => item.id === record.delay);
+            // delay 为空档或指向不存在的档位时回落 0（与旧行为一致，档位语义归配置层）
+            const seconds = delay ? delay.time : 0;
+            items.push({ id: plugin.id, earliestAt: now + seconds * 1000 });
+        }
+        // 按最早启动时刻升序；同刻保持 manifest 原有顺序（Array.sort 是稳定的）
+        items.sort((a, b) => a.earliestAt - b.earliestAt);
+        return items;
+    }
+
+    /**
+     * 串行排空延时启动队列（严格串行 + 帧让出）
+     *
+     * 每次只启动一个插件，等它真正落定（成功 / 跳过 / 失败）后让出一帧，
+     * 再取下一个。这样主线程不会同时面对十几个 multi-MB 包的编译求值，
+     * Obsidian 在整个加载过程里保持可交互。
+     *
+     * 延迟档位仍是 earliestAt（保住「按延迟配置在指定秒数后启用」的语义），
+     * 队列只负责节奏与确认。
+     */
+    private async drainDelayQueue(): Promise<void> {
+        if (this.delayQueueRunning) return;
+        this.delayQueueRunning = true;
+
+        try {
+            while (this.delayQueue.length > 0) {
                 if (this.isUnloaded) return;
-                // 必须 await：插件的 onload 里才注册 ribbon 图标，
-                // 不等待就应用等于「条目还没出生就复述设置」，新条目会以 visible 状态留在侧边栏
-                void this.appPlugins.enablePlugin(id).then(() => {
+
+                const item = this.delayQueue[0];
+                const wait = item.earliestAt - Date.now();
+                if (wait > 0) {
+                    await this.delaySleep(wait);
                     if (this.isUnloaded) return;
-                    if (this.isRibbonManagerEnabled()) this.applyRibbonSettings();
-                });
-            }, time * 1000);
+                }
+
+                this.delayQueue.shift();
+                const result = await this.startPluginQueued(item.id);
+                this.lastDelayStartReport.push(result);
+
+                if (this.settings.DEBUG) {
+                    console.log(
+                        `[BPM] delayed start ${result.ok ? "ok" : "FAILED"}`,
+                        item.id,
+                        `remaining=${this.delayQueue.length}`,
+                        result.error ? `error=${result.error}` : `loaded=${result.loaded}`
+                    );
+                }
+
+                if (this.isUnloaded) return;
+                // 插件的 onload 里才注册 ribbon 图标，等它落定再补一次登记；
+                // 走防抖器，避免几十个插件连打 ribbon 重绘与 workspace.json 落盘
+                if (result.ok && this.isRibbonManagerEnabled()) {
+                    this.scheduleRibbonApply("plugin-enabled:" + item.id);
+                }
+
+                // 帧让出：把下一帧交还给渲染与输入，再开始下一个插件
+                await this.yieldToMainThread();
+            }
+        } finally {
+            this.delayQueueRunning = false;
+        }
+
+        this.reportDelayStartSummary();
+    }
+
+    /**
+     * 单个插件的延时启动：算清「是否真的起来了」，失败隔离并留痕
+     *
+     * 判定成功的唯一标准：实例在，且 Obsidian 原生加载标记 `_loaded` 没说它没加载完。
+     * `enablePlugin` 的 boolean 返回值单独记录 —— false 只表示「已在运行 / manifest 缺失」，
+     * 不等于失败。
+     */
+    private async startPluginQueued(id: string): Promise<DelayStartResult> {
+        try {
+            const started = await this.appPlugins.enablePlugin(id);
+            const instance = this.appPlugins.plugins?.[id];
+            const loaded = instance?._loaded;
+            const ok = Boolean(instance) && loaded !== false;
+            return { id, ok, started: Boolean(started), loaded: loaded ?? null, error: "" };
+        } catch (error) {
+            const message = (error as Error)?.message || String(error);
+            // 严禁静默吞异常：单个插件失败必须留痕，且不能拖垮整条队列
+            console.error(`[BPM] delayed start failed: ${id}`, error);
+            return { id, ok: false, started: false, loaded: null, error: message };
+        }
+    }
+
+    /**
+     * 睡到指定时刻；可被 cancelDelayQueue 打断。
+     * 打断时必须 resolve 而不是只清定时器 —— 否则 await 永不返回，
+     * 排空循环会挂在 `delayQueueRunning = true` 上泄漏。
+     */
+    private delaySleep(ms: number): Promise<void> {
+        return new Promise((resolve) => {
+            const finish = () => {
+                this.delaySleepTimer = null;
+                this.delaySleepResolve = null;
+                resolve();
+            };
+            this.delaySleepResolve = finish;
+            this.delaySleepTimer = window.setTimeout(finish, ms);
+        });
+    }
+
+    /**
+     * 让出主线程一帧（带兜底）
+     * requestAnimationFrame 在窗口最小化 / 离屏时不触发（无帧即无回调），
+     * 没有兜底会把整个启动队列卡死，所以超时后直接放行。
+     * 同样支持 cancelDelayQueue 打断（打断即放行，不阻塞卸载）。
+     */
+    private yieldToMainThread(): Promise<void> {
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                if (this.delayYieldTimer !== null) {
+                    window.clearTimeout(this.delayYieldTimer);
+                    this.delayYieldTimer = null;
+                }
+                this.delayYieldResolve = null;
+                resolve();
+            };
+            this.delayYieldResolve = finish;
+            this.delayYieldTimer = window.setTimeout(finish, DELAY_YIELD_TIMEOUT_MS);
+            if (typeof requestAnimationFrame === "function") {
+                requestAnimationFrame(() => finish());
+            } else {
+                finish();
+            }
+        });
+    }
+
+    /**
+     * 打断队列：放行挂起的休眠/让出，清空待启动项，让排空循环尽快退出。
+     * 只放行不悬置 —— 排空循环靠 `isUnloaded` 决定是否继续取下一项。
+     */
+    private cancelDelayQueue(): void {
+        const sleep = this.delaySleepResolve;
+        const yieldNext = this.delayYieldResolve;
+        this.delaySleepResolve = null;
+        this.delayYieldResolve = null;
+        if (this.delaySleepTimer !== null) {
+            window.clearTimeout(this.delaySleepTimer);
+            this.delaySleepTimer = null;
+        }
+        if (this.delayYieldTimer !== null) {
+            window.clearTimeout(this.delayYieldTimer);
+            this.delayYieldTimer = null;
+        }
+        this.delayQueue = [];
+        sleep?.();
+        yieldNext?.();
+    }
+
+    /** 排空后的收尾：失败必须可见（错误始终输出；过程日志受 DEBUG 开关控制） */
+    private reportDelayStartSummary(): void {
+        const failed = this.lastDelayStartReport.filter(r => !r.ok);
+        if (failed.length > 0) {
+            console.error(
+                `[BPM] delayed start: ${failed.length} plugin(s) did not start`,
+                failed.map(r => ({ id: r.id, error: r.error, loaded: r.loaded }))
+            );
+        }
+        if (this.settings.DEBUG) {
+            console.log(
+                `[BPM] delayed start finished: ${this.lastDelayStartReport.length} scheduled, ${failed.length} failed`
+            );
         }
     }
 

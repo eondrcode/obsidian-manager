@@ -30,8 +30,14 @@ const context = await esbuild.context({
 		...builtinModules],
 	format: "cjs",
 	target: "es2018",
+	// 产物直接以 UTF-8 落盘。esbuild 默认用 \uXXXX 转义非 ASCII，
+	// 而本地化表里全是中/日/韩/俄文，转义后体积翻倍（实测 103888 处转义序列，
+	// main.js 多出约 336 KB）。Obsidian 以 UTF-8 读取 main.js，无兼容性问题。
+	charset: "utf8",
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
+	// Smaller production bundles reduce disk reads and V8 parsing on Windows cold starts.
+	minify: prod,
 	treeShaking: true,
 	outfile: "main.js",
 });

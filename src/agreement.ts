@@ -53,8 +53,8 @@ export default class Agreement {
     constructor(SMPL: ShareMyPlugin) {
         // 保存 ShareMyPlugin 实例
         this.plugin = SMPL;
-        // 调用 fetchCommunityPlugins 方法获取社区插件列表
-        void this.fetchCommunityPlugins();
+        // The protocol handlers fetch the registry on demand. Constructing a handler
+        // must not start a network request during plugin initialization.
     }
 
     /**

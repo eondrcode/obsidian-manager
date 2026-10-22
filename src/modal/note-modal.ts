@@ -9,7 +9,7 @@ import {
 import { ManagerSettings } from "../settings/data";
 import Manager from "main";
 import { ManagerPlugin } from "src/data/types";
-import { ManagerModal } from "./manager-modal";
+import type { ManagerModal } from "./manager-modal";
 import { getExtraButtonElement } from "src/obsidian-internals";
 
 export class NoteModal extends Modal {

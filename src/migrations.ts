@@ -218,7 +218,7 @@ const migrations: Migration[] = [
  * 但 translator、UI 和复杂运行态尚未完全初始化，所以迁移代码应尽量只操作 settings
  * 和必要的 vault 文件，不依赖界面对象。
  */
-export const runMigrations = async (manager: Manager): Promise<void> => {
+export const runMigrations = async (manager: Manager, options: { save?: boolean } = {}): Promise<boolean> => {
 	const currentVersion = manager.manifest.version;
 	const lastMigrationVersion = manager.settings.MIGRATION_VERSION || "";
 	const pendingMigrations = migrations
@@ -256,7 +256,8 @@ export const runMigrations = async (manager: Manager): Promise<void> => {
 		anyChange = true;
 	}
 
-	if (anyChange) {
+	if (anyChange && options.save !== false) {
 		await manager.saveSettings();
 	}
+	return anyChange;
 };

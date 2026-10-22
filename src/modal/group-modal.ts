@@ -1,7 +1,7 @@
 import { App, ExtraButtonComponent, Modal, Notice, setIcon, Setting } from 'obsidian';
 import { ManagerSettings } from '../settings/data';
 import Manager from 'main';
-import { ManagerModal } from './manager-modal';
+import type { ManagerModal } from './manager-modal';
 import { ManagerPlugin } from 'src/data/types';
 import Commands from 'src/command';
 import { getExtraButtonElement } from 'src/obsidian-internals';

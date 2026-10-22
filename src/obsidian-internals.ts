@@ -18,6 +18,11 @@ export type AppPluginInstanceLike = {
         author2?: string;
         installLink?: string;
     };
+    /**
+     * Obsidian 原生的加载标记：true = onload 已跑完。
+     * 实测每个 Plugin 实例都有该字段，是判定「延时启动是否真的起来了」的依据。
+     */
+    _loaded?: boolean;
     [key: string]: unknown;
 };
 
@@ -29,7 +34,11 @@ export type ObsidianPluginRegistry = {
     uninstallPlugin: (id: string) => Promise<void>;
     loadManifests: () => Promise<void>;
     loadPlugin: (id: string) => Promise<void>;
-    enablePlugin: (id: string) => Promise<void>;
+    /**
+     * 实测返回 boolean：true = 本次真正启动，false = 已在运行或 manifest 缺失。
+     * 旧签名写成 Promise<void> 会把这个结果丢掉，让「启动成功」无法判定。
+     */
+    enablePlugin: (id: string) => Promise<boolean | void>;
     disablePlugin: (id: string) => Promise<void>;
     enablePluginAndSave: (id: string) => Promise<void>;
     disablePluginAndSave: (id: string) => Promise<void>;
