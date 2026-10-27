@@ -203,6 +203,20 @@ After enabling the plugin, open BPM in either way:
 ---
 
 
+## Device management
+
+Open **Devices** in the manager (on mobile: **More → Devices**). Enable **Manage by device type**, then check this device's type. There are exactly three presets: **Computer**, **Tablet**, and **Phone**. Initial presets inherit your current settings; enabling this feature is optional.
+
+Each preset stores plugin enabled states, assigned delay groups, and Ribbon visibility/order. The **Devices** page only manages identity, this device's type and the device list; plugins, appearance and Ribbon are edited through the device selector on their own tabs. The manager itself and BPM-ignored plugins are excluded from device-specific plugin switching. Group/tag metadata and delay definitions stay global. Desktop-only plugins are never started by the device manager on mobile.
+
+Device names and assignments sync with plugin data. The local identity stays in Obsidian's device-local storage. The device type is detected from Obsidian's platform information and can be corrected manually or with **Detect again from platform**. On mobile, a hashed Capacitor device identifier provides a stable identity; the raw hardware identifier is never written to plugin data or uploaded. Reinstalling or clearing local data can create a new device record, but the three type presets remain available. Correct a misidentified tablet/phone manually and remove stale records as needed. Other devices apply synced changes after reloading the plugin. Concurrent edits follow your sync provider's conflict handling; there is no live cross-device merge.
+
+The three scoped tabs — **Plugins**, **Appearance** and **Ribbon** — each carry the same **Configure for device** selector. Choosing a device type configures the whole type; choosing an individual device configures only that device. A type is the global layer and a device is the local one: a device stores only the items you changed there, everything else keeps following its type, and later type changes only reach items the device has not overridden. Editing a non-current scope saves to that scope and applies when that device next starts or reloads; editing this device applies now. Plugin enable/delay, appearance (theme and CSS snippet states), and Ribbon visibility/order are stored per scope; install sources, import/export, troubleshoot, groups, tags and delay definitions stay global. The reset button next to an individual device clears its overrides and returns it to its type.
+
+Native Obsidian plugins can start before the manager applies a preset. Use the existing delayed-start mode and startup takeover if you need the manager to control startup ordering. Missing plugins and unavailable Ribbon icons retain their saved choices. Reorder Ribbon items using the up/down buttons on touch devices.
+
+Validation: `bun run build`, `node --test tests/device-management.test.mjs`. UI validation uses an isolated empty vault; physical touch scrolling still requires mobile-device testing.
+
 ## Security and Disclosure
 
 BPM is a local Obsidian plugin manager, but some features intentionally use external services or browser APIs:
@@ -264,7 +278,7 @@ BPM settings are split into focused pages:
 
 | Page | What you can configure |
 |------|------------------------|
-| **Basic** | Language, persistent filters, delayed startup, auto takeover, startup update checks, source update checks, source auto-update, BPM tag visibility, ribbon order, command registration, debug mode, and GitHub token |
+| **Basic** | Language, persistent filters, delayed startup, delayed-start countdown, auto takeover, startup update checks, source update checks, source auto-update, BPM tag visibility, ribbon order, command registration, debug mode, and GitHub token |
 | **Main Page Actions** | Choose which plugin actions appear directly on plugin cards and which stay in the right-click menu |
 | **Style** | Plugin list layout, item display style, group/tag styles, and disabled-plugin fading |
 | **Groups** | Create, rename, recolor, and delete plugin groups |

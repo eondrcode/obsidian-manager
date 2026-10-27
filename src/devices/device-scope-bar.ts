@@ -1,0 +1,146 @@
+import { setIcon } from 'obsidian';
+import type Manager from '../main';
+import { DEVICE_TYPES, DeviceScope, ScopePage, scopeKey } from './device-presets';
+
+/**
+ * 三栏共用的作用域选择器，复用管理器筛选栏的自定义下拉（非原生 select）。
+ * Shared scope selector built from the manager's own filter dropdown, not a native select.
+ */
+export class DeviceScopeBar {
+    private closeMenu: (() => void) | null = null;
+
+    constructor(private readonly manager: Manager, private readonly onChange: () => void) {}
+
+    render(container: HTMLElement, page: ScopePage): void {
+        this.closeMenu?.();
+        this.closeMenu = null;
+        const devices = this.manager.devices;
+        const t = (key: string, vars?: Record<string, string | number>) => this.manager.translator.t(key, vars);
+        const enabled = Boolean(this.manager.settings.DEVICE_MANAGEMENT?.enabled);
+        const scope = devices.selectedScope(page);
+        const description = enabled
+            ? (devices.isLiveScope(scope) ? t('设备_作用域本机说明', { scope: devices.scopeLabel(scope) }) : t('设备_作用域其他说明', { scope: devices.scopeLabel(scope) }))
+            : t('设备_作用域未启用');
+
+        const host = container.createDiv('manager-device-scope');
+        const line = host.createDiv('manager-search-line');
+        const field = line.createDiv('manager-filter-field manager-filter-field--select manager-filter-field--sort');
+        field.setAttribute('title', description);
+        field.setAttribute('aria-label', description);
+        const label = field.createDiv('manager-filter-field__label');
+        const iconEl = label.createSpan('manager-filter-field__icon');
+        setIcon(iconEl, 'monitor-smartphone');
+        label.createSpan({ cls: 'manager-filter-field__text', text: t('设备_作用域短') });
+        const control = field.createDiv('manager-filter-field__control');
+        const group = control.createDiv('manager-filter-select-group');
+
+        const root = group.createDiv('manager-multiselect-filter');
+        const trigger = root.createEl('button', { cls: 'manager-multiselect-filter__trigger' });
+        trigger.type = 'button';
+        trigger.setAttribute('aria-haspopup', 'listbox');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.setAttribute('aria-label', `${t('设备_作用域短')}: ${devices.scopeLabel(scope)}`);
+        trigger.createSpan({ cls: 'manager-multiselect-filter__summary', text: devices.scopeLabel(scope) });
+        setIcon(trigger.createSpan('manager-multiselect-filter__chevron'), 'chevron-down');
+        trigger.disabled = !enabled;
+
+        const menu = root.createDiv('manager-multiselect-filter__menu');
+        menu.setAttribute('role', 'listbox');
+        const sectionEl = root.closest('.manager-section--filters');
+        const containerEl = root.closest('.manager-container');
+        let open = false;
+
+        const close = () => {
+            if (!open) return;
+            open = false;
+            root.removeClass('is-open');
+            menu.removeClass('is-fixed');
+            menu.setCssStyles({ top: '', left: '', minWidth: '' });
+            field.removeClass('is-filter-menu-open');
+            sectionEl?.removeClass('is-filter-menu-open');
+            containerEl?.removeClass('has-open-filter-menu');
+            trigger.setAttribute('aria-expanded', 'false');
+            activeDocument.removeEventListener('click', onDocumentClick);
+            activeDocument.removeEventListener('scroll', onScroll, true);
+            window.removeEventListener('resize', close);
+        };
+        const onDocumentClick = () => { close(); };
+        // 菜单自身滚动不应触发关闭；祖先容器滚动才关闭。
+        const onScroll = (event: Event) => {
+            if (event.target instanceof Node && menu.contains(event.target)) return;
+            close();
+        };
+        this.closeMenu = close;
+
+        const toggle = () => {
+            if (open) { close(); return; }
+            open = true;
+            // 菜单挂在滚动容器里会被裁剪，打开时改为固定定位到触发按钮下方。
+            const rect = trigger.getBoundingClientRect();
+            menu.addClass('is-fixed');
+            menu.setCssStyles({
+                top: `${rect.bottom + 4}px`,
+                left: `${rect.left}px`,
+                minWidth: `${Math.max(220, rect.width)}px`,
+            });
+            root.addClass('is-open');
+            field.addClass('is-filter-menu-open');
+            sectionEl?.addClass('is-filter-menu-open');
+            containerEl?.addClass('has-open-filter-menu');
+            trigger.setAttribute('aria-expanded', 'true');
+            window.setTimeout(() => activeDocument.addEventListener('click', onDocumentClick), 0);
+            activeDocument.addEventListener('scroll', onScroll, true);
+            window.addEventListener('resize', close);
+        };
+        trigger.addEventListener('click', (event) => { event.stopPropagation(); toggle(); });
+        root.addEventListener('click', (event) => event.stopPropagation());
+        root.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') { event.preventDefault(); close(); }
+        });
+
+        const addOption = (entry: DeviceScope) => {
+            const selected = entry.key === scope.key;
+            const option = menu.createEl('button', { cls: 'manager-multiselect-filter__option' });
+            option.type = 'button';
+            option.setAttribute('role', 'option');
+            option.setAttribute('aria-selected', `${selected}`);
+            option.toggleClass('is-selected', selected);
+            setIcon(option.createSpan('manager-multiselect-filter__check'), selected ? 'check' : 'circle');
+            option.createSpan({ cls: 'manager-multiselect-filter__option-label', text: devices.scopeLabel(entry) });
+            if (!enabled) option.disabled = true;
+            option.addEventListener('click', () => {
+                close();
+                if (selected) return;
+                void devices.selectScope(page, entry.key).then(() => this.onChange()).catch(error => devices.report(error));
+            });
+        };
+
+        // 分组标题复用筛选菜单的次级文本样式。
+        const addGroupLabel = (text: string) => {
+            const row = menu.createDiv('manager-filter-field__text');
+            row.setText(text);
+            row.addClass('manager-device-scope__group');
+        };
+        addGroupLabel(t('设备_作用域类型组'));
+        for (const type of DEVICE_TYPES) addOption({ key: scopeKey(type), type });
+        addGroupLabel(t('设备_作用域设备组'));
+        for (const device of devices.data.devices) {
+            addOption({ key: scopeKey(device.type, device.id), type: device.type, deviceId: device.id });
+        }
+
+        if (enabled && scope.deviceId) {
+            const reset = group.createEl('button', { cls: 'manager-filter-operator-toggle' });
+            reset.type = 'button';
+            reset.setAttribute('aria-label', t('设备_跟随类型'));
+            reset.setAttribute('title', t('设备_跟随类型'));
+            setIcon(reset, 'rotate-ccw');
+            reset.addEventListener('click', () => {
+                if (!scope.deviceId) return;
+                void devices.resetOverrides(scope.deviceId).then(() => this.onChange()).catch(error => devices.report(error));
+            });
+        }
+    }
+}
+
+export type DeviceScopePage = ScopePage;
+export type { DeviceScope };

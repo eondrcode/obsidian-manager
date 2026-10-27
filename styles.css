@@ -14049,3 +14049,66 @@ body.theme-dark .manager-transfer-segment[data-state="active"]:hover {
         padding-top: 2px;
     }
 }
+
+/* ── 设备作用域下拉与窄宽度工具栏 ───────────────────────────────
+   复用筛选栏的自定义下拉；工具栏在窄宽度下整行可滚动，避免标签与按钮互相挤压。 */
+.manager-device-scope .manager-multiselect-filter__menu {
+    right: auto;
+    min-width: 220px;
+}
+
+.manager-device-scope__group {
+    display: block;
+    padding: 6px 8px 2px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.manager-container .manager-toolbar {
+    height: auto;
+    min-height: 34px;
+    overflow: auto;
+    scrollbar-width: thin;
+    padding-bottom: 2px;
+}
+
+.manager-container .manager-toolbar__tabs {
+    flex: 0 0 auto;
+}
+
+.manager-container .manager-toolbar__tools {
+    flex: 0 0 auto;
+    margin-left: auto;
+    overflow: visible;
+    justify-content: flex-start;
+}
+
+.manager-container .manager-toolbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.manager-container .manager-toolbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.manager-container .manager-toolbar::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--text-muted) 35%, transparent);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+.manager-container .manager-toolbar::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--text-muted) 55%, transparent);
+    background-clip: padding-box;
+}
+
+.manager-device-scope .manager-multiselect-filter__menu.is-fixed {
+    position: fixed;
+    right: auto;
+    max-height: min(280px, 48vh);
+    z-index: 1200;
+}

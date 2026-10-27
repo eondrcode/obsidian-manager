@@ -1,3 +1,6 @@
+import { DevicePanel } from '../devices/device-panel';
+import { DeviceScopeBar } from '../devices/device-scope-bar';
+import type { ScopePage } from '../devices/device-presets';
 import {
     App,
     ButtonComponent,
@@ -72,7 +75,7 @@ import {
 } from "../vault-share";
 import { AppPluginInstanceLike, getExtraButtonElement, ObsidianAppWithInternals, ObsidianPluginRegistry, VaultAdapterWithBasePath } from "src/obsidian-internals";
 
-type ManagerPage = "plugins" | "themes" | "install" | "sources" | "transfer" | "vaults" | "ribbon" | "troubleshoot";
+type ManagerPage = "devices" | "plugins" | "themes" | "install" | "sources" | "transfer" | "vaults" | "ribbon" | "troubleshoot";
 type AppearanceView = "profiles" | "themes" | "snippets";
 const SHARED_VAULTS_ENABLED = false;
 const SUPPORT_QQ_GROUP_URL = "https://qm.qq.com/cgi-bin/qm/qr?k=kHTS0iC1FC5igTXbdbKzff6_tc54mOF5&jump_from=webapi&authKey=AoSkriW+nDeDzBPqBl9jcpbAYkPXN2QRbrMh0hFbvMrGbqZyRAbJwaD6JKbOy4Nx";
@@ -376,8 +379,8 @@ export class ManagerModal extends Modal {
     private modalPageEl?: HTMLElement;
     private readonly renderBatchSize = 80;
     private readonly desktopPages: ManagerPage[] = SHARED_VAULTS_ENABLED
-        ? ["plugins", "themes", "install", "sources", "transfer", "vaults", "ribbon", "troubleshoot"]
-        : ["plugins", "themes", "install", "sources", "transfer", "ribbon", "troubleshoot"];
+        ? ["plugins", "devices", "themes", "install", "sources", "transfer", "vaults", "ribbon", "troubleshoot"]
+        : ["plugins", "devices", "themes", "install", "sources", "transfer", "ribbon", "troubleshoot"];
 
     private get pageEl(): HTMLElement {
         return this.modalPageEl ?? this.contentEl;
@@ -1316,6 +1319,8 @@ export class ManagerModal extends Modal {
 
     private isPluginEnabledForDisplay(pluginId: string, managerPlugin?: ManagerPlugin): boolean {
         const pluginSettings = managerPlugin ?? this.getManagerPlugin(pluginId);
+        // 外域插件页只展示该作用域保存的状态，不读本机运行时。
+        if (this.manager.devices?.isProjectingForeign('plugins')) return Boolean(pluginSettings?.enabled);
         if (this.settings.DELAY && !pluginSettings?.tags?.includes(BPM_IGNORE_TAG)) return Boolean(pluginSettings?.enabled);
         return this.appPlugins.enabledPlugins.has(pluginId)
             || this.singleStartedPluginIds.has(pluginId)
@@ -2063,10 +2068,12 @@ export class ManagerModal extends Modal {
         const progress = this.showInlineProgress(t("管理器_应用更改中_提示"));
         let processed = 0;
         for (const plugin of plugins) {
-            const isEnabled = this.isManagedPluginEnabled(plugin.id);
+            const foreign = Boolean(this.manager.devices?.isProjectingForeign('plugins'));
+            const isEnabled = foreign ? Boolean(plugin.enabled) : this.isManagedPluginEnabled(plugin.id);
             if (isEnabled !== targetEnabled) {
                 plugin.enabled = targetEnabled;
-                if (this.settings.DELAY) {
+                if (foreign) {
+                } else if (this.settings.DELAY) {
                     if (targetEnabled) await this.appPlugins.enablePlugin(plugin.id);
                     else await this.appPlugins.disablePlugin(plugin.id);
                 } else {
@@ -2117,6 +2124,9 @@ export class ManagerModal extends Modal {
     private sourcesTabEl?: HTMLButtonElement;
     private transferTabEl?: HTMLButtonElement;
     private vaultsTabEl?: HTMLButtonElement;
+    private deviceTabEl?: HTMLButtonElement;
+    private devicePanel?: DevicePanel;
+    private deviceScopeBars = new Map<ScopePage, DeviceScopeBar>();
     private ribbonTabEl?: HTMLButtonElement;
     private troubleshootTabEl?: HTMLButtonElement;
     private ribbonPage?: RibbonModal;
@@ -2296,6 +2306,7 @@ export class ManagerModal extends Modal {
             return tab;
         };
         this.pluginTabEl = createTab("plugins", t("管理器_Tab_插件管理"), "blocks");
+        this.deviceTabEl = createTab("devices", t("设备_标题"), "monitor-smartphone");
         this.themeTabEl = createTab("themes", t("外观总览_Tab_标题"), "palette");
         this.installTabEl = createTab("install", t("管理器_Tab_安装来源"), "download");
         this.sourcesTabEl = undefined;
@@ -2705,6 +2716,19 @@ export class ManagerModal extends Modal {
             const menu = new Menu();
             const isPluginPage = this.activePage === "plugins";
             const isThemePage = this.activePage === "themes";
+            menu.addItem(item => item.setTitle(t("设备_标题")).setIcon("monitor-smartphone").onClick(() => {
+                this.activePage = "devices";
+                this.installMode = false;
+                this.syncPageChrome();
+                this.renderContent();
+                this.showHeadMobile();
+            }));
+            if (this.activePage === "devices") menu.addItem(item => item.setTitle(t("管理器_Tab_插件管理")).setIcon("blocks").onClick(() => {
+                this.activePage = "plugins";
+                this.syncPageChrome();
+                this.renderContent();
+                this.showHeadMobile();
+            }));
             if (isPluginPage) {
                 menu.addItem((item) => item.setTitle(t("批量编辑_入口")).setIcon("list-plus").onClick(() => {
                     this.setBulkEditMode(!this.bulkEditMode);
@@ -3075,6 +3099,8 @@ export class ManagerModal extends Modal {
         const t = (k: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(k, vars);
         const page: ManagerPage = "plugins";
         if (!this.isRenderCurrent(renderGeneration, page)) return;
+        this.enterScopePage('plugins');
+        this.renderDeviceScope(this.pageEl.createDiv("manager-plugin-scope"), 'plugins');
         if (this.settings.DEBUG) console.log("[BPM] render showData manifests size:", Object.keys(this.appPlugins.manifests).length);
         const uniquePlugins = this.getUniquePluginManifests();
         const manifestById = new Map(uniquePlugins.map((plugin) => [plugin.id, plugin]));
@@ -4029,6 +4055,15 @@ export class ManagerModal extends Modal {
                             // 更新底部统计
                             this.updateStats();
                         };
+                        if (this.manager.devices?.isProjectingForeign('plugins')) {
+                            // 外域只改存储，不动本机插件运行时。
+                            managerPluginForToggle.enabled = targetEnabled;
+                            await this.manager.saveSettings();
+                            this.singleStartedPluginIds.delete(plugin.id);
+                            updateCardUI();
+                            this.refreshPluginCard(plugin.id);
+                            return;
+                        }
                         if (this.settings.DELAY) {
                             if (targetEnabled) {
                                 managerPluginForToggle.enabled = true;
@@ -4278,6 +4313,7 @@ export class ManagerModal extends Modal {
         };
         this.installMode = isInstallWorkspace;
         syncTabState(this.pluginTabEl, isPlugins);
+        syncTabState(this.deviceTabEl, this.activePage === "devices");
         syncTabState(this.themeTabEl, isThemes);
         syncTabState(this.installTabEl, isInstallWorkspace);
         syncTabState(this.sourcesTabEl, isSources);
@@ -5004,6 +5040,37 @@ export class ManagerModal extends Modal {
         this.getCustomCss()?.setTheme?.(themeName);
     }
 
+    /** 外观页当前是否在编辑其他设备的作用域。 */
+    private isForeignThemes(): boolean {
+        return Boolean(this.manager.devices?.isProjectingForeign('themes'));
+    }
+    private getScopedThemeName(): string {
+        if (this.isForeignThemes()) return this.manager.devices.scopeAppearance('themes').theme;
+        return this.getActiveThemeName();
+    }
+    private async getScopedEnabledSnippetIds(): Promise<Set<string>> {
+        if (!this.isForeignThemes()) return this.getEnabledSnippetIds();
+        const appearance = this.manager.devices.scopeAppearance('themes');
+        return new Set(Object.entries(appearance.snippets).filter(([, enabled]) => enabled).map(([id]) => id));
+    }
+    /** 主题切换按作用域分流：外域只记录，本机立即应用。 */
+    private async applyThemeToScope(themeName: string): Promise<void> {
+        if (this.isForeignThemes()) {
+            await this.manager.devices.writeAppearance('themes', { theme: themeName });
+            return;
+        }
+        this.setActiveThemeName(themeName);
+        await this.manager.devices.writeAppearance('themes', {});
+    }
+    private async toggleSnippetForScope(snippetId: string, enabled: boolean): Promise<void> {
+        if (this.isForeignThemes()) {
+            await this.manager.devices.writeAppearance('themes', { snippets: { [snippetId]: enabled } });
+            return;
+        }
+        await this.setCssSnippetEnabled(snippetId, enabled);
+        await this.manager.devices.writeAppearance('themes', {});
+    }
+
     private getThemeFolderPath(themeName: string): string {
         const getBasePath = (this.app.vault.adapter as VaultAdapterWithBasePath).getBasePath?.();
         const basePath = getBasePath ? normalizePath(getBasePath) : "";
@@ -5054,7 +5121,7 @@ export class ManagerModal extends Modal {
         try {
             if (!(await adapter.exists(snippetsDir))) return [];
             const listed = await adapter.list(snippetsDir) as { files?: string[]; folders?: string[] };
-            return (listed.files || [])
+            const snippets = (listed.files || [])
                 .filter((file) => file.toLowerCase().endsWith(".css"))
                 .map((file) => {
                     const fileName = file.split("/").pop() || file;
@@ -5067,6 +5134,12 @@ export class ManagerModal extends Modal {
                     };
                 })
                 .sort((a, b) => a.name.localeCompare(b.name));
+            // 外域按存储的片段开关展示；Live state stays untouched.
+            if (this.isForeignThemes()) {
+                const appearance = this.manager.devices.scopeAppearance('themes');
+                snippets.forEach((snippet) => { snippet.enabled = appearance.snippets[snippet.id] === true; });
+            }
+            return snippets;
         } catch {
             return [];
         }
@@ -5108,7 +5181,7 @@ export class ManagerModal extends Modal {
     }
 
     private createCurrentAppearanceProfileDraft(snippets: CssSnippetItem[]): AppearanceProfileDraft {
-        const activeTheme = this.getActiveThemeName();
+        const activeTheme = this.getScopedThemeName();
         return {
             id: "",
             name: activeTheme ? `${activeTheme} ${this.manager.translator.t("外观总览_方案_默认名称")}` : this.manager.translator.t("外观总览_方案_默认名称"),
@@ -5182,15 +5255,24 @@ export class ManagerModal extends Modal {
     }
 
     private async applyAppearanceProfile(profile: AppearanceProfile, options: { quiet?: boolean } = {}): Promise<void> {
-        if (profile.theme) this.setActiveThemeName(profile.theme);
-        const currentEnabled = await this.getEnabledSnippetIds();
+        if (profile.theme) await this.applyThemeToScope(profile.theme);
+        const currentEnabled = await this.getScopedEnabledSnippetIds();
         const nextEnabled = profile.mode === "exact" ? new Set<string>() : new Set(currentEnabled);
         this.normalizeSnippetIds(profile.enableSnippets || []).forEach((id) => nextEnabled.add(id));
         this.normalizeSnippetIds(profile.disableSnippets || []).forEach((id) => nextEnabled.delete(id));
 
-        const currentSorted = [...currentEnabled].sort((a, b) => a.localeCompare(b)).join("\n");
-        const nextSorted = [...nextEnabled].sort((a, b) => a.localeCompare(b)).join("\n");
-        if (currentSorted !== nextSorted) await this.writeEnabledSnippetIds(nextEnabled);
+        if (this.isForeignThemes()) {
+            // 外域只保存快照，不触碰本机外观。
+            const patch: Record<string, boolean> = {};
+            for (const id of currentEnabled) patch[id] = nextEnabled.has(id);
+            for (const id of nextEnabled) patch[id] = true;
+            await this.manager.devices.writeAppearance('themes', { snippets: patch });
+        } else {
+            const currentSorted = [...currentEnabled].sort((a, b) => a.localeCompare(b)).join("\n");
+            const nextSorted = [...nextEnabled].sort((a, b) => a.localeCompare(b)).join("\n");
+            if (currentSorted !== nextSorted) await this.writeEnabledSnippetIds(nextEnabled);
+            await this.manager.devices.writeAppearance('themes', {});
+        }
         if (!options.quiet) new Notice(this.manager.translator.t("外观总览_方案_已应用", { name: profile.name }));
         await this.reloadShowData();
     }
@@ -5201,14 +5283,14 @@ export class ManagerModal extends Modal {
             await this.applyAppearanceProfile(boundProfile);
             return;
         }
-        this.setActiveThemeName(themeName);
+        await this.applyThemeToScope(themeName);
         new Notice(this.manager.translator.t("外观总览_提示_主题已切换", { name: themeName }));
         await this.reloadShowData();
     }
 
     private renderAppearanceStats(themes: ManagerTransferTheme[], snippets: CssSnippetItem[]) {
         if (!this.footEl) return;
-        const activeTheme = this.getActiveThemeName();
+        const activeTheme = this.getScopedThemeName();
         const trackedCount = themes.filter((theme) => Boolean(theme.repo || theme.source)).length;
         const enabledSnippetCount = snippets.filter((snippet) => snippet.enabled).length;
         this.footEl.empty();
@@ -5231,6 +5313,7 @@ export class ManagerModal extends Modal {
     private async showThemeOverview(renderGeneration = this.renderGeneration) {
         const page: ManagerPage = "themes";
         if (!this.isRenderCurrent(renderGeneration, page)) return;
+        this.enterScopePage('themes');
         const t = (key: string, vars?: Record<string, string | number | boolean | null | undefined>) => this.manager.translator.t(key, vars);
         this.pageEl.empty();
         this.pageEl.addClass("manager-theme-overview");
@@ -5240,6 +5323,10 @@ export class ManagerModal extends Modal {
             this.collectCssSnippets(),
         ]);
         if (!this.isRenderCurrent(renderGeneration, page)) return;
+        const scopedTheme = this.getScopedThemeName();
+        if (this.manager.devices?.isProjectingForeign('themes')) {
+            themes.forEach((theme) => { theme.active = theme.name === scopedTheme; });
+        }
         const profiles = this.getAppearanceProfiles();
         this.renderAppearanceStats(themes, snippets);
 
@@ -5273,6 +5360,7 @@ export class ManagerModal extends Modal {
             : snippets;
 
         const workspace = this.pageEl.createDiv("manager-repo-page manager-appearance-workspace");
+        this.renderDeviceScope(workspace, 'themes');
         const toolbar = workspace.createDiv("manager-repo-page__toolbar manager-appearance-toolbar");
         const tabs = toolbar.createDiv("manager-repo-page__switcher manager-appearance-tabs");
         tabs.setAttribute("role", "tablist");
@@ -5524,7 +5612,7 @@ export class ManagerModal extends Modal {
                 const previousEnabled = snippet.enabled;
                 toggle.setDisabled(true);
                 try {
-                    await this.setCssSnippetEnabled(snippet.id, enabled);
+                    await this.toggleSnippetForScope(snippet.id, enabled);
                     syncSnippetCardState(enabled);
                     new Notice(t(enabled ? "外观总览_提示_片段已启用" : "外观总览_提示_片段已禁用", { name: snippet.name }));
                 } catch (error) {
@@ -6472,8 +6560,10 @@ export class ManagerModal extends Modal {
             await this.showData(renderGeneration);
             return;
         }
-
+        this.enterScopePage('ribbon');
         this.pageEl.empty();
+        const scopeHost = this.pageEl.createDiv("manager-ribbon-scope");
+        this.renderDeviceScope(scopeHost, 'ribbon');
         const page = this.pageEl.createDiv("manager-ribbon-page ribbon-manager-modal");
         page.createDiv({
             cls: "manager-ribbon-page__loading",
@@ -7846,12 +7936,35 @@ export class ManagerModal extends Modal {
         }
     }
 
+    private showDevicePanel(): void {
+        if (!this.devicePanel) this.devicePanel = new DevicePanel(this.manager);
+        this.devicePanel.render(this.pageEl);
+    }
+
+    /** 五栏共用的设备作用域选择器；Shared scope selector for the five scoped pages. */
+    private renderDeviceScope(container: HTMLElement, page: ScopePage): void {
+        let bar = this.deviceScopeBars.get(page);
+        if (!bar) {
+            bar = new DeviceScopeBar(this.manager, () => this.renderContent());
+            this.deviceScopeBars.set(page, bar);
+        }
+        bar.render(container, page);
+    }
+
+    private enterScopePage(page: ScopePage): void {
+        this.manager.devices?.noteActivePage(page);
+        this.manager.devices?.ensureProjection(page);
+    }
+
     private renderContent() {
         this.ensureAllowedActivePage();
+        this.manager.devices?.noteActivePage(this.activePage);
         const renderGeneration = this.nextRenderGeneration();
         this.pageEl.empty();
         this.clearPluginOverviewLayoutClass();
-        if (this.activePage === "ribbon") {
+        if (this.activePage === "devices") {
+            this.showDevicePanel();
+        } else if (this.activePage === "ribbon") {
             void this.showRibbonPanel(renderGeneration);
         } else if (this.activePage === "themes") {
             void this.showThemeOverview(renderGeneration);
@@ -7889,7 +8002,10 @@ export class ManagerModal extends Modal {
         const scrollTop = modalElement.scrollTop;
         modalElement.empty();
         this.clearPluginOverviewLayoutClass();
-        if (this.activePage === "ribbon") {
+        if (this.activePage === "devices") {
+            this.showDevicePanel();
+            modalElement.scrollTo(0, scrollTop);
+        } else if (this.activePage === "ribbon") {
             await this.showRibbonPanel(renderGeneration);
             if (!this.isRenderCurrent(renderGeneration, "ribbon")) return;
             modalElement.scrollTo(0, scrollTop);

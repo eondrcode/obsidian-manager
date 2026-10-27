@@ -1,3 +1,5 @@
+import { DeviceManager } from './devices/device-manager';
+import { DelayWaitNotice } from './delay-wait-notice';
 import { normalizePath, ObsidianProtocolData, Plugin, PluginManifest, Workspace } from 'obsidian';
 import { DEFAULT_SETTINGS, ManagerSettings, PluginUpdateCheckMode, ReleaseCompatibilityMode } from './settings/data';
 import { ManagerSettingTab } from './settings';
@@ -104,6 +106,7 @@ type CommunityPluginStatsEntry = Record<string, number | string | undefined>;
 
 export default class Manager extends Plugin {
     public settings!: ManagerSettings;
+    public devices!: DeviceManager;
     public managerModal: ManagerModal | null = null;
     public ribbonModal: RibbonModal | null = null;
     public appPlugins!: ObsidianPluginRegistry;
@@ -126,6 +129,8 @@ export default class Manager extends Plugin {
     private isUnloaded = false;
     /** Background startup work must never execute inside onload, even on a hot reload. */
     private startupTimers = new Set<number>();
+    /** 延迟启动倒计时提示（默认关闭） / Optional delayed-start countdown notice. */
+    public delayWaitNotice?: DelayWaitNotice;
 
     /** 原生条目创建入口的原始引用（挂钩子用），卸载时原样还原 */
     private ribbonAddItemOriginal: LeftRibbonLike["addRibbonItemButton"] | null = null;
@@ -200,6 +205,12 @@ export default class Manager extends Plugin {
 
         this.repoResolver = new RepoResolver(this);
 
+        // 先投影本机预设，再构造延迟队列；Select the device preset before queuing plugins.
+        this.synchronizePlugins(Object.values(this.appPlugins.manifests), { save: false });
+        this.devices = new DeviceManager(this);
+        await this.devices.initialize();
+        markSettingsDirty();
+
         // 一次性清理旧版本留下的 inline 覆盖（旧机制在元素上写 display/order，
         // 在线升级后若不剥掉会与 Obsidian 原生状态互相打架）
         this.clearLegacyRibbonOverrides();
@@ -242,7 +253,19 @@ export default class Manager extends Plugin {
             // Schedule only after the final awaited save: a hot reload may already have a layout.
             // Zero-delay enablePlugin calls must not run while BPM.onload is still awaiting I/O.
             this.scheduleStartupTask("delayed plugins", async () => {
-                if (this.settings.DELAY) await this.drainDelayQueue();
+                // 只在延迟启动且用户开启提示时显示；默认关闭。
+                if (this.settings.DELAY) {
+                    const base = this.delayWaitSeconds();
+                    if (base > 0) this.showDelayWaitNotice(base + this.delayWaitExtraSeconds(), this.delayWaitMessageInfo());
+                }
+                try {
+                    if (this.settings.DEVICE_MANAGEMENT?.enabled) {
+                        await this.devices.apply().catch(error => this.devices.report(error));
+                    } else if (this.settings.DELAY) await this.drainDelayQueue();
+                } catch (error) {
+                    this.delayWaitNotice?.stop();
+                    throw error;
+                }
             });
             this.startRibbonRuntimeFeatures();
 
@@ -277,6 +300,7 @@ export default class Manager extends Plugin {
     public onunload() {
         // 卸载后一切延迟回调必须停手，否则会在已卸载的插件上继续操作 ribbon
         this.isUnloaded = true;
+        this.delayWaitNotice?.stop();
         this.startupTimers.forEach(handle => window.clearTimeout(handle));
         this.startupTimers.clear();
         // 打断延时启动队列：清掉休眠/让出句柄，让排空循环立即退出
@@ -362,6 +386,8 @@ export default class Manager extends Plugin {
      */
     public applyRibbonSettings(options: { notify?: boolean } = {}): void {
         if (this.isUnloaded) return;
+        // 正在编辑其他设备的投影时，不能把它的 Ribbon 推到本机运行时。
+        if (this.devices?.isProjectingForeign()) return;
         if (!this.isRibbonManagerEnabled()) return;
 
         try {
@@ -796,7 +822,48 @@ export default class Manager extends Plugin {
     }
 
     public async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
-    public async saveSettings() { await this.saveData(this.settings); }
+    public async saveSettings(options: { captureDevice?: boolean } = {}) {
+        if (options.captureDevice !== false) this.devices?.capture();
+        // 投影其他设备时，data.json 只写本机真实值；外域值留在 DEVICE_MANAGEMENT。
+        await this.saveData(this.devices?.persistedSettings() ?? this.settings);
+    }
+
+    /** 设备切换仍使用原生启停与既有延迟队列；Reuse native lifecycle and delay scheduling. */
+    public async applyDeviceConfiguration(): Promise<void> {
+        this.cancelDelayQueue();
+        // 已启动的异步 onload 必须落定后才能换预设；Wait for an in-flight startup to settle.
+        while (this.delayQueueRunning && !this.isUnloaded) await new Promise<void>(resolve => window.setTimeout(resolve, 10));
+        const failures: string[] = [];
+        for (const plugin of this.getDelayManagedPluginManifests()) {
+            if (this.isUnloaded) return;
+            const record = this.settings.Plugins.find(item => item.id === plugin.id);
+            if (!record) continue;
+            const enabled = record.enabled && !(Platform.isMobileApp && plugin.isDesktopOnly);
+            const persisted = this.appPlugins.enabledPlugins.has(plugin.id);
+            const running = Boolean(this.appPlugins.plugins?.[plugin.id]);
+            try {
+                if (!enabled) {
+                    if (persisted || running) await this.appPlugins.disablePluginAndSave(plugin.id);
+                } else if (this.settings.DELAY) {
+                    if (persisted) await this.appPlugins.disablePluginAndSave(plugin.id);
+                } else if (!persisted || !running) {
+                    await this.appPlugins.enablePluginAndSave(plugin.id);
+                }
+            } catch (error) {
+                failures.push(plugin.name);
+                if (this.settings.DEBUG) console.error('[BPM] Device preset plugin failed', plugin.id, error);
+            }
+        }
+        if (this.isUnloaded) return;
+        if (this.settings.DELAY) {
+            this.lastDelayStartReport = [];
+            this.delayQueue = this.buildDelayQueue(Date.now()).filter(item => !this.appPlugins.plugins?.[item.id]);
+            await this.drainDelayQueue();
+            failures.push(...this.lastDelayStartReport.filter(item => !item.ok).map(item => item.id));
+        }
+        await this.refreshRibbonManagerFeature();
+        if (failures.length) throw new Error(this.translator.t('设备_插件失败', { names: failures.join(', ') }));
+    }
 
     private getSecretStorage(): SecretStorageLike | null {
         const storage = (this.app as unknown as { secretStorage?: SecretStorageLike }).secretStorage;
@@ -1349,7 +1416,7 @@ export default class Manager extends Plugin {
     private buildDelayQueue(now: number): DelayQueueItem[] {
         const items: DelayQueueItem[] = [];
         for (const plugin of this.getDelayManagedPluginManifests()) {
-            if (plugin.id === this.manifest.id) continue;
+            if (plugin.id === this.manifest.id || (Platform.isMobileApp && plugin.isDesktopOnly)) continue;
             const record = this.settings.Plugins.find(p => p.id === plugin.id);
             if (!record || !record.enabled) continue;
 
@@ -1362,6 +1429,36 @@ export default class Manager extends Plugin {
         items.sort((a, b) => a.earliestAt - b.earliestAt);
         return items;
     }
+
+    /** 队列中尚未启动的插件还需要的最大秒数；用于倒计时提示。 */
+    private delayWaitSeconds(): number {
+        const now = Date.now();
+        let max = 0;
+        for (const item of this.delayQueue) {
+            if (this.appPlugins.plugins?.[item.id]) continue;
+            max = Math.max(max, Math.ceil(Math.max(0, item.earliestAt - now) / 1000));
+        }
+        return max;
+    }
+
+    /**
+     * 显示延迟启动倒计时。默认关闭：延迟启动或提示开关任一关闭都不显示。
+     * info 可含 {seconds}，秒数由提示模板统一替换。
+     */
+    public showDelayWaitNotice(seconds: number, info?: string): void {
+        if (!this.settings.DELAY || !this.settings.DELAY_WAIT_MESSAGE || seconds <= 0) return;
+        this.delayWaitNotice ??= new DelayWaitNotice((key, vars) => this.translator.t(key, vars));
+        this.delayWaitNotice.start(seconds, info ?? this.delayWaitMessageInfo());
+    }
+    private delayWaitMessageInfo(): string {
+        const custom = (this.settings.DELAY_WAIT_MESSAGE_TEXT || "").trim();
+        return custom || this.translator.t('延迟_等待_名称');
+    }
+    private delayWaitExtraSeconds(): number {
+        const value = Number(this.settings.DELAY_WAIT_MESSAGE_EXTRA_SECONDS);
+        return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+    }
+    public hideDelayWaitNotice(): void { this.delayWaitNotice?.finish(); }
 
     /**
      * 串行排空延时启动队列（严格串行 + 帧让出）
@@ -1388,7 +1485,10 @@ export default class Manager extends Plugin {
                     if (this.isUnloaded) return;
                 }
 
+                if (this.isUnloaded || this.delayQueue[0] !== item) continue;
                 this.delayQueue.shift();
+                const record = this.settings.Plugins.find(plugin => plugin.id === item.id);
+                if (!record?.enabled || this.isBpmIgnoredPlugin(item.id)) continue;
                 const result = await this.startPluginQueued(item.id);
                 this.lastDelayStartReport.push(result);
 

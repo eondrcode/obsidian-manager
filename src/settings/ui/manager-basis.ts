@@ -63,10 +63,52 @@ export default class ManagerBasis extends BaseSetting {
             if (value) {
                 void this.manager.enableDelaysForAllPlugins();
             } else {
+                this.manager.delayWaitNotice?.stop();
                 void this.manager.disableDelaysForAllPlugins();
             }
             this.settingTab.renderSettings();
             this.render();
+        });
+
+        const waitMessageBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t("设置_基础设置_等待提示_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_等待提示_描述"));
+        const waitMessageToggle = new ToggleComponent(waitMessageBar.controlEl);
+        waitMessageToggle.setValue(this.settings.DELAY_WAIT_MESSAGE);
+        waitMessageToggle.setDisabled(!this.settings.DELAY);
+        waitMessageToggle.onChange((value) => {
+            this.settings.DELAY_WAIT_MESSAGE = value;
+            if (!value) this.manager.delayWaitNotice?.stop();
+            void this.manager.saveSettings();
+            this.settingTab.basisDisplay();
+        });
+
+        const waitMessageTextBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t("设置_基础设置_等待提示信息_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_等待提示信息_描述"));
+        waitMessageTextBar.addText(text => text
+            .setPlaceholder(this.manager.translator.t("延迟_等待_名称"))
+            .setValue(this.settings.DELAY_WAIT_MESSAGE_TEXT || "")
+            .setDisabled(!this.settings.DELAY || !this.settings.DELAY_WAIT_MESSAGE)
+            .onChange(value => {
+                this.settings.DELAY_WAIT_MESSAGE_TEXT = value;
+                void this.manager.saveSettings();
+            }));
+
+        const waitMessageExtraBar = new Setting(this.containerEl)
+            .setName(this.manager.translator.t("设置_基础设置_等待提示额外_标题"))
+            .setDesc(this.manager.translator.t("设置_基础设置_等待提示额外_描述"));
+        waitMessageExtraBar.addText(text => {
+            text.setValue(`${this.settings.DELAY_WAIT_MESSAGE_EXTRA_SECONDS || 0}`)
+                .setDisabled(!this.settings.DELAY || !this.settings.DELAY_WAIT_MESSAGE)
+                .onChange(value => {
+                    const parsed = Number.parseInt(value, 10);
+                    this.settings.DELAY_WAIT_MESSAGE_EXTRA_SECONDS = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+                    void this.manager.saveSettings();
+                });
+            text.inputEl.type = "number";
+            text.inputEl.min = "0";
+            text.inputEl.step = "1";
         });
 
         const autoTakeoverBar = new Setting(this.containerEl)

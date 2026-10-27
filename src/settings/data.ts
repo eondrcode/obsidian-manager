@@ -1,3 +1,4 @@
+import type { DeviceManagement } from '../devices/device-presets';
 import { BetaSource, Delay, InstallHistoryItem, ManagerPlugin, PluginLayoutItem, RibbonItem, SharedVaultEntry, Tag, Type } from '../data/types';
 import { TroubleshootState } from '../troubleshoot/troubleshoot-state';
 
@@ -75,6 +76,8 @@ export const DEFAULT_MAIN_PAGE_ACTION_PLACEMENT: Record<MainPageActionId, MainPa
 };
 
 export interface ManagerSettings {
+    /** 固定三类设备预设 / Fixed device-type presets. */
+    DEVICE_MANAGEMENT?: DeviceManagement;
     // 系统 / 生命周期
     /** 当前界面语言。空字符串表示首次启动时按 Obsidian 当前语言自动初始化。 */
     LANGUAGE: string;
@@ -92,6 +95,12 @@ export interface ManagerSettings {
     CENTER: boolean;
     /** 是否启用 BPM 延迟启动模式；开启后插件启用状态由 BPM 记录驱动。 */
     DELAY: boolean;
+    /** 延迟启动时是否显示倒计时提示；默认关闭，且延迟启动关闭时不显示。 */
+    DELAY_WAIT_MESSAGE: boolean;
+    /** 倒计时提示的自定义信息；留空使用默认文案，可写 {seconds}。 */
+    DELAY_WAIT_MESSAGE_TEXT: string;
+    /** 倒计时在延迟档位最大值之后额外等待的秒数。 */
+    DELAY_WAIT_MESSAGE_EXTRA_SECONDS: number;
     /** 是否在插件卡片中隐藏 BPM 内置标签，例如 BPM 管理标识和 BPM 忽略。 */
     HIDE_BPM_TAG: boolean;
     /** 是否启用边栏编排接管；关闭时 BPM 不再排序或隐藏 Ribbon 图标。 */
@@ -221,6 +230,9 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
     PERSISTENCE: false,
     CENTER: false,
     DELAY: false,
+    DELAY_WAIT_MESSAGE: false,
+    DELAY_WAIT_MESSAGE_TEXT: "",
+    DELAY_WAIT_MESSAGE_EXTRA_SECONDS: 0,
     HIDE_BPM_TAG: false,
     RIBBON_MANAGER_ENABLED: false,
     MAIN_PAGE_ACTION_PLACEMENT: { ...DEFAULT_MAIN_PAGE_ACTION_PLACEMENT },
