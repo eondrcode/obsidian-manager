@@ -373,3 +373,73 @@ test('new presets get unique names and binding follows the selected preset', asy
     assert.equal(manager.devices.selectedScopeKey('themes'), `preset:${first}`);
     assert.equal(settings.DEVICE_MANAGEMENT.presets.computer.length, 3);
 });
+
+test('configured is inferred for legacy data and false for auto-created presets', async () => {
+    const { settings } = await fixture();
+    assert.equal(firstOf(settings, 'computer').configured, false);
+    const baseline = model.snapshotPreset(settings);
+    const untouched = model.normalizeDeviceManagement({ enabled: false, presets: { computer: { ribbon: [ribbon] } }, devices: [] }, baseline);
+    assert.equal(untouched.presets.computer[0].configured, false);
+    const modified = model.normalizeDeviceManagement({ enabled: false,
+        presets: { computer: { plugins: { a: { enabled: false, delay: '' } } } }, devices: [] }, baseline);
+    assert.equal(modified.presets.computer[0].configured, true);
+    assert.equal(untouched.presets.phone[0].configured, false);
+});
+
+test('an unconfigured type adopts the only configured preset automatically', async () => {
+    const { manager, settings } = await fixture();
+    settings.DEVICE_MANAGEMENT.enabled = true;
+    const phone = firstOf(settings, 'phone');
+    phone.configured = true;
+    phone.plugins.a.enabled = false;
+    phone.ribbon[0].visible = false;
+    notices.length = 0;
+    const restarted = new DeviceManager(manager);
+    await restarted.initialize();
+    const computer = firstOf(settings, 'computer');
+    assert.equal(computer.configured, true);
+    assert.equal(computer.plugins.a.enabled, false);
+    assert.equal(computer.ribbon[0].visible, false);
+    assert.ok(notices.some(message => String(message).includes('设备_自动复用')));
+});
+
+test('multiple configured candidates are not adopted automatically', async () => {
+    const { manager, settings } = await fixture();
+    settings.DEVICE_MANAGEMENT.enabled = true;
+    for (const type of ['phone', 'tablet']) {
+        const preset = firstOf(settings, type);
+        preset.configured = true;
+        preset.plugins.a.enabled = false;
+    }
+    const restarted = new DeviceManager(manager);
+    await restarted.initialize();
+    assert.equal(firstOf(settings, 'computer').configured, false);
+});
+
+test('copying another preset replaces settings but keeps id and name', async () => {
+    const { manager, settings } = await fixture();
+    const target = firstOf(settings, 'computer');
+    const targetName = target.name;
+    const source = firstOf(settings, 'phone');
+    source.configured = true;
+    source.plugins.a.enabled = false;
+    source.plugins.a.delay = 'later';
+    source.ribbon[0].visible = false;
+    await manager.devices.copyConfig(target.id, source.id);
+    const copied = manager.devices.presetById(target.id).preset;
+    assert.equal(copied.name, targetName);
+    assert.equal(copied.id, target.id);
+    assert.equal(copied.plugins.a.enabled, false);
+    assert.equal(copied.plugins.a.delay, 'later');
+    assert.equal(copied.ribbon[0].visible, false);
+    assert.equal(copied.configured, true);
+});
+
+test('empty saves do not mark a preset configured, real edits do', async () => {
+    const { manager, settings } = await fixture();
+    await manager.devices.setEnabled(true);
+    assert.equal(firstOf(settings, 'computer').configured, false);
+    settings.Plugins.find(plugin => plugin.id === 'a').enabled = false;
+    await manager.saveSettings();
+    assert.equal(firstOf(settings, 'computer').configured, true);
+});

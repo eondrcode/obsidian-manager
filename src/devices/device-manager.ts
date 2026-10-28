@@ -2,7 +2,7 @@ import { Notice, Platform } from 'obsidian';
 import type Manager from '../main';
 import type { RibbonItem } from '../data/types';
 import { applyPresetToSettings, capturePreset, cloneAppearance, clonePreset,
-    detectDeviceType, DEVICE_TYPES, DeviceManagement, DevicePluginState, DevicePreset, DeviceScope, DeviceType,
+    allPresets, detectDeviceType, DEVICE_TYPES, DeviceManagement, DevicePluginState, DevicePreset, DeviceScope, DeviceType,
     findPreset, isDeviceType, normalizeDeviceManagement, parseScopeKey, scopeKey, ScopedAppearance,
     ScopePage, snapshotPreset } from './device-presets';
 
@@ -67,8 +67,50 @@ export class DeviceManager {
         this.migrateLegacyOverrides(legacy);
         this.ensureBinding(typeof stored?.presetId === 'string' ? stored.presetId : '', true);
         this.persistIdentity();
-        if (this.data.enabled) this.applyEffective();
+        if (this.data.enabled) {
+            this.adoptIfNeeded(this.type);
+            this.applyEffective();
+        }
         this.ready = true;
+    }
+
+    /* ---------- 预设复用 / Reuse ---------- */
+
+    /** 未配置的类型在只有一份已配置预设时自动复用；多份时留给设备页手动选择。 */
+    private adoptIfNeeded(type: DeviceType): void {
+        const own = this.presetsFor(type);
+        if (own.some(preset => preset.configured)) return;
+        const candidates = allPresets(this.data.presets)
+            .filter(entry => entry.type !== type && entry.preset.configured)
+            .map(entry => entry.preset);
+        if (candidates.length !== 1) return;
+        const target = own[0];
+        const source = candidates[0];
+        if (!target || !source) return;
+        const copy = clonePreset(source);
+        target.plugins = copy.plugins;
+        target.ribbon = copy.ribbon;
+        target.ribbonEnabled = copy.ribbonEnabled;
+        target.appearance = copy.appearance;
+        target.configured = true;
+        new Notice(this.manager.translator.t('设备_自动复用', { type: this.label(type), source: source.name }));
+    }
+
+    /** 手动复用某个预设的配置（保留目标预设的 id 与名称）。 */
+    async copyConfig(targetId: string, sourceId: string): Promise<void> {
+        await this.run(async () => {
+            const target = this.presetById(targetId);
+            const source = this.presetById(sourceId);
+            if (!target || !source || targetId === sourceId) return;
+            const copy = clonePreset(source.preset);
+            target.preset.plugins = copy.plugins;
+            target.preset.ribbon = copy.ribbon;
+            target.preset.ribbonEnabled = copy.ribbonEnabled;
+            target.preset.appearance = copy.appearance;
+            target.preset.configured = true;
+            if (this.data.enabled && targetId === this.boundPresetId) await this.applyCurrent();
+            await this.manager.saveSettings({ captureDevice: false });
+        });
     }
 
     label(type: DeviceType): string { return this.manager.translator.t(`设备_${type}`); }
@@ -161,6 +203,7 @@ export class DeviceManager {
             }
             this.boundPresetId = found.preset.id;
             this.selection = scopeKey(this.boundPresetId);
+            this.adoptIfNeeded(found.type);
             this.persistIdentity();
             if (this.data.enabled) await this.applyCurrent();
             await this.manager.saveSettings({ captureDevice: false });
@@ -173,7 +216,7 @@ export class DeviceManager {
             const source = (sourceId ? list.find(item => item.id === sourceId) : undefined) ?? bound ?? list[0];
             const base = source ? clonePreset(source) : snapshotPreset(this.manager.settings, { appearance: this.readLiveAppearance() });
             const id = `preset-${type}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-            list.push({ ...base, id, name: this.uniquePresetName(type, `${this.label(type)} ${list.length + 1}`) });
+            list.push({ ...base, id, name: this.uniquePresetName(type, `${this.label(type)} ${list.length + 1}`), configured: true });
             this.data.presets[type] = list;
             await this.manager.saveSettings({ captureDevice: false });
             return id;
@@ -186,7 +229,7 @@ export class DeviceManager {
             const list = this.presetsFor(found.type);
             const copyId = `preset-${found.type}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
             const name = this.uniquePresetName(found.type, `${found.preset.name} ${this.manager.translator.t('设备_副本后缀')}`);
-            list.push({ ...clonePreset(found.preset), id: copyId, name });
+            list.push({ ...clonePreset(found.preset), id: copyId, name, configured: true });
             this.data.presets[found.type] = list;
             await this.manager.saveSettings({ captureDevice: false });
             return copyId;
@@ -336,9 +379,22 @@ export class DeviceManager {
     private storeSnapshot(presetId: string, snapshot: LiveSnapshot): void {
         const found = this.presetById(presetId);
         if (!found) return;
+        const before = JSON.stringify([found.preset.plugins, found.preset.ribbon, found.preset.ribbonEnabled]);
         found.preset.ribbon = cloneRibbon(snapshot.ribbon);
         found.preset.ribbonEnabled = snapshot.ribbonEnabled;
         found.preset.plugins = { ...found.preset.plugins, ...snapshot.plugins };
+        if (!found.preset.configured && before !== JSON.stringify([found.preset.plugins, found.preset.ribbon, found.preset.ribbonEnabled])) {
+            found.preset.configured = true;
+        }
+    }
+
+    /** 捕获时只有值真的变了才标记“已配置”，避免空保存把新类型锁死。 */
+    private captureInto(preset: DevicePreset, extras: { appearance?: ScopedAppearance }): void {
+        const before = JSON.stringify([preset.plugins, preset.ribbon, preset.ribbonEnabled, preset.appearance]);
+        capturePreset(preset, this.manager.settings, extras);
+        if (!preset.configured && before !== JSON.stringify([preset.plugins, preset.ribbon, preset.ribbonEnabled, preset.appearance])) {
+            preset.configured = true;
+        }
     }
 
     private pluginStates(): Record<string, DevicePluginState> {
@@ -374,7 +430,10 @@ export class DeviceManager {
             if (typeof patch.theme === 'string') next.theme = patch.theme;
             Object.assign(next.snippets, patch.snippets ?? {});
             const found = this.presetById(scope.presetId);
-            if (found) found.preset.appearance = cloneAppearance(next);
+            if (found) {
+                found.preset.appearance = cloneAppearance(next);
+                found.preset.configured = true;
+            }
             await this.manager.saveSettings({ captureDevice: false });
         });
     }
@@ -393,7 +452,7 @@ export class DeviceManager {
             return;
         }
         const bound = this.boundPreset();
-        if (bound) capturePreset(bound, this.manager.settings, { appearance: this.readLiveAppearance() });
+        if (bound) this.captureInto(bound, { appearance: this.readLiveAppearance() });
     }
 
     /** 保存时写回的“本机真实值”；投影期间不能让外域值污染 data.json。 */
@@ -472,6 +531,7 @@ export class DeviceManager {
                 }
             }
         }
+        target.configured = true;
         if (this.manager.settings.DEBUG) console.log('[BPM] Migrated legacy device overrides into preset', target.id);
     }
 
@@ -533,7 +593,10 @@ export class DeviceManager {
             this.data.enabled = enabled;
             try { await this.manager.saveSettings({ captureDevice: false }); }
             catch (error) { this.data.enabled = previous; throw error; }
-            if (enabled) await this.applyCurrent();
+            if (enabled) {
+                this.adoptIfNeeded(this.type);
+                await this.applyCurrent();
+            }
         });
     }
 
@@ -567,6 +630,7 @@ export class DeviceManager {
                     if (bound) capturePreset(bound, this.manager.settings, { appearance: this.readLiveAppearance() });
                 }
                 this.type = type;
+                this.adoptIfNeeded(type);
                 this.ensureBinding(this.boundPresetId);
                 this.selection = scopeKey(this.boundPresetId);
                 this.persistIdentity();
@@ -607,7 +671,7 @@ export class DeviceManager {
         this.applyEffective();
         await this.manager.applyDeviceConfiguration();
         const bound = this.boundPreset();
-        if (bound) capturePreset(bound, this.manager.settings, { appearance: this.readLiveAppearance() });
+        if (bound) this.captureInto(bound, { appearance: this.readLiveAppearance() });
         await this.manager.saveSettings({ captureDevice: false });
     }
 

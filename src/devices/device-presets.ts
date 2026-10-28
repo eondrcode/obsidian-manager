@@ -15,6 +15,8 @@ export interface ScopedAppearance {
 export interface DevicePreset {
     id: string;
     name: string;
+    /** 是否已经配置过（决定新类型能否自动复用）；Set once the user edits its settings. */
+    configured: boolean;
     plugins: Record<string, DevicePluginState>;
     ribbon: RibbonItem[];
     ribbonEnabled: boolean;
@@ -122,6 +124,7 @@ export function clonePreset(preset: DevicePreset): DevicePreset {
     return {
         id: preset.id,
         name: preset.name,
+        configured: preset.configured === true,
         plugins: Object.fromEntries(Object.entries(preset.plugins).map(([id, state]) => [id, { ...state }])),
         ribbon: normalizeRibbon(preset.ribbon, []),
         ribbonEnabled: preset.ribbonEnabled,
@@ -135,12 +138,14 @@ export interface PresetExtras {
 export interface PresetMeta {
     id?: string;
     name?: string;
+    configured?: boolean;
 }
 /** 快照当前运行设置；外观由调用方补充 / Snapshot runtime settings. */
 export function snapshotPreset(settings: ManagerSettings, extras: PresetExtras = {}, meta: PresetMeta = {}): DevicePreset {
     return clonePreset({
         id: meta.id ?? '',
         name: meta.name ?? '',
+        configured: meta.configured === true,
         plugins: Object.fromEntries(settings.Plugins.map(plugin => [plugin.id, { enabled: plugin.enabled, delay: plugin.delay }])),
         ribbon: settings.RIBBON_SETTINGS,
         ribbonEnabled: settings.RIBBON_MANAGER_ENABLED,
@@ -148,7 +153,7 @@ export function snapshotPreset(settings: ManagerSettings, extras: PresetExtras =
     });
 }
 
-function normalizePreset(raw: unknown, baseline: DevicePreset, type: DeviceType, index: number, usedIds: Set<string>): DevicePreset {
+function normalizePreset(raw: unknown, baseline: DevicePreset, type: DeviceType, index: number, usedIds: Set<string>, existed: boolean): DevicePreset {
     const preset = clonePreset(baseline);
     preset.id = '';
     preset.name = '';
@@ -168,6 +173,10 @@ function normalizePreset(raw: unknown, baseline: DevicePreset, type: DeviceType,
         if (typeof raw.name === 'string' && raw.name.trim()) preset.name = raw.name.trim();
         if (typeof raw.id === 'string' && raw.id.trim()) preset.id = raw.id.trim();
     }
+    // 显式标记优先；旧数据用与当前运行配置的差异推断。
+    preset.configured = isRecord(raw) && typeof raw.configured === 'boolean'
+        ? raw.configured
+        : existed ? !settingsEqual(preset, baseline) : false;
     if (!preset.name) preset.name = index === 0 ? DEFAULT_PRESET_NAMES[type] : `${DEFAULT_PRESET_NAMES[type]} ${index + 1}`;
     if (!preset.id || usedIds.has(preset.id)) {
         const base = `preset-${type}${index ? `-${index}` : ''}`;
@@ -180,6 +189,18 @@ function normalizePreset(raw: unknown, baseline: DevicePreset, type: DeviceType,
     return preset;
 }
 
+/** 旧数据没有 configured 标记时，用「是否偏离当前运行配置」推断。 */
+function settingsEqual(a: DevicePreset, b: DevicePreset): boolean {
+    const canonical = (preset: DevicePreset) => JSON.stringify({
+        plugins: Object.keys(preset.plugins).sort().map(id => [id, preset.plugins[id].enabled, preset.plugins[id].delay]),
+        ribbon: preset.ribbon,
+        ribbonEnabled: preset.ribbonEnabled,
+        theme: preset.appearance.theme,
+        snippets: Object.keys(preset.appearance.snippets).sort().map(id => [id, preset.appearance.snippets[id]]),
+    });
+    return canonical(a) === canonical(b);
+}
+
 /** 只接纳固定类型及合法字段；兼容旧版「每类一份预设」的数据。 */
 export function normalizeDeviceManagement(value: unknown, baseline: DevicePreset): DeviceManagement {
     const source = isRecord(value) ? value : {};
@@ -189,9 +210,10 @@ export function normalizeDeviceManagement(value: unknown, baseline: DevicePreset
     for (const type of DEVICE_TYPES) {
         const raw = rawPresets[type];
         const list = Array.isArray(raw) ? raw : isRecord(raw) ? [raw] : [];
+        const existed = list.length > 0;
         presets[type] = list.length
-            ? list.map((item, index) => normalizePreset(item, baseline, type, index, usedIds))
-            : [normalizePreset({}, baseline, type, 0, usedIds)];
+            ? list.map((item, index) => normalizePreset(item, baseline, type, index, usedIds, existed))
+            : [normalizePreset({}, baseline, type, 0, usedIds, false)];
     }
     const devices: ManagedDevice[] = [];
     if (Array.isArray(source.devices)) {

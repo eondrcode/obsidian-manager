@@ -1,7 +1,7 @@
-import { Notice, Platform, Setting, setIcon } from 'obsidian';
+import { Menu, Notice, Platform, Setting, setIcon } from 'obsidian';
 import type Manager from '../main';
 import { confirmWithModal } from '../utils';
-import { detectDeviceType, DEVICE_TYPES, DeviceType, isDeviceType } from './device-presets';
+import { allPresets, detectDeviceType, DEVICE_TYPES, DeviceType, isDeviceType } from './device-presets';
 
 const ICONS: Record<DeviceType, string> = { computer: 'monitor', tablet: 'tablet', phone: 'smartphone' };
 
@@ -91,6 +91,9 @@ export class DevicePanel {
         const card = page.createDiv('manager-vault-card');
         new Setting(card).setName(this.t('设备_预设', { type: devices.label(this.selected) })).setHeading();
         card.createEl('p', { cls: 'setting-item-description', text: this.t('设备_预设说明') });
+        if (!devices.presetsFor(this.selected).some(preset => preset.configured)) {
+            card.createEl('p', { cls: 'setting-item-description', text: this.t('设备_未配置提示') });
+        }
         new Setting(card).setName(this.t('设备_预设操作'))
             .addButton(button => button.setButtonText(this.t('设备_新建预设')).onClick(() => {
                 void this.action(async () => { await devices.createPreset(this.selected); });
@@ -121,6 +124,30 @@ export class DevicePanel {
             row.addExtraButton(button => button.setIcon('copy').setTooltip(this.t('设备_复制预设')).onClick(() => {
                 void this.action(async () => { await devices.duplicatePreset(preset.id); });
             }));
+            const sources = allPresets(devices.data.presets).filter(entry => entry.preset.id !== preset.id);
+            row.addExtraButton(button => {
+                button.setIcon('git-merge').setTooltip(this.t('设备_复用配置'));
+                button.extraSettingsEl.addEventListener('click', (event: MouseEvent) => {
+                    const menu = new Menu();
+                    if (!sources.length) {
+                        menu.addItem(item => item.setTitle(this.t('设备_无可复用')).setDisabled(true));
+                    }
+                    for (const source of sources) {
+                        menu.addItem(item => item
+                            .setTitle(`${source.preset.name} · ${devices.label(source.type)}`)
+                            .setIcon('copy')
+                            .onClick(() => {
+                                void this.action(async () => {
+                                    const confirmed = await confirmWithModal(this.manager.app, this.manager,
+                                        this.t('设备_复用确认', { source: source.preset.name, target: preset.name }));
+                                    if (!confirmed) return;
+                                    await devices.copyConfig(preset.id, source.preset.id);
+                                });
+                            }));
+                    }
+                    menu.showAtMouseEvent(event);
+                });
+            });
             row.addExtraButton(button => button.setIcon('trash-2').setTooltip(this.t('设备_删除预设')).onClick(() => {
                 void this.action(async () => {
                     if (await confirmWithModal(this.manager.app, this.manager, this.t('设备_删除预设确认', { name: preset.name }))) {
