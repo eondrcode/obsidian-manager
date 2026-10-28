@@ -636,8 +636,11 @@ export default class Manager extends Plugin {
                 existing.icon = group.icon;
                 continue;
             }
+            const memberOrders = group.members
+                .map(member => saved.find(item => item.bpmUniqueId === member)?.order)
+                .filter((order): order is number => typeof order === "number" && Number.isFinite(order));
             saved.push({ bpmUniqueId: id, name: group.name, icon: group.icon, visible: true,
-                order: this.nextRibbonOrder(saved), ribbonIdMap: {} });
+                order: memberOrders.length ? Math.min(...memberOrders) : this.nextRibbonOrder(saved), ribbonIdMap: {} });
         }
     }
 

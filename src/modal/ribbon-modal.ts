@@ -127,6 +127,13 @@ export class RibbonModal extends Modal {
     }
 
     /** Group settings use native controls / 分组编辑使用 Obsidian 原生控件。 */
+    /** 分组变更：先同步排序入口，再应用原生状态，最后落盘。 */
+    private commitRibbonGroups(): void {
+        this.manager.syncRibbonGroupItems();
+        this.manager.applyRibbonSettings();
+        void this.manager.saveSettings();
+    }
+
     private renderGroups(containerEl: HTMLElement): void {
         const groups = this.manager.settings.RIBBON_GROUPS;
         const section = containerEl.createDiv('ribbon-manager-groups');
@@ -139,8 +146,7 @@ export class RibbonModal extends Modal {
                 groups.push({ id: `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
                     name: t('Ribbon_新分组'), icon: 'folder', members: [] });
                 this.groupsCollapsed = false;
-                void this.manager.saveSettings();
-                this.manager.applyRibbonSettings();
+                this.commitRibbonGroups();
                 this.displayWithoutSearch();
             }));
         if (this.groupsCollapsed) return;
@@ -160,8 +166,7 @@ export class RibbonModal extends Modal {
             iconButton.setIcon(group.icon || 'folder').setTooltip(t('Ribbon_选择分组图标'))
                 .onClick(() => new GroupIconPicker(this.app, icon => {
                     group.icon = icon;
-                    void this.manager.saveSettings();
-                    this.manager.applyRibbonSettings();
+                    this.commitRibbonGroups();
                     this.displayWithoutSearch();
                 }).open());
             iconButton.extraSettingsEl.addClass('ribbon-group-card__icon');
@@ -172,15 +177,16 @@ export class RibbonModal extends Modal {
             nameInput.onChange(value => {
                 if (!value.trim()) return;
                 group.name = value.trim();
-                void this.manager.saveSettings();
-                this.manager.applyRibbonSettings();
+                this.commitRibbonGroups();
             });
+            nameInput.inputEl.addEventListener("blur", () => this.displayWithoutSearch());
 
             const removeButton = new ExtraButtonComponent(cell);
             removeButton.setIcon('trash').setTooltip(t('Ribbon_删除分组')).onClick(() => {
                 groups.splice(groups.indexOf(group), 1);
-                void this.manager.saveSettings();
-                this.manager.applyRibbonSettings();
+                if (this.currentFilter === `group:${group.id}`) this.currentFilter = "all";
+                if (!groups.length) this.showGroupedItems = false;
+                this.commitRibbonGroups();
                 this.displayWithoutSearch();
             });
             removeButton.extraSettingsEl.addClass('ribbon-group-card__remove');
@@ -235,15 +241,17 @@ export class RibbonModal extends Modal {
 
         // 右侧：显示已分组开关 + 搜索框
         const rightSide = filterBar.createDiv("ribbon-manager-filter-right");
-        const groupedToggle = rightSide.createDiv("ribbon-manager-grouped-toggle");
-        groupedToggle.createSpan({ cls: "ribbon-manager-grouped-toggle__label", text: t("Ribbon_显示已分组") });
-        const toggle = new ToggleComponent(groupedToggle);
-        toggle.setValue(this.showGroupedItems);
-        toggle.setTooltip(t("Ribbon_显示已分组说明"));
-        toggle.onChange(value => {
-            this.showGroupedItems = value;
-            this.displayWithoutSearch();
-        });
+        if (this.manager.settings.RIBBON_GROUPS.length) {
+            const groupedToggle = rightSide.createDiv("ribbon-manager-grouped-toggle");
+            groupedToggle.createSpan({ cls: "ribbon-manager-grouped-toggle__label", text: t("Ribbon_显示已分组") });
+            const toggle = new ToggleComponent(groupedToggle);
+            toggle.setValue(this.showGroupedItems);
+            toggle.setTooltip(t("Ribbon_显示已分组说明"));
+            toggle.onChange(value => {
+                this.showGroupedItems = value;
+                this.displayWithoutSearch();
+            });
+        }
         const searchContainer = rightSide.createDiv("ribbon-manager-search-container");
         const searchWrapper = searchContainer.createDiv("ribbon-search-wrapper");
         const searchIconEl = searchWrapper.createDiv("ribbon-search-icon");
@@ -395,8 +403,7 @@ export class RibbonModal extends Modal {
                             groupItem.order = Math.min(groupItem.order, memberItem.order);
                         }
                     }
-                    void this.manager.saveSettings();
-                    this.manager.applyRibbonSettings();
+                    this.commitRibbonGroups();
                     this.displayWithoutSearch();
                 });
             });

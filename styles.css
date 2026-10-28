@@ -14456,3 +14456,21 @@ body.theme-dark .manager-transfer-segment[data-state="active"]:hover {
     font-weight: 650;
     line-height: 1.2;
 }
+
+/* 窄宽度下筛选栏与右侧工具换行，避免搜索框被挤压。 */
+.ribbon-manager-filter-bar {
+    flex-wrap: wrap;
+    row-gap: 8px;
+}
+
+.ribbon-manager-filter-right {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 6px;
+}
+
+/* 分组项样式需覆盖既有 draggable-item 边框规则。 */
+.ribbon-manager-modal .draggable-list-container .setting-item.draggable-item.is-grouped-item:not(.drag-ghost) {
+    border-left: 3px dashed color-mix(in srgb, var(--interactive-accent) 60%, transparent);
+    background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-secondary));
+}
