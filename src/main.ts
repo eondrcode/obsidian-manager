@@ -7,6 +7,7 @@ import { Translator } from './lang/inxdex';
 // 类型引用编译期擦除；ribbon 回调里用动态 import 取构造器，
 // 让 8000 行的主面板推迟到用户真正打开时才求值（V8 懒解析函数体）
 import type { ManagerModal } from './modal/manager-modal';
+import { NoteTipFeature } from './note-tip';
 import Commands from './command';
 import Agreement from 'src/agreement';
 import { RepoResolver, ensureBpmTagExists, BPM_TAG_ID } from './repo-resolver';
@@ -105,6 +106,7 @@ type SecretStorageLike = {
 type CommunityPluginStatsEntry = Record<string, number | string | undefined>;
 
 export default class Manager extends Plugin {
+    private noteTip!: NoteTipFeature;
     public settings!: ManagerSettings;
     public devices!: DeviceManager;
     public managerModal: ManagerModal | null = null;
@@ -216,12 +218,15 @@ export default class Manager extends Plugin {
         this.clearLegacyRibbonOverrides();
 
         // 初始化侧边栏图标
-        this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), async () => {
+        const ribbonEl = this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), async () => {
             const { ManagerModal } = await import('./modal/manager-modal.js');
             const modal = new ManagerModal(this.app, this);
             this.managerModal = modal;
             modal.open();
         });
+        // 悬停备注 Tooltip：悬停图标速览插件备注，右键可自定义
+        this.noteTip = new NoteTipFeature(this, ribbonEl);
+        this.noteTip.start();
         // 初始化设置界面
         this.addSettingTab(new ManagerSettingTab(this.app, this));
         const pluginsChanged = this.settings.DELAY
