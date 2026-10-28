@@ -45,6 +45,14 @@ export interface RibbonItem {
 	};
 }
 
+/** Ribbon group stored with a device preset / 随设备预设保存的 Ribbon 分组。 */
+export interface RibbonGroup {
+	id: string;
+	name: string;
+	icon: string;
+	members: string[];
+}
+
 export interface PluginLayoutItem {
 	id: string;
 	type: "plugin" | "separator";
@@ -74,6 +82,7 @@ export interface BetaSource {
 	latestReleaseTag?: string;
 	latestReleasePublishedAt?: string;
 	latestReleaseIsGithubLatest?: boolean;
+	deferredPublicationDate?: boolean;
 	installedAt?: number;
 	lastChecked?: number;
 	error?: string;

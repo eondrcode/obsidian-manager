@@ -17,6 +17,7 @@ import { runMigrations } from './migrations';
 import { fetchReleaseVersions, installPluginFromGithub, installThemeFromGithub, ReleaseVersion, sanitizeRepo } from './github-install';
 import { performSelfCheck } from './self-check';
 import { SystemRibbonManager } from './manager/system-ribbon-manager';
+import { RibbonGroups } from './manager/ribbon-groups';
 import { RibbonItem } from './data/types';
 import { markSourceInstalledRelease, sourceHasUpdate as sourceHasConfiguredUpdate, syncSourceReleaseCheck } from './source-release';
 import { LeftRibbonLike, ObsidianAppWithInternals, ObsidianPluginRegistry, RibbonNativeItem, WindowWithMoment, WorkspaceWithRibbon } from './obsidian-internals';
@@ -118,6 +119,7 @@ export default class Manager extends Plugin {
     public agreement!: Agreement;
     public repoResolver!: RepoResolver;
     public systemRibbonManager?: SystemRibbonManager;
+    private ribbonGroups = new RibbonGroups(this);
     public updateStatus: Record<string, UpdateStatus> = {};
     private updateProgressNotice: Notice | null = null;
 
@@ -407,14 +409,16 @@ export default class Manager extends Plugin {
             }
 
             this.cleanRibbonItems();
+            this.ribbonGroups.sync(ribbon);
 
             const items = (ribbon.items || []).filter((item): item is RibbonNativeItem => Boolean(item));
+            const ordinaryItems = items.filter(item => !this.ribbonGroups.isGroupItem(item));
             const saved = this.settings.RIBBON_SETTINGS || (this.settings.RIBBON_SETTINGS = []);
 
             if (items.length === 0) return;
 
             this.ensureSystemRibbonManager();
-            const resolutions = this.systemRibbonManager?.resolve(saved, items) || [];
+            const resolutions = this.systemRibbonManager?.resolve(saved, ordinaryItems) || [];
 
             // 1. 登记 BPM 尚未见过的新图标；同步已登记条目漂移掉的标识字段
             let settingsDirty = false;
@@ -437,10 +441,13 @@ export default class Manager extends Plugin {
 
             // 2. 写原生状态：BPM 权威，覆盖原生显隐与顺序
             let ribbonChanged = false;
+            items.filter(item => this.ribbonGroups.isGroupItem(item)).forEach(item => {
+                if (item.hidden) { item.hidden = false; ribbonChanged = true; }
+            });
             resolutions.forEach((resolution) => {
                 const setting = resolution.setting;
                 if (!setting) return;
-                const hidden = setting.visible === false;
+                const hidden = setting.visible === false || Boolean(this.ribbonGroups.groupOf(setting.bpmUniqueId));
                 if (resolution.item.hidden !== hidden) {
                     resolution.item.hidden = hidden;
                     ribbonChanged = true;
@@ -450,7 +457,8 @@ export default class Manager extends Plugin {
             const ordered = resolutions
                 .slice()
                 .sort((a, b) => this.ribbonOrderOf(a.setting) - this.ribbonOrderOf(b.setting))
-                .map((resolution) => resolution.item);
+                .map((resolution) => resolution.item)
+                .concat(items.filter(item => this.ribbonGroups.isGroupItem(item)));
 
             if (!this.sameRibbonOrder(items, ordered)) {
                 // 原地改写数组，保持 Obsidian 持有的引用不变（onChange 读的就是它）
@@ -1837,12 +1845,16 @@ export default class Manager extends Plugin {
             st.remoteVersion = releaseCheck.target?.tag || null;
             st.remotePublishedAt = releaseCheck.target?.publishedAt;
             st.hasUpdate = sourceHasConfiguredUpdate(source);
+            if (source.deferredPublicationDate) st.message = this.translator.t("更新_发布日期不可用_暂缓");
             return;
         }
 
         st.remoteVersion = remoteFallback;
-        st.hasUpdate = remoteFallback ? this.compareVersions(remoteFallback, localVersion) > 0 : false;
-        if (!st.remoteVersion) st.message = this.translator.t("更新_未获取到远端版本");
+        st.hasUpdate = options.updateDelayDays > 0
+            ? false
+            : Boolean(remoteFallback && this.compareVersions(remoteFallback, localVersion) > 0);
+        if (remoteFallback && options.updateDelayDays > 0) st.message = this.translator.t("更新_发布日期不可用_暂缓");
+        else if (!st.remoteVersion) st.message = this.translator.t("更新_未获取到远端版本");
     }
 
     // 检测插件更新：官方 + GitHub（BPM 或用户指定仓库）

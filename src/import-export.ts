@@ -6,11 +6,13 @@ import {
 	InstallHistoryItem,
 	ManagerPlugin,
 	PluginLayoutItem,
+	RibbonGroup,
 	RibbonItem,
 	Tag,
 	Type,
 } from "./data/types";
 import { installPluginFromGithub, installThemeFromGithub, sanitizeRepo } from "./github-install";
+import { normalizeRibbonGroups } from './devices/device-presets';
 
 export const MANAGER_TRANSFER_SCHEMA = "better-plugins-manager.transfer/v1";
 
@@ -172,6 +174,7 @@ export interface ManagerTransferPackage {
 		pluginLayout: PluginLayoutItem[];
 		hiddenPlugins: string[];
 		ribbonSettings: RibbonItem[];
+		ribbonGroups?: RibbonGroup[];
 		workspaceSettings?: ManagerTransferWorkspaceSettings;
 	};
 }
@@ -777,6 +780,7 @@ export const buildManagerTransferPackage = async (
 	const hiddenPlugins = options.layout ? (manager.settings.HIDES || [])
 		.filter((id) => id !== manager.manifest.id && exportedPluginIds.has(id)) : [];
 	const ribbonSettings = options.layout ? cloneJson(manager.settings.RIBBON_SETTINGS || []) : [];
+	const ribbonGroups = options.layout ? cloneJson(manager.settings.RIBBON_GROUPS || []) : [];
 	const groups = options.taxonomy ? cloneJson(manager.settings.GROUPS || []) : [];
 	const tags = options.taxonomy ? cloneJson(manager.settings.TAGS || []) : [];
 	const delays = options.taxonomy ? cloneJson(manager.settings.DELAYS || []) : [];
@@ -838,6 +842,7 @@ export const buildManagerTransferPackage = async (
 			pluginLayout,
 			hiddenPlugins,
 			ribbonSettings,
+			ribbonGroups,
 			workspaceSettings,
 		},
 	};
@@ -1051,6 +1056,7 @@ export const applyManagerTransferPackage = async (
 		manager.settings.PLUGIN_LAYOUT = cloneJson(transferPackage.data.pluginLayout || []);
 		manager.settings.HIDES = [...(transferPackage.data.hiddenPlugins || [])];
 		manager.settings.RIBBON_SETTINGS = cloneJson(transferPackage.data.ribbonSettings || []);
+		manager.settings.RIBBON_GROUPS = normalizeRibbonGroups(transferPackage.data.ribbonGroups);
 		result.layoutMerged = true;
 	}
 	tick("layout");

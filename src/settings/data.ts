@@ -1,5 +1,5 @@
 import type { DeviceManagement } from '../devices/device-presets';
-import { BetaSource, Delay, InstallHistoryItem, ManagerPlugin, PluginLayoutItem, RibbonItem, SharedVaultEntry, Tag, Type } from '../data/types';
+import { BetaSource, Delay, InstallHistoryItem, ManagerPlugin, PluginLayoutItem, RibbonGroup, RibbonItem, SharedVaultEntry, Tag, Type } from '../data/types';
 import { TroubleshootState } from '../troubleshoot/troubleshoot-state';
 
 export const MAIN_PAGE_ACTION_IDS = [
@@ -203,6 +203,7 @@ export interface ManagerSettings {
     // Ribbon 页面
     /** Ribbon 功能编排记录，保存按钮顺序、显隐、名称和图标。 */
     RIBBON_SETTINGS: RibbonItem[];
+    RIBBON_GROUPS: RibbonGroup[];
 
     // 共享库 / 软链接
     /** 多库共享时的主库路径；为空时自动按当前库或软链接目标推断。 */
@@ -332,6 +333,7 @@ export const DEFAULT_SETTINGS: ManagerSettings = {
 
     // Ribbon 页面
     RIBBON_SETTINGS: [],
+    RIBBON_GROUPS: [],
 
     // 共享库 / 软链接
     SHARED_VAULT_MAIN_PATH: "",

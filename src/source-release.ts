@@ -1,6 +1,7 @@
 import { requireApiVersion } from "obsidian";
 import type { BetaSource } from "./data/types";
 import type { ReleaseVersion } from "./github-install";
+import { hasKnownPublicationDate, isReleaseOldEnough } from "./release-policy";
 
 export interface SourceReleaseRef {
 	tag: string;
@@ -40,8 +41,6 @@ const releaseToRef = (release: ReleaseVersion, index: number): SourceReleaseRef 
 	isGithubLatest: release.isGithubLatest,
 });
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 const normalizeUpdateDelayDays = (source: BetaSource): number => {
 	const value = Number(source.updateDelayDays);
 	if (!Number.isFinite(value) || value <= 0) return 0;
@@ -56,12 +55,7 @@ const parseReleaseDate = (value?: string): number | null => {
 
 const releaseIsMatureEnough = (source: BetaSource, release: ReleaseVersion, now = Date.now()): boolean => {
 	const delayDays = normalizeUpdateDelayDays(source);
-	if (delayDays <= 0) return true;
-	if (!release.publishedAt) return true;
-
-	const publishedAt = new Date(release.publishedAt).getTime();
-	if (Number.isNaN(publishedAt)) return true;
-	return publishedAt <= now - delayDays * DAY_MS;
+	return isReleaseOldEnough(release.publishedAt, delayDays, now);
 };
 
 export const releaseIsCompatible = (release: ReleaseVersion): boolean => {
@@ -76,11 +70,7 @@ export const releaseIsCompatible = (release: ReleaseVersion): boolean => {
 
 const sourceTargetIsMatureEnough = (source: BetaSource): boolean => {
 	const delayDays = normalizeUpdateDelayDays(source);
-	if (delayDays <= 0) return true;
-
-	const targetDate = parseReleaseDate(source.latestReleasePublishedAt || source.latestPublishedAt);
-	if (targetDate === null) return true;
-	return targetDate <= Date.now() - delayDays * DAY_MS;
+	return isReleaseOldEnough(source.latestReleasePublishedAt || source.latestPublishedAt, delayDays);
 };
 
 export const findReleaseByTag = (versions: ReleaseVersion[], tag?: string | null): SourceReleaseRef | null => {
@@ -98,10 +88,12 @@ export const pickSourceTargetRelease = (source: BetaSource, versions: ReleaseVer
 			|| cleanReleaseTag(source.latestReleaseTag)
 			|| cleanReleaseTag(source.latestVersion);
 		if (!pinnedTag) return null;
-		return findReleaseByTag(versions, pinnedTag) ?? {
+		const exact = findReleaseByTag(versions, pinnedTag);
+		const fallback = exact ?? {
 			tag: pinnedTag,
 			publishedAt: source.latestReleasePublishedAt || source.latestPublishedAt,
 		};
+		return isReleaseOldEnough(fallback.publishedAt, normalizeUpdateDelayDays(source)) ? fallback : null;
 	}
 
 	const compatibleVersions = source.compatibilityMode === "all"
@@ -153,6 +145,13 @@ export const syncSourceReleaseCheck = (
 ): SourceReleaseCheck => {
 	const target = pickSourceTargetRelease(source, versions);
 	const installed = resolveInstalledSourceRelease(source, versions, localVersion);
+	const eligible = versions.filter(item =>
+		(source.compatibilityMode === "all" || releaseIsCompatible(item))
+		&& (source.includePrerelease || !item.prerelease));
+	source.deferredPublicationDate = normalizeUpdateDelayDays(source) > 0 && !target &&
+		(source.mode === "frozen"
+			? Boolean(source.frozenVersion && !hasKnownPublicationDate(source.latestReleasePublishedAt || source.latestPublishedAt))
+			: eligible.some(item => !hasKnownPublicationDate(item.publishedAt)));
 
 	source.localVersion = localVersion || source.localVersion || "";
 	source.latestReleaseTag = target?.tag || "";

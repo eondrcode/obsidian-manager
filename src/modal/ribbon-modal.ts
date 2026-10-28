@@ -1,7 +1,18 @@
-import { App, Modal, Setting, setIcon, ButtonComponent, TextComponent } from "obsidian";
+import { App, Modal, Setting, setIcon, getIconIds, FuzzySuggestModal, ButtonComponent, TextComponent } from "obsidian";
 import Manager from "main";
 import { RibbonItem } from "../data/types";
 import { confirmWithModal } from "../utils";
+
+class GroupIconPicker extends FuzzySuggestModal<string> {
+    constructor(app: App, private readonly choose: (icon: string) => void) { super(app); }
+    getItems(): string[] { return getIconIds(); }
+    getItemText(icon: string): string { return icon; }
+    onChooseItem(icon: string): void { this.choose(icon); }
+    renderSuggestion(match: { item: string }, el: HTMLElement): void {
+        setIcon(el.createSpan(), match.item);
+        el.createSpan({ text: match.item });
+    }
+}
 
 export class RibbonModal extends Modal {
     manager: Manager;
@@ -107,6 +118,43 @@ export class RibbonModal extends Modal {
             if (!(await confirmWithModal(this.app, this.manager, t("Ribbon_重置_确认")))) return;
             await this.resetRibbonLayout();
         });
+        this.renderGroups(containerEl);
+    }
+
+    /** Group settings use native controls / 分组编辑使用 Obsidian 原生控件。 */
+    private renderGroups(containerEl: HTMLElement): void {
+        const groups = this.manager.settings.RIBBON_GROUPS;
+        const section = containerEl.createDiv('ribbon-manager-groups');
+        const t = (key: string, vars?: Record<string, string | number>) => this.manager.translator.t(key, vars);
+        new Setting(section).setName(t('Ribbon_分组')).setDesc(t('Ribbon_分组说明'))
+            .addButton(button => button.setIcon('plus').setTooltip(t('Ribbon_添加分组')).onClick(() => {
+                groups.push({ id: `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                    name: t('Ribbon_新分组'), icon: 'folder', members: [] });
+                void this.manager.saveSettings();
+                this.displayWithoutSearch();
+            }));
+        for (const group of groups) {
+            new Setting(section).setName(group.name).setDesc(t('Ribbon_分组项目', { count: group.members.length }))
+                .addText(text => text.setValue(group.name).onChange(value => {
+                    if (!value.trim()) return;
+                    group.name = value.trim();
+                    void this.manager.saveSettings();
+                    this.manager.applyRibbonSettings();
+                }))
+                .addExtraButton(button => button.setIcon(group.icon || 'folder').setTooltip(t('Ribbon_选择分组图标'))
+                    .onClick(() => new GroupIconPicker(this.app, icon => {
+                        group.icon = icon;
+                        void this.manager.saveSettings();
+                        this.manager.applyRibbonSettings();
+                        this.displayWithoutSearch();
+                    }).open()))
+                .addExtraButton(button => button.setIcon('trash').setTooltip(t('Ribbon_删除分组')).onClick(() => {
+                    groups.splice(groups.indexOf(group), 1);
+                    void this.manager.saveSettings();
+                    this.manager.applyRibbonSettings();
+                    this.displayWithoutSearch();
+                }));
+        }
     }
 
     renderDraggableList(containerEl: HTMLElement) {
@@ -258,6 +306,21 @@ export class RibbonModal extends Modal {
                     await this.persistRibbonConfig();
                     this.displayWithoutSearch();
                 });
+
+            setting.addDropdown(dropdown => {
+                dropdown.addOption('', t('Ribbon_未分组'));
+                for (const group of this.manager.settings.RIBBON_GROUPS) dropdown.addOption(group.id, group.name);
+                dropdown.setValue(this.manager.settings.RIBBON_GROUPS.find(group => group.members.includes(item.bpmUniqueId))?.id ?? '');
+                dropdown.onChange(id => {
+                    for (const group of this.manager.settings.RIBBON_GROUPS) {
+                        group.members = group.members.filter(member => member !== item.bpmUniqueId);
+                    }
+                    const group = this.manager.settings.RIBBON_GROUPS.find(entry => entry.id === id);
+                    if (group) group.members.push(item.bpmUniqueId);
+                    void this.manager.saveSettings();
+                    this.manager.applyRibbonSettings();
+                });
+            });
 
             // 拖拽手柄
             const handle = controlBar.createDiv({

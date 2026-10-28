@@ -4,6 +4,7 @@ import Manager from "main";
 import type { ManagerPlugin } from "./data/types";
 import { BPM_TAG_ID } from "./repo-resolver";
 import { resolveGithubUrl } from "./github-url";
+import { isPrereleaseRelease } from "./release-policy";
 
 /**
  * GitHub release 资源描述。
@@ -300,7 +301,7 @@ const upsertInstalledPluginRecord = (
 
 const releaseToVersion = (release: ReleaseResponse, latestTag?: string): ReleaseVersion => ({
 	version: release.tag_name || "",
-	prerelease: Boolean(release.prerelease),
+	prerelease: isPrereleaseRelease(release.tag_name, Boolean(release.prerelease)),
 	name: release.name || undefined,
 	body: release.body || undefined,
 	publishedAt: release.published_at || undefined,

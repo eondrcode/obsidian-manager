@@ -1,4 +1,4 @@
-import { Menu, Notice, Platform, Setting, setIcon } from 'obsidian';
+import { ButtonComponent, Menu, Notice, Platform, Setting, setIcon } from 'obsidian';
 import type Manager from '../main';
 import { confirmWithModal } from '../utils';
 import { allPresets, detectDeviceType, DEVICE_TYPES, DeviceType, isDeviceType } from './device-presets';
@@ -17,13 +17,28 @@ export class DevicePanel {
     constructor(private readonly manager: Manager) { this.selected = manager.devices.type; }
     private t(key: string, vars?: Record<string, string | number>): string { return this.manager.translator.t(key, vars); }
 
+    /** 卡头统一为「图标 + 标题 + 描述」，右侧可放图标+文字操作。 */
+    private renderCardHeader(card: HTMLElement, icon: string, title: string, desc?: string,
+        action?: { label: string; icon: string; onClick: () => void; tooltip?: string }): void {
+        const header = card.createDiv('manager-vault-card__header');
+        const iconEl = header.createDiv('manager-vault-card__icon');
+        setIcon(iconEl, icon);
+        const group = header.createDiv('manager-vault-card__title-group');
+        group.createDiv({ cls: 'manager-vault-card__title', text: title });
+        if (desc) group.createDiv({ cls: 'manager-vault-card__desc', text: desc });
+        if (!action) return;
+        const button = new ButtonComponent(header).setIcon(action.icon).setButtonText(action.label);
+        button.buttonEl.addClass('manager-vault-card__action');
+        if (action.tooltip) button.setTooltip(action.tooltip);
+        button.onClick(action.onClick);
+    }
+
     render(container: HTMLElement): void {
         this.root = container;
         container.empty();
         const page = container.createDiv('manager-vault-share');
         const settings = page.createDiv('manager-vault-card');
-        new Setting(settings).setName(this.t('设备_标题')).setHeading();
-        settings.createEl('p', { cls: 'setting-item-description', text: this.t('设备_说明') });
+        this.renderCardHeader(settings, 'monitor-smartphone', this.t('设备_标题'), this.t('设备_说明'));
         new Setting(settings).setName(this.t('设备_启用')).setDesc(this.t('设备_启用说明'))
             .addToggle(toggle => toggle.setValue(this.manager.devices.data.enabled).onChange(value => {
                 void this.action(async () => { await this.manager.devices.setEnabled(value); });
@@ -89,15 +104,12 @@ export class DevicePanel {
     private renderPresets(page: HTMLElement): void {
         const devices = this.manager.devices;
         const card = page.createDiv('manager-vault-card');
-        new Setting(card).setName(this.t('设备_预设', { type: devices.label(this.selected) })).setHeading();
-        card.createEl('p', { cls: 'setting-item-description', text: this.t('设备_预设说明') });
-        if (!devices.presetsFor(this.selected).some(preset => preset.configured)) {
-            card.createEl('p', { cls: 'setting-item-description', text: this.t('设备_未配置提示') });
-        }
-        new Setting(card).setName(this.t('设备_预设操作'))
-            .addButton(button => button.setButtonText(this.t('设备_新建预设')).onClick(() => {
+        const unconfigured = !devices.presetsFor(this.selected).some(preset => preset.configured);
+        this.renderCardHeader(card, ICONS[this.selected], this.t('设备_预设', { type: devices.label(this.selected) }),
+            unconfigured ? `${this.t('设备_预设说明')} ${this.t('设备_未配置提示')}` : this.t('设备_预设说明'),
+            { label: this.t('设备_新建预设'), icon: 'plus', tooltip: this.t('设备_新建预设'), onClick: () => {
                 void this.action(async () => { await devices.createPreset(this.selected); });
-            }));
+            } });
 
         for (const preset of devices.presetsFor(this.selected)) {
             const bound = preset.id === devices.boundPresetId;
@@ -160,7 +172,7 @@ export class DevicePanel {
 
     private renderDevices(page: HTMLElement): void {
         const card = page.createDiv('manager-vault-card');
-        new Setting(card).setName(this.t('设备_列表')).setHeading();
+        this.renderCardHeader(card, 'list', this.t('设备_列表'));
         const devices = this.manager.devices.data.devices.filter(device => device.type === this.selected);
         if (!devices.length) card.createEl('p', { cls: 'setting-item-description', text: this.t('设备_暂无') });
         for (const device of devices) {

@@ -1,10 +1,10 @@
 import { Notice, Platform } from 'obsidian';
 import type Manager from '../main';
-import type { RibbonItem } from '../data/types';
+import type { RibbonGroup, RibbonItem } from '../data/types';
 import { applyPresetToSettings, capturePreset, cloneAppearance, clonePreset,
     allPresets, detectDeviceType, DEVICE_TYPES, DeviceManagement, DevicePluginState, DevicePreset, DeviceScope, DeviceType,
     findPreset, isDeviceType, normalizeDeviceManagement, parseScopeKey, scopeKey, ScopedAppearance,
-    ScopePage, snapshotPreset } from './device-presets';
+    ScopePage, snapshotPreset, normalizeRibbonGroups } from './device-presets';
 
 type LocalStorageApp = { loadLocalStorage(key: string): unknown; saveLocalStorage(key: string, value: unknown): void; };
 type CustomCssLike = {
@@ -18,6 +18,7 @@ type CapacitorDevice = { getId?(): Promise<{ identifier?: string }> };
 interface StoredIdentity { id?: unknown; type?: unknown; platformId?: unknown; presetId?: unknown; }
 interface LiveSnapshot {
     ribbon: RibbonItem[];
+    ribbonGroups: RibbonGroup[];
     ribbonEnabled: boolean;
     plugins: Record<string, DevicePluginState>;
 }
@@ -90,6 +91,7 @@ export class DeviceManager {
         const copy = clonePreset(source);
         target.plugins = copy.plugins;
         target.ribbon = copy.ribbon;
+        target.ribbonGroups = copy.ribbonGroups;
         target.ribbonEnabled = copy.ribbonEnabled;
         target.appearance = copy.appearance;
         target.configured = true;
@@ -105,6 +107,7 @@ export class DeviceManager {
             const copy = clonePreset(source.preset);
             target.preset.plugins = copy.plugins;
             target.preset.ribbon = copy.ribbon;
+            target.preset.ribbonGroups = copy.ribbonGroups;
             target.preset.ribbonEnabled = copy.ribbonEnabled;
             target.preset.appearance = copy.appearance;
             target.preset.configured = true;
@@ -324,12 +327,14 @@ export class DeviceManager {
             scope,
             live: {
                 ribbon: settings.RIBBON_SETTINGS.map(item => ({ ...item, ribbonIdMap: item.ribbonIdMap ? { ...item.ribbonIdMap } : undefined })),
+                ribbonGroups: normalizeRibbonGroups(settings.RIBBON_GROUPS),
                 ribbonEnabled: settings.RIBBON_MANAGER_ENABLED,
                 plugins: this.pluginStates(),
             },
         };
         const preset = this.effectiveForScope(scope);
         settings.RIBBON_SETTINGS = preset.ribbon.map(item => ({ ...item, ribbonIdMap: item.ribbonIdMap ? { ...item.ribbonIdMap } : undefined }));
+        settings.RIBBON_GROUPS = normalizeRibbonGroups(preset.ribbonGroups);
         settings.RIBBON_MANAGER_ENABLED = preset.ribbonEnabled;
         for (const plugin of settings.Plugins) {
             const state = Object.prototype.hasOwnProperty.call(preset.plugins, plugin.id) ? preset.plugins[plugin.id] : undefined;
@@ -345,6 +350,7 @@ export class DeviceManager {
         this.projection = undefined;
         this.storeSnapshot(projection.scope.presetId, {
             ribbon: settings.RIBBON_SETTINGS,
+            ribbonGroups: settings.RIBBON_GROUPS,
             ribbonEnabled: settings.RIBBON_MANAGER_ENABLED,
             plugins: this.pluginStates(),
         });
@@ -369,6 +375,7 @@ export class DeviceManager {
     private restoreLive(live: LiveSnapshot): void {
         const settings = this.manager.settings;
         settings.RIBBON_SETTINGS = live.ribbon;
+        settings.RIBBON_GROUPS = live.ribbonGroups;
         settings.RIBBON_MANAGER_ENABLED = live.ribbonEnabled;
         for (const plugin of settings.Plugins) {
             const state = live.plugins[plugin.id];
@@ -379,20 +386,21 @@ export class DeviceManager {
     private storeSnapshot(presetId: string, snapshot: LiveSnapshot): void {
         const found = this.presetById(presetId);
         if (!found) return;
-        const before = JSON.stringify([found.preset.plugins, found.preset.ribbon, found.preset.ribbonEnabled]);
+        const before = JSON.stringify([found.preset.plugins, found.preset.ribbon, found.preset.ribbonGroups, found.preset.ribbonEnabled]);
         found.preset.ribbon = cloneRibbon(snapshot.ribbon);
+        found.preset.ribbonGroups = normalizeRibbonGroups(snapshot.ribbonGroups);
         found.preset.ribbonEnabled = snapshot.ribbonEnabled;
         found.preset.plugins = { ...found.preset.plugins, ...snapshot.plugins };
-        if (!found.preset.configured && before !== JSON.stringify([found.preset.plugins, found.preset.ribbon, found.preset.ribbonEnabled])) {
+        if (!found.preset.configured && before !== JSON.stringify([found.preset.plugins, found.preset.ribbon, found.preset.ribbonGroups, found.preset.ribbonEnabled])) {
             found.preset.configured = true;
         }
     }
 
     /** 捕获时只有值真的变了才标记“已配置”，避免空保存把新类型锁死。 */
     private captureInto(preset: DevicePreset, extras: { appearance?: ScopedAppearance }): void {
-        const before = JSON.stringify([preset.plugins, preset.ribbon, preset.ribbonEnabled, preset.appearance]);
+        const before = JSON.stringify([preset.plugins, preset.ribbon, preset.ribbonGroups, preset.ribbonEnabled, preset.appearance]);
         capturePreset(preset, this.manager.settings, extras);
-        if (!preset.configured && before !== JSON.stringify([preset.plugins, preset.ribbon, preset.ribbonEnabled, preset.appearance])) {
+        if (!preset.configured && before !== JSON.stringify([preset.plugins, preset.ribbon, preset.ribbonGroups, preset.ribbonEnabled, preset.appearance])) {
             preset.configured = true;
         }
     }
@@ -446,6 +454,7 @@ export class DeviceManager {
         if (projection) {
             this.storeSnapshot(projection.scope.presetId, {
                 ribbon: this.manager.settings.RIBBON_SETTINGS,
+                ribbonGroups: this.manager.settings.RIBBON_GROUPS,
                 ribbonEnabled: this.manager.settings.RIBBON_MANAGER_ENABLED,
                 plugins: this.pluginStates(),
             });
@@ -466,6 +475,7 @@ export class DeviceManager {
                 return live ? { ...plugin, enabled: live.enabled, delay: live.delay } : plugin;
             }),
             RIBBON_SETTINGS: this.projection.live.ribbon,
+            RIBBON_GROUPS: this.projection.live.ribbonGroups,
             RIBBON_MANAGER_ENABLED: this.projection.live.ribbonEnabled,
         };
     }

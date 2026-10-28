@@ -1,4 +1,4 @@
-import { App, ButtonComponent, Modal, Notice, Platform, Setting } from "obsidian";
+import { App, ButtonComponent, Modal, Notice, Platform, setIcon } from "obsidian";
 import { shell } from "electron";
 import Manager from "main";
 
@@ -7,6 +7,8 @@ type ConfirmModalOptions = {
     message: string;
     confirmText?: string;
     cancelText?: string;
+    /** 主要操作使用警示色；默认开启，统一确认弹窗的视觉。 */
+    tone?: "warning" | "default";
 };
 
 class ManagerConfirmModal extends Modal {
@@ -27,29 +29,26 @@ class ManagerConfirmModal extends Modal {
         const t = (key: string) => this.manager.translator.t(key);
         const modalEl = contentEl.parentElement;
         modalEl?.addClass("manager-confirm-modal");
-        modalEl?.querySelector(".modal-close-button")?.remove();
-        this.titleEl.parentElement?.addClass("manager-container__header");
-        this.titleEl.setText(this.options.title || t("通用_确认_文本"));
+        this.titleEl.empty();
+        this.titleEl.hide();
 
         contentEl.empty();
-        contentEl.addClass("manager-item-container");
-        contentEl.createDiv({ cls: "manager-confirm-modal__message", text: this.options.message });
+        contentEl.addClass("manager-confirm-modal__content");
+        const messageRow = contentEl.createDiv("manager-confirm-modal__message");
+        const iconEl = messageRow.createSpan("manager-confirm-modal__icon");
+        setIcon(iconEl, "help-circle");
+        messageRow.createSpan({ cls: "manager-confirm-modal__text", text: this.options.message });
 
-        const actionBar = new Setting(contentEl).setClass("manager-delete__action");
-        actionBar.nameEl.empty();
-        actionBar.descEl.empty();
-        actionBar.addButton((button) => {
-            button
-                .setButtonText(this.options.cancelText || t("通用_取消_文本"))
-                .onClick(() => this.finish(false));
-        });
-        actionBar.addButton((button: ButtonComponent) => {
-            button
-                .setCta()
-                .setButtonText(this.options.confirmText || t("通用_确认_文本"))
-                .onClick(() => this.finish(true));
-            button.buttonEl.focus();
-        });
+        const actions = contentEl.createDiv("manager-confirm-modal__actions");
+        new ButtonComponent(actions)
+            .setButtonText(this.options.cancelText || t("通用_取消_文本"))
+            .onClick(() => this.finish(false));
+        const confirm = new ButtonComponent(actions)
+            .setButtonText(this.options.confirmText || t("通用_确认_文本"))
+            .onClick(() => this.finish(true));
+        if (this.options.tone === "default") confirm.setCta();
+        else confirm.setWarning();
+        confirm.buttonEl.focus();
     }
 
     onClose() {

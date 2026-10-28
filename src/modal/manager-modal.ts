@@ -5907,6 +5907,9 @@ export class ManagerModal extends Modal {
             if (hasUpdate) {
                 chips.appendChild(createSpan({ text: t("来源_有更新"), cls: "manager-source-item__chip is-update" }));
             }
+            if (source.deferredPublicationDate) {
+                chips.appendChild(createSpan({ text: t("更新_发布日期不可用_暂缓"), cls: "manager-source-item__chip" }));
+            }
 
             const configToggleLabel = `${isConfigExpanded ? t("Ribbon_隐藏") : t("Ribbon_显示")} ${t("导入导出_配置短标签")}`;
             const configToggle = headerActions.createEl("button", { cls: "manager-source-card__config-toggle" });

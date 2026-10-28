@@ -74,6 +74,21 @@ test('three types migrate into at least one independent named preset each', asyn
     assert.equal(firstOf(settings, 'phone').ribbon[0].ribbonIdMap.en, 'a');
 });
 
+test('ribbon groups remain independent when device presets are copied and applied', async () => {
+    const { manager, settings } = await fixture();
+    settings.RIBBON_GROUPS = [{ id: 'mobile', name: 'Mobile', icon: 'smartphone', members: ['a'] }];
+    manager.devices.capture();
+    const computer = firstOf(settings, 'computer');
+    computer.ribbonGroups = structuredClone(settings.RIBBON_GROUPS);
+    const phone = firstOf(settings, 'phone');
+    phone.ribbonGroups = [{ id: 'phone', name: 'Phone', icon: 'tablet', members: [] }];
+    model.applyPresetToSettings(phone, settings, 'self');
+    assert.equal(settings.RIBBON_GROUPS[0].id, 'phone');
+    settings.RIBBON_GROUPS[0].name = 'Edited';
+    assert.equal(computer.ribbonGroups[0].name, 'Mobile');
+    assert.equal(phone.ribbonGroups[0].name, 'Phone');
+});
+
 test('legacy single-preset data is wrapped into arrays without changing settings', async () => {
     const { settings } = await fixture();
     const legacy = {

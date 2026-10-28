@@ -1,5 +1,5 @@
 import type { ManagerSettings } from '../settings/data';
-import type { RibbonItem } from '../data/types';
+import type { RibbonGroup, RibbonItem } from '../data/types';
 
 export const DEVICE_TYPES = ['computer', 'tablet', 'phone'] as const;
 export type DeviceType = typeof DEVICE_TYPES[number];
@@ -19,6 +19,7 @@ export interface DevicePreset {
     configured: boolean;
     plugins: Record<string, DevicePluginState>;
     ribbon: RibbonItem[];
+    ribbonGroups: RibbonGroup[];
     ribbonEnabled: boolean;
     appearance: ScopedAppearance;
 }
@@ -117,6 +118,22 @@ function normalizeRibbon(value: unknown, fallback: RibbonItem[]): RibbonItem[] {
             } }];
     });
 }
+export function normalizeRibbonGroups(value: unknown): RibbonGroup[] {
+    if (!Array.isArray(value)) return [];
+    const ids = new Set<string>();
+    const members = new Set<string>();
+    return value.flatMap((raw: unknown) => {
+        if (!isRecord(raw) || typeof raw.id !== 'string' || !raw.id || ids.has(raw.id)
+            || typeof raw.name !== 'string' || !raw.name.trim() || typeof raw.icon !== 'string') return [];
+        ids.add(raw.id);
+        const accepted = Array.isArray(raw.members) ? raw.members.filter((member: unknown): member is string => {
+            if (typeof member !== 'string' || !member || members.has(member)) return false;
+            members.add(member);
+            return true;
+        }) : [];
+        return [{ id: raw.id, name: raw.name.trim(), icon: raw.icon, members: accepted }];
+    });
+}
 export function cloneAppearance(appearance: ScopedAppearance): ScopedAppearance {
     return { theme: appearance.theme, snippets: { ...appearance.snippets } };
 }
@@ -127,6 +144,7 @@ export function clonePreset(preset: DevicePreset): DevicePreset {
         configured: preset.configured === true,
         plugins: Object.fromEntries(Object.entries(preset.plugins).map(([id, state]) => [id, { ...state }])),
         ribbon: normalizeRibbon(preset.ribbon, []),
+        ribbonGroups: normalizeRibbonGroups(preset.ribbonGroups),
         ribbonEnabled: preset.ribbonEnabled,
         appearance: cloneAppearance(preset.appearance),
     };
@@ -148,6 +166,7 @@ export function snapshotPreset(settings: ManagerSettings, extras: PresetExtras =
         configured: meta.configured === true,
         plugins: Object.fromEntries(settings.Plugins.map(plugin => [plugin.id, { enabled: plugin.enabled, delay: plugin.delay }])),
         ribbon: settings.RIBBON_SETTINGS,
+        ribbonGroups: settings.RIBBON_GROUPS,
         ribbonEnabled: settings.RIBBON_MANAGER_ENABLED,
         appearance: extras.appearance ?? { theme: '', snippets: {} },
     });
@@ -169,6 +188,7 @@ function normalizePreset(raw: unknown, baseline: DevicePreset, type: DeviceType,
         }
         if (typeof raw.ribbonEnabled === 'boolean') preset.ribbonEnabled = raw.ribbonEnabled;
         if (Array.isArray(raw.ribbon)) preset.ribbon = normalizeRibbon(raw.ribbon, preset.ribbon);
+        if (Array.isArray(raw.ribbonGroups)) preset.ribbonGroups = normalizeRibbonGroups(raw.ribbonGroups);
         preset.appearance = normalizeAppearance(raw.appearance, preset.appearance);
         if (typeof raw.name === 'string' && raw.name.trim()) preset.name = raw.name.trim();
         if (typeof raw.id === 'string' && raw.id.trim()) preset.id = raw.id.trim();
@@ -194,6 +214,7 @@ function settingsEqual(a: DevicePreset, b: DevicePreset): boolean {
     const canonical = (preset: DevicePreset) => JSON.stringify({
         plugins: Object.keys(preset.plugins).sort().map(id => [id, preset.plugins[id].enabled, preset.plugins[id].delay]),
         ribbon: preset.ribbon,
+        ribbonGroups: preset.ribbonGroups,
         ribbonEnabled: preset.ribbonEnabled,
         theme: preset.appearance.theme,
         snippets: Object.keys(preset.appearance.snippets).sort().map(id => [id, preset.appearance.snippets[id]]),
@@ -232,6 +253,7 @@ export function capturePreset(preset: DevicePreset, settings: ManagerSettings, e
     const snapshot = snapshotPreset(settings, extras ?? {});
     preset.plugins = { ...preset.plugins, ...snapshot.plugins };
     preset.ribbon = snapshot.ribbon;
+    preset.ribbonGroups = snapshot.ribbonGroups;
     preset.ribbonEnabled = snapshot.ribbonEnabled;
     if (extras.appearance) preset.appearance = cloneAppearance(extras.appearance);
 }
@@ -244,5 +266,6 @@ export function applyPresetToSettings(preset: DevicePreset, settings: ManagerSet
         if (state) { plugin.enabled = state.enabled; plugin.delay = state.delay; }
     }
     settings.RIBBON_SETTINGS = clonePreset(preset).ribbon;
+    settings.RIBBON_GROUPS = clonePreset(preset).ribbonGroups;
     settings.RIBBON_MANAGER_ENABLED = preset.ribbonEnabled;
 }

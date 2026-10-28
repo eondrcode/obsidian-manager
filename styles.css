@@ -14215,3 +14215,56 @@ body.theme-dark .manager-transfer-segment[data-state="active"]:hover {
     gap: 8px;
     margin-top: 12px;
 }
+
+/* 设备页卡头操作按钮：图标 + 文字，靠右放置。 */
+.manager-vault-card__header .manager-vault-card__action {
+    margin-left: auto;
+}
+
+/* 统一确认弹窗：无标题分隔线，左侧问号图标，右侧警示/取消按钮。 */
+.manager-confirm-modal .modal-header {
+    border-bottom: none;
+    padding: 0;
+    min-height: 0;
+}
+
+.manager-confirm-modal__content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-top: 4px;
+}
+
+.manager-confirm-modal__message {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+.manager-confirm-modal__icon {
+    display: inline-flex;
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    color: var(--color-orange);
+}
+
+.manager-confirm-modal__icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.manager-confirm-modal__text {
+    min-width: 0;
+}
+
+.manager-confirm-modal__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    border: 0;
+    padding: 0;
+}
