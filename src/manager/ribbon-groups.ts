@@ -1,8 +1,11 @@
-import { Menu, getIconIds, setIcon } from 'obsidian';
+import { Menu, setIcon } from 'obsidian';
 import type Manager from '../main';
 import type { RibbonGroup } from '../data/types';
 import type { LeftRibbonLike, RibbonNativeItem } from '../obsidian-internals';
 import { normalizeRibbonGroups } from '../devices/device-presets';
+
+/** 分组作为一个 RibbonItem 参与排序时的固定前缀。 */
+export const RIBBON_GROUP_ITEM_PREFIX = 'bpm-group:';
 
 /** Native Ribbon group lifecycle / 原生 Ribbon 分组图标的生命周期。 */
 export class RibbonGroups {
@@ -19,10 +22,10 @@ export class RibbonGroups {
             button.remove();
             this.buttons.delete(id);
         }
-        const icons = new Set(getIconIds());
         for (const group of groups) {
             if (!active.has(group.id)) continue;
-            const icon = icons.has(group.icon) ? group.icon : 'folder';
+            // 直接使用用户设定的图标；setIcon 会按 Lucide 名称渲染。
+            const icon = group.icon?.trim() || 'folder';
             const existing = this.buttons.get(group.id);
             if (existing) {
                 setIcon(existing, icon);
@@ -32,6 +35,11 @@ export class RibbonGroups {
             const button = this.manager.addRibbonIcon(icon, group.name, event => this.open(group.id, event));
             this.buttons.set(group.id, button);
         }
+    }
+
+    groupIdForItem(item: RibbonNativeItem): string | undefined {
+        for (const [id, button] of this.buttons) if (button === item.buttonEl) return id;
+        return undefined;
     }
 
     isGroupItem(item: RibbonNativeItem): boolean {
@@ -47,7 +55,17 @@ export class RibbonGroups {
         const ribbon = (this.manager.app.workspace as typeof this.manager.app.workspace & { leftRibbon?: LeftRibbonLike }).leftRibbon;
         if (!group || !ribbon?.items) return;
         const menu = new Menu();
-        for (const member of group.members) {
+        // 菜单头部：分组图标 + 分组名，使用原生 label 样式与分隔线。
+        const header = activeDocument.createDocumentFragment();
+        header.createSpan({ cls: 'bpm-group-menu-title', text: group.name });
+        menu.addItem(item => item
+            .setTitle(header)
+            .setIcon(group.icon || 'folder')
+            .setIsLabel(true));
+        menu.addSeparator();
+        const members = group.members.slice().sort((a, b) =>
+            (group.memberOrders?.[a] ?? Number.MAX_SAFE_INTEGER) - (group.memberOrders?.[b] ?? Number.MAX_SAFE_INTEGER));
+        for (const member of members) {
             const setting = this.manager.settings.RIBBON_SETTINGS.find(item => item.bpmUniqueId === member);
             if (!setting?.visible) continue;
             const native = ribbon.items.find(item => item && !this.isGroupItem(item)

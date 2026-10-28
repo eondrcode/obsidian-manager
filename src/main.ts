@@ -17,7 +17,7 @@ import { runMigrations } from './migrations';
 import { fetchReleaseVersions, installPluginFromGithub, installThemeFromGithub, ReleaseVersion, sanitizeRepo } from './github-install';
 import { performSelfCheck } from './self-check';
 import { SystemRibbonManager } from './manager/system-ribbon-manager';
-import { RibbonGroups } from './manager/ribbon-groups';
+import { RibbonGroups, RIBBON_GROUP_ITEM_PREFIX } from './manager/ribbon-groups';
 import { RibbonItem } from './data/types';
 import { markSourceInstalledRelease, sourceHasUpdate as sourceHasConfiguredUpdate, syncSourceReleaseCheck } from './source-release';
 import { LeftRibbonLike, ObsidianAppWithInternals, ObsidianPluginRegistry, RibbonNativeItem, WindowWithMoment, WorkspaceWithRibbon } from './obsidian-internals';
@@ -409,6 +409,7 @@ export default class Manager extends Plugin {
             }
 
             this.cleanRibbonItems();
+            this.syncRibbonGroupItems();
             this.ribbonGroups.sync(ribbon);
 
             const items = (ribbon.items || []).filter((item): item is RibbonNativeItem => Boolean(item));
@@ -441,8 +442,16 @@ export default class Manager extends Plugin {
 
             // 2. 写原生状态：BPM 权威，覆盖原生显隐与顺序
             let ribbonChanged = false;
-            items.filter(item => this.ribbonGroups.isGroupItem(item)).forEach(item => {
-                if (item.hidden) { item.hidden = false; ribbonChanged = true; }
+            const groupEntries = items.filter(item => this.ribbonGroups.isGroupItem(item)).map(item => {
+                const groupId = this.ribbonGroups.groupIdForItem(item);
+                const setting = groupId
+                    ? saved.find(entry => entry.bpmUniqueId === `${RIBBON_GROUP_ITEM_PREFIX}${groupId}`)
+                    : undefined;
+                return { item, setting };
+            });
+            groupEntries.forEach(({ item, setting }) => {
+                const hidden = setting?.visible === false;
+                if (item.hidden !== hidden) { item.hidden = hidden; ribbonChanged = true; }
             });
             resolutions.forEach((resolution) => {
                 const setting = resolution.setting;
@@ -454,11 +463,11 @@ export default class Manager extends Plugin {
                 }
             });
 
-            const ordered = resolutions
-                .slice()
-                .sort((a, b) => this.ribbonOrderOf(a.setting) - this.ribbonOrderOf(b.setting))
-                .map((resolution) => resolution.item)
-                .concat(items.filter(item => this.ribbonGroups.isGroupItem(item)));
+            // 分组入口项也按自己的 order 参与排序，而不是永远追加在末尾。
+            const ordered = [
+                ...resolutions.map((resolution) => ({ item: resolution.item, order: this.ribbonOrderOf(resolution.setting) })),
+                ...groupEntries.map(({ item, setting }) => ({ item, order: this.ribbonOrderOf(setting) })),
+            ].sort((a, b) => a.order - b.order).map((entry) => entry.item);
 
             if (!this.sameRibbonOrder(items, ordered)) {
                 // 原地改写数组，保持 Obsidian 持有的引用不变（onChange 读的就是它）
@@ -606,6 +615,29 @@ export default class Manager extends Plugin {
             }
         } catch (error) {
             console.error("[BPM] persist ribbon config failed:", error);
+        }
+    }
+
+    /** 每个分组在 RIBBON_SETTINGS 中保留一条可排序的入口项。 */
+    public syncRibbonGroupItems(): void {
+        const groups = this.settings.RIBBON_GROUPS || [];
+        const saved = this.settings.RIBBON_SETTINGS || (this.settings.RIBBON_SETTINGS = []);
+        const wanted = new Set(groups.map(group => `${RIBBON_GROUP_ITEM_PREFIX}${group.id}`));
+        for (let index = saved.length - 1; index >= 0; index -= 1) {
+            if (saved[index].bpmUniqueId.startsWith(RIBBON_GROUP_ITEM_PREFIX) && !wanted.has(saved[index].bpmUniqueId)) {
+                saved.splice(index, 1);
+            }
+        }
+        for (const group of groups) {
+            const id = `${RIBBON_GROUP_ITEM_PREFIX}${group.id}`;
+            const existing = saved.find(item => item.bpmUniqueId === id);
+            if (existing) {
+                existing.name = group.name;
+                existing.icon = group.icon;
+                continue;
+            }
+            saved.push({ bpmUniqueId: id, name: group.name, icon: group.icon, visible: true,
+                order: this.nextRibbonOrder(saved), ribbonIdMap: {} });
         }
     }
 

@@ -148,10 +148,14 @@ export const syncSourceReleaseCheck = (
 	const eligible = versions.filter(item =>
 		(source.compatibilityMode === "all" || releaseIsCompatible(item))
 		&& (source.includePrerelease || !item.prerelease));
-	source.deferredPublicationDate = normalizeUpdateDelayDays(source) > 0 && !target &&
-		(source.mode === "frozen"
-			? Boolean(source.frozenVersion && !hasKnownPublicationDate(source.latestReleasePublishedAt || source.latestPublishedAt))
-			: eligible.some(item => !hasKnownPublicationDate(item.publishedAt)));
+	const delayDays = normalizeUpdateDelayDays(source);
+	source.deferredPublicationDate = delayDays > 0 && !target && (
+		versions.length === 0
+			? Boolean(source.latestReleaseTag || source.latestVersion)
+			: source.mode === "frozen"
+				? Boolean(source.frozenVersion && !hasKnownPublicationDate(source.latestReleasePublishedAt || source.latestPublishedAt))
+				: eligible.some(item => !hasKnownPublicationDate(item.publishedAt))
+	);
 
 	source.localVersion = localVersion || source.localVersion || "";
 	source.latestReleaseTag = target?.tag || "";

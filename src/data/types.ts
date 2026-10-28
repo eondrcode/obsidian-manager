@@ -51,6 +51,8 @@ export interface RibbonGroup {
 	name: string;
 	icon: string;
 	members: string[];
+	/** 组内独立排序号；不修改成员原本的 RibbonItem.order。 */
+	memberOrders?: Record<string, number>;
 }
 
 export interface PluginLayoutItem {

@@ -1,7 +1,8 @@
-import { App, Modal, Setting, setIcon, getIconIds, FuzzySuggestModal, ButtonComponent, TextComponent } from "obsidian";
+import { App, Modal, Setting, setIcon, getIconIds, FuzzySuggestModal, ButtonComponent, ExtraButtonComponent, TextComponent, ToggleComponent } from "obsidian";
 import Manager from "main";
 import { RibbonItem } from "../data/types";
 import { confirmWithModal } from "../utils";
+import { RIBBON_GROUP_ITEM_PREFIX } from "../manager/ribbon-groups";
 
 class GroupIconPicker extends FuzzySuggestModal<string> {
     constructor(app: App, private readonly choose: (icon: string) => void) { super(app); }
@@ -9,8 +10,10 @@ class GroupIconPicker extends FuzzySuggestModal<string> {
     getItemText(icon: string): string { return icon; }
     onChooseItem(icon: string): void { this.choose(icon); }
     renderSuggestion(match: { item: string }, el: HTMLElement): void {
-        setIcon(el.createSpan(), match.item);
-        el.createSpan({ text: match.item });
+        el.addClass('ribbon-group-icon-option');
+        const iconEl = el.createSpan({ cls: 'ribbon-group-icon-option__icon' });
+        setIcon(iconEl, match.item);
+        el.createSpan({ cls: 'ribbon-group-icon-option__label', text: match.item });
     }
 }
 
@@ -20,7 +23,9 @@ export class RibbonModal extends Modal {
     private renderToolbarInRoot = true;
 
     // 过滤和搜索
-    private currentFilter: "all" | "visible" | "hidden" = "all";
+    private currentFilter = "all";
+    private groupsCollapsed = false;
+    private showGroupedItems = false;
     private searchQuery = "";
 
     // 拖拽相关变量
@@ -97,6 +102,7 @@ export class RibbonModal extends Modal {
         if (!this.manager.isRibbonManagerEnabled()) return;
 
         if (showToolbar) this.renderToolbar(contentEl);
+        this.renderGroups(contentEl);
         this.renderDraggableList(contentEl);
     }
 
@@ -118,7 +124,6 @@ export class RibbonModal extends Modal {
             if (!(await confirmWithModal(this.app, this.manager, t("Ribbon_重置_确认")))) return;
             await this.resetRibbonLayout();
         });
-        this.renderGroups(containerEl);
     }
 
     /** Group settings use native controls / 分组编辑使用 Obsidian 原生控件。 */
@@ -127,33 +132,58 @@ export class RibbonModal extends Modal {
         const section = containerEl.createDiv('ribbon-manager-groups');
         const t = (key: string, vars?: Record<string, string | number>) => this.manager.translator.t(key, vars);
         new Setting(section).setName(t('Ribbon_分组')).setDesc(t('Ribbon_分组说明'))
+            .addExtraButton(button => button.setIcon(this.groupsCollapsed ? 'chevron-right' : 'chevron-down')
+                .setTooltip(t(this.groupsCollapsed ? 'Ribbon_展开分组' : 'Ribbon_收起分组'))
+                .onClick(() => { this.groupsCollapsed = !this.groupsCollapsed; this.displayWithoutSearch(); }))
             .addButton(button => button.setIcon('plus').setTooltip(t('Ribbon_添加分组')).onClick(() => {
                 groups.push({ id: `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
                     name: t('Ribbon_新分组'), icon: 'folder', members: [] });
+                this.groupsCollapsed = false;
                 void this.manager.saveSettings();
+                this.manager.applyRibbonSettings();
                 this.displayWithoutSearch();
             }));
+        if (this.groupsCollapsed) return;
+        const body = section.createDiv('ribbon-manager-groups__body');
+        if (!groups.length) {
+            const empty = body.createDiv('ribbon-manager-groups__empty');
+            setIcon(empty.createSpan('ribbon-manager-groups__empty-icon'), 'folder');
+            empty.createSpan({ cls: 'ribbon-manager-groups__empty-text', text: t('Ribbon_暂无分组') });
+            return;
+        }
+        const grid = body.createDiv('ribbon-group-grid');
         for (const group of groups) {
-            new Setting(section).setName(group.name).setDesc(t('Ribbon_分组项目', { count: group.members.length }))
-                .addText(text => text.setValue(group.name).onChange(value => {
-                    if (!value.trim()) return;
-                    group.name = value.trim();
-                    void this.manager.saveSettings();
-                    this.manager.applyRibbonSettings();
-                }))
-                .addExtraButton(button => button.setIcon(group.icon || 'folder').setTooltip(t('Ribbon_选择分组图标'))
-                    .onClick(() => new GroupIconPicker(this.app, icon => {
-                        group.icon = icon;
-                        void this.manager.saveSettings();
-                        this.manager.applyRibbonSettings();
-                        this.displayWithoutSearch();
-                    }).open()))
-                .addExtraButton(button => button.setIcon('trash').setTooltip(t('Ribbon_删除分组')).onClick(() => {
-                    groups.splice(groups.indexOf(group), 1);
+            // 每个分组占约 1/4 行：图标在名称输入框左侧。
+            const cell = grid.createDiv('ribbon-group-card');
+            cell.setAttribute('aria-label', t('Ribbon_分组项目', { count: group.members.length }));
+            const iconButton = new ExtraButtonComponent(cell);
+            iconButton.setIcon(group.icon || 'folder').setTooltip(t('Ribbon_选择分组图标'))
+                .onClick(() => new GroupIconPicker(this.app, icon => {
+                    group.icon = icon;
                     void this.manager.saveSettings();
                     this.manager.applyRibbonSettings();
                     this.displayWithoutSearch();
-                }));
+                }).open());
+            iconButton.extraSettingsEl.addClass('ribbon-group-card__icon');
+
+            const nameInput = new TextComponent(cell);
+            nameInput.setValue(group.name).setPlaceholder(t('Ribbon_新分组'));
+            nameInput.inputEl.addClass('ribbon-group-card__name');
+            nameInput.onChange(value => {
+                if (!value.trim()) return;
+                group.name = value.trim();
+                void this.manager.saveSettings();
+                this.manager.applyRibbonSettings();
+            });
+
+            const removeButton = new ExtraButtonComponent(cell);
+            removeButton.setIcon('trash').setTooltip(t('Ribbon_删除分组')).onClick(() => {
+                groups.splice(groups.indexOf(group), 1);
+                void this.manager.saveSettings();
+                this.manager.applyRibbonSettings();
+                this.displayWithoutSearch();
+            });
+            removeButton.extraSettingsEl.addClass('ribbon-group-card__remove');
         }
     }
 
@@ -161,9 +191,12 @@ export class RibbonModal extends Modal {
         const t = (k: string) => this.manager.translator.t(k);
         const allItems = this.manager.settings.RIBBON_SETTINGS;
 
-        // 统计数量
-        const visibleCount = allItems.filter(item => item.visible).length;
-        const hiddenCount = allItems.filter(item => !item.visible).length;
+        // 统计数量：默认不显示分组成员；开关打开时按完整列表统计。
+        const memberIds = new Set(this.manager.settings.RIBBON_GROUPS.flatMap(group => group.members));
+        const ungroupedItems = allItems.filter(item => !memberIds.has(item.bpmUniqueId));
+        const scopedItems = this.showGroupedItems ? allItems : ungroupedItems;
+        const visibleCount = scopedItems.filter(item => item.visible).length;
+        const hiddenCount = scopedItems.filter(item => !item.visible).length;
 
         // 过滤按钮组和搜索框
         const filterBar = containerEl.createDiv("ribbon-manager-filter-bar");
@@ -171,13 +204,17 @@ export class RibbonModal extends Modal {
         // 左侧：过滤按钮组
         const filterGroup = filterBar.createDiv("ribbon-manager-filter-group");
 
-        const filters = [
-            { key: "all" as const, label: t("通用_全部_文本"), count: allItems.length, icon: "menu" },
-            { key: "visible" as const, label: t("Ribbon_显示"), count: visibleCount, icon: "eye" },
-            { key: "hidden" as const, label: t("Ribbon_隐藏"), count: hiddenCount, icon: "eye-off" }
+        const filters: Array<{ key: string; label: string; count: number; icon: string }> = [
+            { key: "all", label: t("通用_全部_文本"), count: scopedItems.length, icon: "menu" },
+            { key: "visible", label: t("Ribbon_显示"), count: visibleCount, icon: "eye" },
+            { key: "hidden", label: t("Ribbon_隐藏"), count: hiddenCount, icon: "eye-off" },
+            ...this.manager.settings.RIBBON_GROUPS.map(group => ({
+                key: `group:${group.id}`, label: group.name, count: group.members.length, icon: group.icon || "folder",
+            })),
         ];
 
-        filters.forEach((filter) => {
+        filters.forEach((filter, index) => {
+            if (index === 3 && filters.length > 3) filterGroup.createSpan({ cls: "ribbon-filter-divider" });
             const btn = new ButtonComponent(filterGroup);
             btn.buttonEl.addClass("ribbon-filter-btn");
             if (this.currentFilter === filter.key) {
@@ -196,8 +233,18 @@ export class RibbonModal extends Modal {
             });
         });
 
-        // 右侧：搜索框
-        const searchContainer = filterBar.createDiv("ribbon-manager-search-container");
+        // 右侧：显示已分组开关 + 搜索框
+        const rightSide = filterBar.createDiv("ribbon-manager-filter-right");
+        const groupedToggle = rightSide.createDiv("ribbon-manager-grouped-toggle");
+        groupedToggle.createSpan({ cls: "ribbon-manager-grouped-toggle__label", text: t("Ribbon_显示已分组") });
+        const toggle = new ToggleComponent(groupedToggle);
+        toggle.setValue(this.showGroupedItems);
+        toggle.setTooltip(t("Ribbon_显示已分组说明"));
+        toggle.onChange(value => {
+            this.showGroupedItems = value;
+            this.displayWithoutSearch();
+        });
+        const searchContainer = rightSide.createDiv("ribbon-manager-search-container");
         const searchWrapper = searchContainer.createDiv("ribbon-search-wrapper");
         const searchIconEl = searchWrapper.createDiv("ribbon-search-icon");
         setIcon(searchIconEl, "search");
@@ -215,6 +262,9 @@ export class RibbonModal extends Modal {
             this.renderFilteredList(containerEl, listContainer);
         });
 
+        if (this.showGroupedItems) {
+            containerEl.createDiv({ cls: "ribbon-manager-grouped-hint", text: t("Ribbon_显示已分组提示") });
+        }
         const listContainer = containerEl.createDiv("draggable-list-container");
         this.renderFilteredList(containerEl, listContainer);
     }
@@ -227,6 +277,7 @@ export class RibbonModal extends Modal {
         if (!this.manager.isRibbonManagerEnabled()) return;
 
         if (showToolbar) this.renderToolbar(contentEl);
+        this.renderGroups(contentEl);
         this.renderDraggableList(contentEl);
     }
 
@@ -235,11 +286,16 @@ export class RibbonModal extends Modal {
         const allItems = this.manager.settings.RIBBON_SETTINGS;
 
         // 根据过滤器筛选项目
-        let items = allItems;
+        const memberIds = new Set(this.manager.settings.RIBBON_GROUPS.flatMap(group => group.members));
+        let items = this.showGroupedItems ? allItems : allItems.filter(item => !memberIds.has(item.bpmUniqueId));
         if (this.currentFilter === "visible") {
-            items = allItems.filter(item => item.visible);
+            items = items.filter(item => item.visible);
         } else if (this.currentFilter === "hidden") {
-            items = allItems.filter(item => !item.visible);
+            items = items.filter(item => !item.visible);
+        } else if (this.currentFilter.startsWith("group:")) {
+            const group = this.manager.settings.RIBBON_GROUPS.find(entry => `group:${entry.id}` === this.currentFilter);
+            if (group) items = allItems.filter(item => group.members.includes(item.bpmUniqueId));
+            else this.currentFilter = "all";
         }
 
         // 根据搜索词过滤
@@ -291,6 +347,15 @@ export class RibbonModal extends Modal {
                 text: item.visible ? t("管理器_状态_显示中") : t("管理器_状态_已隐藏"),
                 cls: `ribbon-manager-item-state ${item.visible ? "is-visible" : "is-hidden"}`
             });
+            const groupOfItem = this.manager.settings.RIBBON_GROUPS.find(group => group.members.includes(item.bpmUniqueId));
+            if (groupOfItem) {
+                itemEl.addClass("is-grouped-item");
+                const chip = titleLine.createSpan({ cls: "ribbon-manager-grouped-chip" });
+                setIcon(chip.createSpan("ribbon-manager-grouped-chip__icon"), groupOfItem.icon || "folder");
+                chip.createSpan({ text: groupOfItem.name });
+            } else if (item.bpmUniqueId.startsWith(RIBBON_GROUP_ITEM_PREFIX)) {
+                titleLine.createSpan({ cls: "ribbon-manager-grouped-chip", text: t("Ribbon_分组入口") });
+            }
 
             const controlBar = setting.controlEl.createDiv({ cls: "ribbon-manager-control-bar" });
 
@@ -307,18 +372,32 @@ export class RibbonModal extends Modal {
                     this.displayWithoutSearch();
                 });
 
-            setting.addDropdown(dropdown => {
+            if (!item.bpmUniqueId.startsWith(RIBBON_GROUP_ITEM_PREFIX)) setting.addDropdown(dropdown => {
                 dropdown.addOption('', t('Ribbon_未分组'));
                 for (const group of this.manager.settings.RIBBON_GROUPS) dropdown.addOption(group.id, group.name);
                 dropdown.setValue(this.manager.settings.RIBBON_GROUPS.find(group => group.members.includes(item.bpmUniqueId))?.id ?? '');
                 dropdown.onChange(id => {
                     for (const group of this.manager.settings.RIBBON_GROUPS) {
                         group.members = group.members.filter(member => member !== item.bpmUniqueId);
+                        if (group.memberOrders) delete group.memberOrders[item.bpmUniqueId];
                     }
                     const group = this.manager.settings.RIBBON_GROUPS.find(entry => entry.id === id);
-                    if (group) group.members.push(item.bpmUniqueId);
+                    if (group) {
+                        group.members.push(item.bpmUniqueId);
+                        const maxOrder = Math.max(-1, ...Object.values(group.memberOrders || {}));
+                        group.memberOrders = { ...(group.memberOrders || {}), [item.bpmUniqueId]: maxOrder + 1 };
+                        // 分组入口落在最靠前的成员位置，而不是永远追加到末尾。
+                        this.manager.syncRibbonGroupItems();
+                        const groupItem = this.manager.settings.RIBBON_SETTINGS.find(entry =>
+                            entry.bpmUniqueId === `${RIBBON_GROUP_ITEM_PREFIX}${group.id}`);
+                        const memberItem = this.manager.settings.RIBBON_SETTINGS.find(entry => entry.bpmUniqueId === item.bpmUniqueId);
+                        if (groupItem && memberItem) {
+                            groupItem.order = Math.min(groupItem.order, memberItem.order);
+                        }
+                    }
                     void this.manager.saveSettings();
                     this.manager.applyRibbonSettings();
+                    this.displayWithoutSearch();
                 });
             });
 

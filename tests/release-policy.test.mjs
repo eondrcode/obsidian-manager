@@ -66,3 +66,11 @@ test('version mode also defers missing dates and honors valid age boundaries', (
     config.latestPublishedAt = '2026-10-25T00:00:00Z';
     assert.equal(source.sourceHasVersionUpdate(config), true);
 });
+
+test('empty release lists with a known remote version are deferred, not updated', () => {
+    const config = settings({ latestVersion: '1.1.0', latestReleaseTag: '1.1.0' });
+    source.syncSourceReleaseCheck(config, [], '1.0.0');
+    assert.equal(config.deferredPublicationDate, true);
+    assert.equal(source.sourceHasReleaseUpdate(config), false);
+    assert.equal(source.sourceHasVersionUpdate(config), false);
+});

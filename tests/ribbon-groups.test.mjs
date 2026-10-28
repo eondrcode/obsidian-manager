@@ -3,13 +3,18 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
 const menuItems = [];
+globalThis.activeDocument = { createDocumentFragment() { return { createSpan() { return {}; } }; } };
 class Menu {
     addItem(render) {
         const item = { setTitle(value) { this.title = value; return this; },
-            setIcon(value) { this.icon = value; return this; }, onClick(callback) { this.click = callback; return this; } };
+            setIcon(value) { this.icon = value; return this; },
+            setDisabled(value) { this.disabled = value; return this; },
+            setIsLabel(value) { this.isLabel = value; return this; },
+            onClick(callback) { this.click = callback; return this; } };
         render(item);
         menuItems.push(item);
     }
+    addSeparator() {}
     showAtMouseEvent() {}
 }
 const bundle = await build({ entryPoints: ['src/manager/ribbon-groups.ts'], bundle: true, platform: 'node',

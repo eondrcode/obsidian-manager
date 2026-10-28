@@ -163,8 +163,8 @@ body.theme-dark {
     padding: 12px 14px;
     margin-bottom: 8px;
     background: var(--background-secondary);
-    content-visibility: auto;
-    contain-intrinsic-size: auto 96px;
+    /* content-visibility:auto 会让卡片内容仍被绘制却不参与命中测试，
+       导致淡化的禁用卡片无法点击（#83）；不要恢复这两行。 */
 }
 
 .manager-bar__action {
@@ -14267,4 +14267,192 @@ body.theme-dark .manager-transfer-segment[data-state="active"]:hover {
     gap: 8px;
     border: 0;
     padding: 0;
+}
+
+/* Ribbon 分组编辑区：嵌入式 Ribbon 页也显示。 */
+.ribbon-manager-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+    padding: 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    background: var(--background-secondary);
+}
+
+.manager-container.manager-container--main .ribbon-manager-groups > .setting-item,
+.manager-container.manager-container--main .ribbon-manager-groups > .setting-item:first-child:not(.setting-item-heading) {
+    padding: 8px 10px;
+    border: 0;
+}
+
+/* Ribbon 分组：筛选分隔线、可收起的分组编辑区、图标选择器间距。 */
+.ribbon-manager-filter-group {
+    flex-wrap: wrap;
+    row-gap: 6px;
+}
+
+.ribbon-filter-divider {
+    width: 1px;
+    align-self: stretch;
+    margin: 4px 2px;
+    background: var(--background-modifier-border);
+}
+
+.ribbon-manager-groups__body {
+    display: flex;
+    flex-direction: column;
+}
+
+.ribbon-group-icon-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ribbon-group-icon-option__icon {
+    display: inline-flex;
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.ribbon-group-icon-option__icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.ribbon-group-icon-option__label {
+    min-width: 0;
+}
+
+/* 分组编辑：紧凑网格，每项约 1/4 行；图标在名称输入框左侧。 */
+.ribbon-group-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 6px;
+    width: 100%;
+}
+
+.ribbon-group-card {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 2px 4px 2px 2px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary);
+}
+
+.ribbon-group-card .extra-setting-button {
+    flex: 0 0 28px;
+    width: 28px;
+    height: 28px;
+}
+
+.ribbon-group-card__name {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    height: 28px;
+}
+
+/* 分组网格固定四列（约 1/4 行），窄宽度降为两列。 */
+.ribbon-group-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 720px) {
+    .ribbon-group-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.ribbon-manager-groups__empty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.ribbon-manager-groups__empty-icon {
+    display: inline-flex;
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.ribbon-manager-groups__empty-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* 显示已分组开关、分组项样式与提示。 */
+.ribbon-manager-filter-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.ribbon-manager-grouped-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.ribbon-manager-grouped-hint {
+    margin: -8px 0 10px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.draggable-item.is-grouped-item {
+    border-left: 3px dashed color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+    background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-secondary));
+}
+
+.ribbon-manager-grouped-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border: 1px dashed color-mix(in srgb, var(--interactive-accent) 45%, var(--background-modifier-border));
+    border-radius: 999px;
+    color: var(--text-muted);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.ribbon-manager-grouped-chip__icon {
+    display: inline-flex;
+    width: 12px;
+    height: 12px;
+}
+
+.ribbon-manager-grouped-chip__icon svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* 分组菜单头部：强调色并与图标垂直居中。 */
+.menu-item:has(.bpm-group-menu-title) {
+    align-items: center;
+}
+
+.menu-item:has(.bpm-group-menu-title) .menu-item-icon {
+    color: var(--text-accent);
+}
+
+.bpm-group-menu-title {
+    color: var(--text-accent);
+    font-weight: 650;
+    line-height: 1.2;
 }

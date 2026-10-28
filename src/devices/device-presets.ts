@@ -131,7 +131,20 @@ export function normalizeRibbonGroups(value: unknown): RibbonGroup[] {
             members.add(member);
             return true;
         }) : [];
-        return [{ id: raw.id, name: raw.name.trim(), icon: raw.icon, members: accepted }];
+        const rawOrders = isRecord(raw.memberOrders) ? raw.memberOrders : {};
+        const memberOrders: Record<string, number> = {};
+        let maxOrder = -1;
+        for (const member of accepted) {
+            const value = rawOrders[member];
+            if (typeof value === 'number' && Number.isFinite(value)) {
+                memberOrders[member] = value;
+                maxOrder = Math.max(maxOrder, value);
+            }
+        }
+        for (const member of accepted) {
+            if (memberOrders[member] === undefined) memberOrders[member] = ++maxOrder;
+        }
+        return [{ id: raw.id, name: raw.name.trim(), icon: raw.icon, members: accepted, memberOrders }];
     });
 }
 export function cloneAppearance(appearance: ScopedAppearance): ScopedAppearance {
