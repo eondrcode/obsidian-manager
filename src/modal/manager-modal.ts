@@ -379,8 +379,8 @@ export class ManagerModal extends Modal {
     private modalPageEl?: HTMLElement;
     private readonly renderBatchSize = 80;
     private readonly desktopPages: ManagerPage[] = SHARED_VAULTS_ENABLED
-        ? ["plugins", "devices", "themes", "install", "sources", "transfer", "vaults", "ribbon", "troubleshoot"]
-        : ["plugins", "devices", "themes", "install", "sources", "transfer", "ribbon", "troubleshoot"];
+        ? ["plugins", "themes", "devices", "install", "sources", "transfer", "vaults", "ribbon", "troubleshoot"]
+        : ["plugins", "themes", "devices", "install", "sources", "transfer", "ribbon", "troubleshoot"];
 
     private get pageEl(): HTMLElement {
         return this.modalPageEl ?? this.contentEl;
@@ -775,6 +775,8 @@ export class ManagerModal extends Modal {
         this.statusMultiSelect?.setValues(value === "all" ? [] : [value]);
         this.statusOperatorControl?.setValue("contains");
         this.syncPageChrome();
+        // 移动端顶栏随页面重建：从设备页等非插件页点统计筛选时，需要补回搜索与过滤区。
+        if (Platform.isMobileApp) this.showHeadMobile();
         void this.reloadShowData();
     }
 
@@ -2307,8 +2309,8 @@ export class ManagerModal extends Modal {
             return tab;
         };
         this.pluginTabEl = createTab("plugins", t("管理器_Tab_插件管理"), "blocks");
-        this.deviceTabEl = createTab("devices", t("设备_标题"), "monitor-smartphone");
         this.themeTabEl = createTab("themes", t("外观总览_Tab_标题"), "palette");
+        this.deviceTabEl = createTab("devices", t("设备_标题"), "monitor-smartphone");
         this.installTabEl = createTab("install", t("管理器_Tab_安装来源"), "download");
         this.sourcesTabEl = undefined;
         this.transferTabEl = createTab("transfer", t("导入导出_Tab_标题"), "archive-restore", t("导入导出_Tab_说明"));
@@ -8086,7 +8088,8 @@ export class ManagerModal extends Modal {
     private async openAsync() {
         await this.showHead();
         await this.showData();
-        this.searchEl.inputEl.focus();
+        // 移动端不自动聚焦搜索框：会弹出软键盘挡住半个管理器。
+        if (!Platform.isMobileApp) this.searchEl.inputEl.focus();
         this.applyEditingStyle();
         // [功能] ctrl+f聚焦
         activeDocument.addEventListener("keydown", (event) => {

@@ -213,6 +213,16 @@ The three scoped tabs — **Plugins**, **Appearance** and **Ribbon** — carry t
 
 Device names and assignments sync with plugin data. Names default to the desktop hostname or the mobile model and can be edited. The local identity stays in Obsidian's device-local storage. The device type is detected from Obsidian's platform information and can be corrected manually or with **Detect again from platform**. When the platform identifier refreshes (sync system or software update), the old device record is migrated to the new identifier and the locally stored preset choice is kept; if that preset was deleted elsewhere, the device falls back to the first preset of its type and says so. There is no per-device configuration: mobile has no stable long-lived device identifier, so per-device forks cannot be reconciled after syncing. To tell two devices of the same type apart, create multiple named presets and pick one on each device. Reinstalling or clearing local data can create a new device record; just pick a preset again. Other devices apply synced changes after reloading the plugin. Concurrent edits follow your sync provider's conflict handling; there is no live cross-device merge.
 
+### Why a mobile device can appear more than once
+
+Mobile platforms do not give web or plugin code a stable hardware identifier:
+
+- Obsidian may not expose Capacitor's Device bridge at all. When it does, `getId()` is an app/vendor-scoped value, not a physical-device serial; it can change after clearing app data, reinstalling the app, moving to a new WebView data directory, or an OS/vendor migration.
+- The fallback is a UUID kept in Obsidian's device-local storage. It survives normal restarts, reloads and software updates, but not clearing app storage or reinstalling the app.
+- Device-local storage belongs to one installation, not to the physical device, and is never synced.
+- BPM stores only a hash of the platform identifier, uses it for the device list and to remember this installation's preset choice, and never keys configuration by device id. A duplicate or removed record therefore does not change presets, their contents, or which preset another installation uses.
+- To treat two installations as the same device, rename or remove the stale record manually and pick the same named preset on each installation. Per-device configuration is intentionally absent because it cannot be reconciled reliably after syncing.
+
 Native Obsidian plugins can start before the manager applies a preset. Use the existing delayed-start mode and startup takeover if you need the manager to control startup ordering. Missing plugins and unavailable Ribbon icons retain their saved choices. Reorder Ribbon items using the up/down buttons on touch devices.
 
 Validation: `bun run build`, `node --test tests/device-management.test.mjs`. UI validation uses an isolated empty vault; physical touch scrolling still requires mobile-device testing.

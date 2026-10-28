@@ -279,6 +279,19 @@ body.theme-dark {
     gap: 6px;
 }
 
+/* 平板宽度足够：普通设置行恢复左右排布（插件卡片仍保持纵向堆叠） */
+body.is-tablet .manager-container--mobile .setting-item:not(.manager-item) {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+body.is-tablet .manager-container--mobile .setting-item:not(.manager-item) > .setting-item-control {
+    width: auto;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+}
+
 .manager-container--mobile .manager-item {
     flex-direction: column;
     align-items: flex-start;
@@ -327,6 +340,11 @@ body.theme-dark {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+/* 平板卡片更宽：标题行沿用桌面端的靠左排布，避免图标、名称和徽标被摊到两端 */
+body.is-tablet .manager-container--mobile .manager-item__name-container {
+    justify-content: flex-start;
 }
 
 .manager-container--mobile .manager-item__description-container {
@@ -8786,7 +8804,9 @@ body.theme-dark {
     transform: translateY(1px);
 }
 
-.ribbon-manager-control-visibility button {
+/* 平板的 app.css 给 button:not(.clickable-icon) 加了内边距，图标按钮会被挤成 0 宽，需压过它 */
+.ribbon-manager-control-visibility button,
+body.is-tablet .ribbon-manager-control-visibility button {
     appearance: none;
     background: none;
     border: none;
@@ -8803,6 +8823,7 @@ body.theme-dark {
 
 .ribbon-manager-control-visibility svg,
 .ribbon-manager-control-drag svg {
+    flex: 0 0 auto;
     width: 17px;
     height: 17px;
     stroke-width: 2.2;
@@ -12581,13 +12602,19 @@ body.theme-dark .manager-transfer-segment[data-state="active"]:hover {
 .manager-container.manager-container--main .manager-modal-page.manager-item-container.manager-plugin-overview--two-column > .manager-bulk-bar-host,
 .manager-container.manager-container--main .manager-modal-page.manager-item-container.manager-plugin-overview--two-column > .manager-plugin-separator,
 .manager-container.manager-container--main .manager-modal-page.manager-item-container.manager-plugin-overview--two-column > .manager-plugin-separator-editor,
+.manager-container.manager-container--main .manager-modal-page.manager-item-container.manager-plugin-overview--two-column > .manager-plugin-scope,
 .manager-container.manager-container--main .manager-modal-page.manager-item-container.manager-plugin-overview--two-column > .manager-plugin-page__empty {
     grid-column: 1 / -1;
 }
 
-.manager-container.manager-container--main.manager-container--mobile .manager-modal-page.manager-item-container.manager-plugin-overview--two-column {
+/* 双列样式仅在手机退化为单列列表；平板宽度足够，保留两列网格 */
+body.is-phone .manager-container.manager-container--main.manager-container--mobile .manager-modal-page.manager-item-container.manager-plugin-overview--two-column {
     display: flex;
     flex-direction: column;
+    /* 单列时卡片需铺满宽度，否则按内容收缩、右侧留白 */
+    grid-template-columns: none;
+    align-content: normal;
+    align-items: stretch;
 }
 
 .manager-container .manager-plugin-card__body.manager-display-block:not(.manager-plugin-card__body--empty) {
@@ -14287,10 +14314,21 @@ body.theme-dark .manager-transfer-segment[data-state="active"]:hover {
     border: 0;
 }
 
-/* Ribbon 分组：筛选分隔线、可收起的分组编辑区、图标选择器间距。 */
+/* Ribbon 分组：筛选分组横向滚动，右侧工具与列表不被挤出可视区。 */
 .ribbon-manager-filter-group {
-    flex-wrap: wrap;
-    row-gap: 6px;
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+}
+
+.ribbon-manager-filter-group > .ribbon-filter-btn,
+.ribbon-manager-filter-group > .ribbon-filter-divider {
+    flex: 0 0 auto;
 }
 
 .ribbon-filter-divider {
@@ -14394,6 +14432,7 @@ body.theme-dark .manager-transfer-segment[data-state="active"]:hover {
 /* 显示已分组开关、分组项样式与提示。 */
 .ribbon-manager-filter-right {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
     gap: 10px;
     min-width: 0;
