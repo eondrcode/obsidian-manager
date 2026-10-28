@@ -28,6 +28,8 @@ const { default: Manager } = await load('src/main.ts');
 const { DEFAULT_SETTINGS } = await load('src/settings/data.ts');
 const record = (id, enabled, tags = []) => ({ id, name: id, desc: '', group: '', tags, enabled, delay: '', note: '' });
 const ribbon = { bpmUniqueId: 'a', name: 'A', icon: 'star', visible: true, order: 0, ribbonIdMap: { en: 'a' } };
+const firstOf = (settings, type) => settings.DEVICE_MANAGEMENT.presets[type][0];
+const keyOf = (settings, type) => `preset:${firstOf(settings, type).id}`;
 async function fixture() {
     platform.isMobileApp = false;
     platform.isTablet = false;
@@ -52,19 +54,41 @@ async function fixture() {
     manager.refreshRibbonManagerFeature = async () => { calls.push(['ribbon']); };
     manager.devices = new DeviceManager(manager);
     await manager.devices.initialize();
-    return { manager, settings, calls };
+    return { manager, settings, calls, getLocal: () => local, setLocal: (value) => { local = value; } };
 }
 
-test('exactly three independent presets migrate without changing the current configuration', async () => {
+test('three types migrate into at least one independent named preset each', async () => {
     const { settings } = await fixture();
     const data = settings.DEVICE_MANAGEMENT;
     assert.equal(data.enabled, false);
     assert.deepEqual(Object.keys(data.presets), ['computer', 'tablet', 'phone']);
-    data.presets.tablet.plugins.a.enabled = false;
-    data.presets.tablet.ribbon[0].ribbonIdMap.en = 'changed';
-    assert.equal(data.presets.computer.plugins.a.enabled, true);
+    for (const type of ['computer', 'tablet', 'phone']) {
+        assert.equal(data.presets[type].length, 1);
+        assert.ok(data.presets[type][0].id);
+        assert.ok(data.presets[type][0].name);
+    }
+    firstOf(settings, 'tablet').plugins.a.enabled = false;
+    firstOf(settings, 'tablet').ribbon[0].ribbonIdMap.en = 'changed';
+    assert.equal(firstOf(settings, 'computer').plugins.a.enabled, true);
     assert.equal(settings.RIBBON_SETTINGS[0].ribbonIdMap.en, 'a');
-    assert.equal(data.presets.phone.ribbon[0].ribbonIdMap.en, 'a');
+    assert.equal(firstOf(settings, 'phone').ribbon[0].ribbonIdMap.en, 'a');
+});
+
+test('legacy single-preset data is wrapped into arrays without changing settings', async () => {
+    const { settings } = await fixture();
+    const legacy = {
+        enabled: false,
+        presets: {
+            computer: { plugins: { a: { enabled: false, delay: 'later' } }, ribbon: [ribbon], ribbonEnabled: true, appearance: { theme: 't', snippets: {} } },
+            tablet: {}, phone: {},
+        },
+        devices: [],
+    };
+    const normalized = model.normalizeDeviceManagement(legacy, model.snapshotPreset(settings));
+    assert.equal(normalized.presets.computer.length, 1);
+    assert.equal(normalized.presets.computer[0].plugins.a.enabled, false);
+    assert.equal(normalized.presets.computer[0].appearance.theme, 't');
+    assert.equal(normalized.presets.tablet.length, 1);
 });
 
 test('platform fallback distinguishes tablets, phones and desktop independently of device IDs', async () => {
@@ -73,37 +97,37 @@ test('platform fallback distinguishes tablets, phones and desktop independently 
     assert.equal(model.detectDeviceType({ isMobileApp: true, isTablet: false }), 'phone');
 });
 
-test('synced unknown data cannot introduce extra presets or invalid ribbon entries', async () => {
+test('synced unknown data cannot introduce extra types or invalid ribbon entries', async () => {
     const { settings } = await fixture();
     const normalized = model.normalizeDeviceManagement({ enabled: 'yes', presets: {
         car: {}, phone: { plugins: { x: { enabled: 'yes' } }, ribbon: [null, {}, ribbon, ribbon, { ...ribbon, order: Infinity }] },
     }, devices: [null, { id: '1', name: 'A', type: 'car' }, { id: '2', name: 'B', type: 'phone' }] }, model.snapshotPreset(settings));
     assert.equal(normalized.enabled, false);
     assert.equal(Object.keys(normalized.presets).length, 3);
-    assert.equal(normalized.presets.phone.plugins.x, undefined);
-    assert.equal(normalized.presets.phone.ribbon.length, 1);
+    assert.equal(normalized.presets.phone[0].plugins.x, undefined);
+    assert.equal(normalized.presets.phone[0].ribbon.length, 1);
     assert.equal(normalized.devices.length, 1);
 });
 
 test('saving a remote preset never changes this device and keeps remote-only plugin choices', async () => {
     const { manager, settings, calls } = await fixture();
     settings.DEVICE_MANAGEMENT.enabled = true;
-    const phone = model.clonePreset(settings.DEVICE_MANAGEMENT.presets.phone);
+    const phone = model.clonePreset(firstOf(settings, 'phone'));
     phone.plugins.a.enabled = false;
     phone.plugins.remote = { enabled: true, delay: 'later' };
     phone.ribbon[0].visible = false;
-    await manager.devices.savePreset('phone', phone);
+    await manager.devices.savePresetById(phone.id, phone);
     assert.equal(settings.Plugins.find(plugin => plugin.id === 'a').enabled, true);
     assert.equal(settings.RIBBON_SETTINGS[0].visible, true);
     assert.equal(calls.some(([action]) => action === 'disable'), false);
     await manager.saveSettings();
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.phone.plugins.remote.enabled, true);
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.phone.ribbon[0].visible, false);
+    assert.equal(firstOf(settings, 'phone').plugins.remote.enabled, true);
+    assert.equal(firstOf(settings, 'phone').ribbon[0].visible, false);
 });
 
 test('current preset reconciles runtime state, protects self/ignored plugins and updates Ribbon', async () => {
     const { manager, settings, calls } = await fixture();
-    const current = settings.DEVICE_MANAGEMENT.presets.computer;
+    const current = firstOf(settings, 'computer');
     current.plugins.self.enabled = false;
     current.plugins.ignored.enabled = false;
     current.plugins.a.enabled = false;
@@ -116,24 +140,26 @@ test('current preset reconciles runtime state, protects self/ignored plugins and
     assert.equal(settings.RIBBON_SETTINGS[0].visible, false);
 });
 
-test('manual type reassignment saves the old preset and applies the new one', async () => {
+test('manual type reassignment saves the old preset, rebinds and applies the new type', async () => {
     const { manager, settings } = await fixture();
     await manager.devices.setEnabled(true);
     settings.RIBBON_SETTINGS[0].visible = false;
     await manager.devices.assign(manager.devices.id, 'tablet');
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.computer.ribbon[0].visible, false);
+    assert.equal(firstOf(settings, 'computer').ribbon[0].visible, false);
     assert.equal(settings.RIBBON_SETTINGS[0].visible, true);
+    assert.equal(manager.devices.boundPresetId, firstOf(settings, 'tablet').id);
     const restarted = new DeviceManager(manager);
     await restarted.initialize();
     assert.equal(restarted.type, 'tablet');
     assert.equal(restarted.id, manager.devices.id);
+    assert.equal(restarted.boundPresetId, firstOf(settings, 'tablet').id);
 });
 
 test('mobile never enables a desktop-only plugin, but preserves its configured intent', async () => {
     const { manager, settings, calls } = await fixture();
     platform.isMobileApp = true;
     manager.appPlugins.manifests.b.isDesktopOnly = true;
-    settings.DEVICE_MANAGEMENT.presets.computer.plugins.b.enabled = true;
+    firstOf(settings, 'computer').plugins.b.enabled = true;
     await manager.devices.setEnabled(true);
     assert.equal(calls.some(([action, id]) => action === 'enable' && id === 'b'), false);
     assert.equal(settings.Plugins.find(plugin => plugin.id === 'b').enabled, true);
@@ -153,42 +179,42 @@ test('delayed presets remove native autostart and reuse the existing queue', asy
 
 test('runtime failures are surfaced, retain saved intent and release the operation lock', async () => {
     const { manager, settings } = await fixture();
-    settings.DEVICE_MANAGEMENT.presets.computer.plugins.b.enabled = true;
+    firstOf(settings, 'computer').plugins.b.enabled = true;
     manager.appPlugins.enablePluginAndSave = async () => { throw new Error('fixture failure'); };
     await assert.rejects(manager.devices.setEnabled(true), /设备_插件失败b/);
     assert.equal(manager.devices.busy, false);
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.computer.plugins.b.enabled, true);
+    assert.equal(firstOf(settings, 'computer').plugins.b.enabled, true);
 });
 
-test('ordinary saves only update the active preset and disabling management preserves runtime state', async () => {
+test('ordinary saves only update the bound preset and disabling management preserves runtime state', async () => {
     const { manager, settings, calls } = await fixture();
     await manager.devices.setEnabled(true);
     settings.Plugins.find(plugin => plugin.id === 'a').enabled = false;
     await manager.saveSettings();
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.computer.plugins.a.enabled, false);
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.phone.plugins.a.enabled, true);
+    assert.equal(firstOf(settings, 'computer').plugins.a.enabled, false);
+    assert.equal(firstOf(settings, 'phone').plugins.a.enabled, true);
     calls.length = 0;
     await manager.devices.setEnabled(false);
     assert.deepEqual(calls, [['save']]);
 });
 
-test('failed persistence does not reassign this device or overwrite its saved preset', async () => {
+test('failed persistence does not rebind or overwrite the saved preset', async () => {
     const { manager, settings } = await fixture();
     await manager.devices.setEnabled(true);
-    const before = structuredClone(settings.DEVICE_MANAGEMENT.presets.computer);
+    const before = structuredClone(firstOf(settings, 'computer'));
     manager.saveData = async () => { throw new Error('disk full'); };
     await assert.rejects(manager.devices.assign(manager.devices.id, 'tablet'), /disk full/);
     assert.equal(manager.devices.type, 'computer');
     assert.equal(settings.DEVICE_MANAGEMENT.devices[0].type, 'computer');
     const draft = model.clonePreset(before);
     draft.plugins.a.enabled = false;
-    await assert.rejects(manager.devices.savePreset('computer', draft), /disk full/);
-    assert.deepEqual(settings.DEVICE_MANAGEMENT.presets.computer, before);
+    await assert.rejects(manager.devices.savePresetById(before.id, draft), /disk full/);
+    assert.deepEqual(firstOf(settings, 'computer'), before);
     await assert.rejects(manager.devices.setEnabled(false), /disk full/);
     assert.equal(settings.DEVICE_MANAGEMENT.enabled, true);
 });
 
-test('startup application persists newly discovered Ribbon icons in the active preset', async () => {
+test('startup application persists newly discovered Ribbon icons in the bound preset', async () => {
     const { manager, settings } = await fixture();
     settings.DEVICE_MANAGEMENT.enabled = true;
     manager.refreshRibbonManagerFeature = async () => {
@@ -196,8 +222,8 @@ test('startup application persists newly discovered Ribbon icons in the active p
         await manager.saveSettings();
     };
     await manager.devices.apply();
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.computer.ribbon.length, 2);
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.phone.ribbon.length, 1);
+    assert.equal(firstOf(settings, 'computer').ribbon.length, 2);
+    assert.equal(firstOf(settings, 'phone').ribbon.length, 1);
 });
 
 test('concurrent device operations are rejected while an application is in progress', async () => {
@@ -210,78 +236,88 @@ test('concurrent device operations are rejected while an application is in progr
     assert.equal(manager.devices.busy, false);
 });
 
-test('per-device overrides inherit untouched categories and survive later type changes', async () => {
+test('a type can hold several presets and edits stay in the selected one', async () => {
     const { manager, settings } = await fixture();
     await manager.devices.setEnabled(true);
-    const data = settings.DEVICE_MANAGEMENT;
-    await manager.devices.selectScope('themes', `device:${manager.devices.id}`);
-    await manager.devices.writeAppearance('themes', { theme: 'device-theme' });
-    const device = data.devices.find(item => item.id === manager.devices.id);
-    assert.equal(device.overrides.appearance.theme, 'device-theme');
-    assert.equal(device.overrides.ribbon, undefined);
-    assert.equal(device.overrides.sources, undefined);
-    data.presets.computer.appearance.theme = 'type-theme';
-    assert.equal(manager.devices.scopeAppearance('themes').theme, 'device-theme');
-    await manager.devices.selectScope('themes', 'type:computer');
-    assert.equal(manager.devices.scopeAppearance('themes').theme, 'type-theme');
+    const firstId = firstOf(settings, 'computer').id;
+    const newId = await manager.devices.createPreset('computer');
+    assert.ok(newId && newId !== firstId);
+    assert.equal(settings.DEVICE_MANAGEMENT.presets.computer.length, 2);
+    await manager.devices.selectScope('themes', `preset:${newId}`);
+    await manager.devices.writeAppearance('themes', { theme: 'second-theme' });
+    const second = manager.devices.presetById(newId).preset;
+    assert.equal(second.appearance.theme, 'second-theme');
+    assert.notEqual(firstOf(settings, 'computer').appearance.theme, 'second-theme');
+    assert.equal(manager.devices.boundPresetId, firstId);
 });
 
-test('projecting a foreign scope rewrites memory but never the persisted live values', async () => {
+test('binding another preset changes what this device applies and is remembered', async () => {
     const { manager, settings } = await fixture();
     await manager.devices.setEnabled(true);
-    settings.DEVICE_MANAGEMENT.presets.phone.plugins.a.enabled = false;
-    await manager.devices.selectScope('plugins', 'type:phone');
+    const newId = await manager.devices.createPreset('computer');
+    manager.devices.presetById(newId).preset.plugins.a.enabled = false;
+    await manager.devices.bindPreset(newId);
+    assert.equal(manager.devices.boundPresetId, newId);
+    const restarted = new DeviceManager(manager);
+    await restarted.initialize();
+    assert.equal(restarted.boundPresetId, newId);
+});
+
+test('projecting a foreign preset rewrites memory but never the persisted live values', async () => {
+    const { manager, settings } = await fixture();
+    await manager.devices.setEnabled(true);
+    firstOf(settings, 'phone').plugins.a.enabled = false;
+    await manager.devices.selectScope('plugins', keyOf(settings, 'phone'));
     assert.equal(settings.Plugins.find(plugin => plugin.id === 'a').enabled, false);
     assert.equal(manager.devices.persistedSettings().Plugins.find(plugin => plugin.id === 'a').enabled, true);
     await manager.devices.closeProjection();
     assert.equal(settings.Plugins.find(plugin => plugin.id === 'a').enabled, true);
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.phone.plugins.a.enabled, false);
+    assert.equal(firstOf(settings, 'phone').plugins.a.enabled, false);
 });
 
-test('ribbon edits while projecting a foreign scope land in that scope only', async () => {
+test('ribbon edits while projecting a foreign preset land in that preset only', async () => {
     const { manager, settings } = await fixture();
     await manager.devices.setEnabled(true);
     settings.RIBBON_SETTINGS[0].visible = true;
-    await manager.devices.selectScope('ribbon', 'type:phone');
+    await manager.devices.selectScope('ribbon', keyOf(settings, 'phone'));
     settings.RIBBON_SETTINGS[0].visible = false;
     await manager.saveSettings();
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.phone.ribbon[0].visible, false);
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.computer.ribbon[0].visible, true);
+    assert.equal(firstOf(settings, 'phone').ribbon[0].visible, false);
+    assert.equal(firstOf(settings, 'computer').ribbon[0].visible, true);
     assert.equal(manager.devices.persistedSettings().RIBBON_SETTINGS[0].visible, true);
     await manager.devices.closeProjection();
     assert.equal(settings.RIBBON_SETTINGS[0].visible, true);
 });
 
-test('plugin edits under a foreign type stay out of runtime and land in that preset', async () => {
+test('plugin edits under a foreign preset stay out of runtime and land in that preset', async () => {
     const { manager, settings } = await fixture();
     await manager.devices.setEnabled(true);
-    await manager.devices.selectScope('plugins', 'type:phone');
+    await manager.devices.selectScope('plugins', keyOf(settings, 'phone'));
     settings.Plugins.find(plugin => plugin.id === 'a').enabled = false;
     await manager.saveSettings();
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.phone.plugins.a.enabled, false);
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.computer.plugins.a.enabled, true);
+    assert.equal(firstOf(settings, 'phone').plugins.a.enabled, false);
+    assert.equal(firstOf(settings, 'computer').plugins.a.enabled, true);
     assert.equal(manager.devices.persistedSettings().Plugins.find(plugin => plugin.id === 'a').enabled, true);
     await manager.devices.closeProjection();
     assert.equal(settings.Plugins.find(plugin => plugin.id === 'a').enabled, true);
 });
 
-test('the current device scope stores only the plugins that differ from its type', async () => {
+test('a type keeps at least one preset and deleting the bound preset rebinds', async () => {
     const { manager, settings } = await fixture();
     await manager.devices.setEnabled(true);
-    await manager.devices.selectScope('plugins', `device:${manager.devices.id}`);
-    settings.Plugins.find(plugin => plugin.id === 'a').enabled = false;
-    await manager.saveSettings();
-    const device = settings.DEVICE_MANAGEMENT.devices[0];
-    assert.equal(device.overrides.plugins.a.enabled, false);
-    assert.equal(device.overrides.plugins.b, undefined);
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.computer.plugins.a.enabled, true);
-    assert.equal(settings.Plugins.find(plugin => plugin.id === 'a').enabled, false);
+    const only = firstOf(settings, 'computer');
+    await assert.rejects(manager.devices.deletePreset(only.id), /设备_至少保留预设/);
+    const newId = await manager.devices.createPreset('computer');
+    await manager.devices.bindPreset(newId);
+    await manager.devices.deletePreset(newId);
+    assert.equal(settings.DEVICE_MANAGEMENT.presets.computer.length, 1);
+    assert.equal(manager.devices.boundPresetId, only.id);
 });
 
 test('group and tag edits stay global while delay stays scoped', async () => {
     const { manager, settings } = await fixture();
     await manager.devices.setEnabled(true);
-    await manager.devices.selectScope('plugins', 'type:phone');
+    await manager.devices.selectScope('plugins', keyOf(settings, 'phone'));
     const record = settings.Plugins.find(plugin => plugin.id === 'a');
     record.group = 'shared-group';
     record.tags = ['shared-tag'];
@@ -290,6 +326,50 @@ test('group and tag edits stay global while delay stays scoped', async () => {
     const persisted = manager.devices.persistedSettings().Plugins.find(plugin => plugin.id === 'a');
     assert.equal(persisted.group, 'shared-group');
     assert.deepEqual(persisted.tags, ['shared-tag']);
-    assert.equal(settings.DEVICE_MANAGEMENT.presets.phone.plugins.a.delay, 'later');
-    assert.deepEqual(Object.keys(settings.DEVICE_MANAGEMENT.presets.phone.plugins.a).sort(), ['delay', 'enabled']);
+    assert.equal(firstOf(settings, 'phone').plugins.a.delay, 'later');
+    assert.deepEqual(Object.keys(firstOf(settings, 'phone').plugins.a).sort(), ['delay', 'enabled']);
+});
+
+test('a refreshed platform id migrates the existing device record instead of duplicating it', async () => {
+    const { manager, settings } = await fixture();
+    const beforeId = manager.devices.id;
+    const presetId = manager.devices.boundPresetId;
+    globalThis.Capacitor = { Plugins: { Device: { getId: async () => ({ identifier: 'android-stable-id' }) } } };
+    try {
+        const restarted = new DeviceManager(manager);
+        await restarted.initialize();
+        assert.notEqual(restarted.id, beforeId);
+        assert.equal(settings.DEVICE_MANAGEMENT.devices.length, 1);
+        assert.equal(settings.DEVICE_MANAGEMENT.devices[0].id, restarted.id);
+        assert.equal(restarted.boundPresetId, presetId);
+        assert.equal(restarted.type, 'computer');
+    } finally {
+        delete globalThis.Capacitor;
+    }
+});
+
+test('a missing bound preset falls back to the first preset and notifies', async () => {
+    const { manager, setLocal, getLocal } = await fixture();
+    const local = getLocal();
+    setLocal({ ...local, presetId: 'preset-missing' });
+    notices.length = 0;
+    const restarted = new DeviceManager(manager);
+    await restarted.initialize();
+    assert.equal(restarted.boundPresetId, manager.devices.presetsFor('computer')[0].id);
+    assert.ok(notices.some(message => String(message).includes('设备_预设回退')));
+});
+
+test('new presets get unique names and binding follows the selected preset', async () => {
+    const { manager, settings } = await fixture();
+    await manager.devices.setEnabled(true);
+    const first = await manager.devices.createPreset('computer');
+    const second = await manager.devices.createPreset('computer');
+    const names = manager.devices.presetsFor('computer').map(preset => preset.name);
+    assert.equal(new Set(names).size, names.length);
+    await manager.devices.bindPreset(second);
+    assert.equal(manager.devices.boundPresetId, second);
+    assert.equal(manager.devices.selectedScopeKey('plugins'), `preset:${second}`);
+    await manager.devices.bindPreset(first);
+    assert.equal(manager.devices.selectedScopeKey('themes'), `preset:${first}`);
+    assert.equal(settings.DEVICE_MANAGEMENT.presets.computer.length, 3);
 });

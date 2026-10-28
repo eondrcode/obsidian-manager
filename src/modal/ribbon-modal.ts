@@ -124,9 +124,9 @@ export class RibbonModal extends Modal {
         const filterGroup = filterBar.createDiv("ribbon-manager-filter-group");
 
         const filters = [
-            { key: "all" as const, label: "全部", count: allItems.length, icon: "menu" },
-            { key: "visible" as const, label: "显示", count: visibleCount, icon: "eye" },
-            { key: "hidden" as const, label: "隐藏", count: hiddenCount, icon: "eye-off" }
+            { key: "all" as const, label: t("通用_全部_文本"), count: allItems.length, icon: "menu" },
+            { key: "visible" as const, label: t("Ribbon_显示"), count: visibleCount, icon: "eye" },
+            { key: "hidden" as const, label: t("Ribbon_隐藏"), count: hiddenCount, icon: "eye-off" }
         ];
 
         filters.forEach((filter) => {
@@ -155,7 +155,7 @@ export class RibbonModal extends Modal {
         setIcon(searchIconEl, "search");
 
         const searchInput = new TextComponent(searchWrapper);
-        searchInput.setPlaceholder("搜索 ribbons");
+        searchInput.setPlaceholder(t("Ribbon_搜索_占位"));
         searchInput.inputEl.addClass("ribbon-search-input");
 
         if (this.searchQuery) {

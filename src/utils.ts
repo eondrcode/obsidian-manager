@@ -46,7 +46,7 @@ class ManagerConfirmModal extends Modal {
         actionBar.addButton((button: ButtonComponent) => {
             button
                 .setCta()
-                .setButtonText(this.options.confirmText || "OK")
+                .setButtonText(this.options.confirmText || t("通用_确认_文本"))
                 .onClick(() => this.finish(true));
             button.buttonEl.focus();
         });

@@ -256,7 +256,7 @@ export default class Manager extends Plugin {
                 // 只在延迟启动且用户开启提示时显示；默认关闭。
                 if (this.settings.DELAY) {
                     const base = this.delayWaitSeconds();
-                    if (base > 0) this.showDelayWaitNotice(base + this.delayWaitExtraSeconds(), this.delayWaitMessageInfo());
+                    if (base > 0) this.showDelayWaitNotice(base + this.delayWaitExtraSeconds(), this.delayWaitMessageInfo(), this.delayWaitTemplate());
                 }
                 try {
                     if (this.settings.DEVICE_MANAGEMENT?.enabled) {
@@ -301,6 +301,8 @@ export default class Manager extends Plugin {
         // 卸载后一切延迟回调必须停手，否则会在已卸载的插件上继续操作 ribbon
         this.isUnloaded = true;
         this.delayWaitNotice?.stop();
+        // 卸载前恢复本机预设视图，避免其他预设的投影值留在内存。
+        void this.devices?.flushProjection().catch(() => { /* 卸载阶段无法提示 */ });
         this.startupTimers.forEach(handle => window.clearTimeout(handle));
         this.startupTimers.clear();
         // 打断延时启动队列：清掉休眠/让出句柄，让排空循环立即退出
@@ -1445,14 +1447,19 @@ export default class Manager extends Plugin {
      * 显示延迟启动倒计时。默认关闭：延迟启动或提示开关任一关闭都不显示。
      * info 可含 {seconds}，秒数由提示模板统一替换。
      */
-    public showDelayWaitNotice(seconds: number, info?: string): void {
+    public showDelayWaitNotice(seconds: number, info?: string, template?: string): void {
         if (!this.settings.DELAY || !this.settings.DELAY_WAIT_MESSAGE || seconds <= 0) return;
         this.delayWaitNotice ??= new DelayWaitNotice((key, vars) => this.translator.t(key, vars));
-        this.delayWaitNotice.start(seconds, info ?? this.delayWaitMessageInfo());
+        this.delayWaitNotice.start(seconds, info ?? this.delayWaitMessageInfo(), template ?? '');
     }
     private delayWaitMessageInfo(): string {
         const custom = (this.settings.DELAY_WAIT_MESSAGE_TEXT || "").trim();
         return custom || this.translator.t('延迟_等待_名称');
+    }
+    /** 自定义文案含 {seconds} 时作为完整模板使用。 */
+    private delayWaitTemplate(): string {
+        const custom = (this.settings.DELAY_WAIT_MESSAGE_TEXT || "").trim();
+        return custom.includes('{seconds}') ? custom : '';
     }
     private delayWaitExtraSeconds(): number {
         const value = Number(this.settings.DELAY_WAIT_MESSAGE_EXTRA_SECONDS);

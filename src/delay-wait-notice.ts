@@ -15,18 +15,23 @@ export class DelayWaitNotice {
     private hideTimer: number | null = null;
     private seconds = 0;
     private info = '';
+    private template = '';
     private finished = false;
 
     constructor(private readonly t: Translate) {}
 
     get running(): boolean { return this.notice !== null; }
 
-    /** 秒数是象征性变量：信息里没有 {seconds} 时自动追加。 */
-    start(seconds: number, info: string): void {
+    /**
+     * 秒数是象征性变量：template 提供时按它渲染，否则使用默认「信息 + 剩余秒数」模板。
+     * The caller supplies seconds and either an info string or a full `{seconds}` template.
+     */
+    start(seconds: number, info: string, template = ''): void {
         this.stop();
         if (seconds <= 0) return;
         this.seconds = Math.ceil(seconds);
         this.info = info.trim();
+        this.template = template.trim();
         this.finished = false;
         this.notice = new Notice(this.format(this.seconds), 0);
         this.timer = window.setInterval(() => this.tick(), 1000);
@@ -37,7 +42,9 @@ export class DelayWaitNotice {
         if (!this.notice || this.finished) return;
         this.finished = true;
         this.clearTimer();
-        this.notice.setMessage(this.t('延迟_等待_完成', { info: this.info }));
+        const stripped = this.template ? this.template.replace(/\{seconds\}/g, '').trim() : this.info;
+        const info = stripped || this.t('延迟_等待_名称');
+        this.notice.setMessage(this.t('延迟_等待_完成', { info }));
         this.hideTimer = window.setTimeout(() => this.stop(), 1200);
     }
 
@@ -66,9 +73,9 @@ export class DelayWaitNotice {
     }
 
     private format(seconds: number): string {
-        // 信息里也可以写 {seconds}；模板里的秒数由 translate 统一替换。
-        const info = this.info.replace(/\{seconds\}/g, `${seconds}`);
-        return this.t('延迟_等待_信息', { info, seconds });
+        // 自定义模板完全接管文案；否则使用「信息 · 剩余秒数」。
+        if (this.template) return this.template.replace(/\{seconds\}/g, `${seconds}`);
+        return this.t('延迟_等待_信息', { info: this.info, seconds });
     }
 
     private clearTimer(): void {

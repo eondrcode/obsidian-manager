@@ -3,7 +3,7 @@ import type Manager from '../main';
 import type { RibbonItem } from '../data/types';
 import { applyPresetToSettings, capturePreset, cloneAppearance, clonePreset,
     detectDeviceType, DEVICE_TYPES, DeviceManagement, DevicePluginState, DevicePreset, DeviceScope, DeviceType,
-    isDeviceType, normalizeDeviceManagement, parseScopeKey, resolveScope, scopeKey, ScopedAppearance,
+    findPreset, isDeviceType, normalizeDeviceManagement, parseScopeKey, scopeKey, ScopedAppearance,
     ScopePage, snapshotPreset } from './device-presets';
 
 type LocalStorageApp = { loadLocalStorage(key: string): unknown; saveLocalStorage(key: string, value: unknown): void; };
@@ -15,7 +15,7 @@ type CustomCssLike = {
     loadSnippets?(): Promise<void>;
 };
 type CapacitorDevice = { getId?(): Promise<{ identifier?: string }> };
-interface StoredIdentity { id?: unknown; type?: unknown; platformId?: unknown; }
+interface StoredIdentity { id?: unknown; type?: unknown; platformId?: unknown; presetId?: unknown; }
 interface LiveSnapshot {
     ribbon: RibbonItem[];
     ribbonEnabled: boolean;
@@ -27,11 +27,12 @@ interface Projection {
     live: LiveSnapshot;
 }
 
-/** 设备身份留在本机，三类预设与单设备覆盖随设置同步；Local identity, shared scope data. */
+/** 设备身份留在本机；三类型下可有多份命名预设，本机手动绑定其中一份。 */
 export class DeviceManager {
     public id = '';
     public type: DeviceType = detectDeviceType(Platform);
     public busy = false;
+    public boundPresetId = '';
     private ready = false;
     private readonly storageKey = 'better-plugins-manager-device';
     private selection = '';
@@ -46,22 +47,25 @@ export class DeviceManager {
 
     async initialize(): Promise<void> {
         const settings = this.manager.settings;
+        const legacy = settings.DEVICE_MANAGEMENT;
         // 旧版非延迟模式以原生启用表为准；Migrate the actual non-delayed enabled state.
-        if (!settings.DEVICE_MANAGEMENT && !settings.DELAY) {
+        if (!legacy && !settings.DELAY) {
             settings.Plugins.forEach(plugin => { plugin.enabled = this.manager.appPlugins.enabledPlugins.has(plugin.id); });
         }
-        settings.DEVICE_MANAGEMENT = normalizeDeviceManagement(settings.DEVICE_MANAGEMENT,
+        settings.DEVICE_MANAGEMENT = normalizeDeviceManagement(legacy,
             snapshotPreset(settings, { appearance: this.readLiveAppearance() }));
-        await this.loadIdentity();
+        const stored = await this.loadIdentity();
+        this.migrateDeviceRecord(typeof stored?.id === 'string' ? stored.id : '');
         const known = this.data.devices.find(device => device.id === this.id);
         if (known) {
             this.type = known.type;
             known.lastSeen = Date.now();
-            // 旧代码用类型名当默认名，这里升级为主机名/型号；用户改过的名字不动。
             if (this.isGeneratedName(known.name)) known.name = this.detectDeviceName();
         } else {
             this.data.devices.push({ id: this.id, type: this.type, name: this.detectDeviceName(), lastSeen: Date.now() });
         }
+        this.migrateLegacyOverrides(legacy);
+        this.ensureBinding(typeof stored?.presetId === 'string' ? stored.presetId : '', true);
         this.persistIdentity();
         if (this.data.enabled) this.applyEffective();
         this.ready = true;
@@ -72,14 +76,6 @@ export class DeviceManager {
     /** 设备默认名：桌面取主机名，移动端取型号；都取不到才回落类型名。 */
     private detectDeviceName(): string {
         return this.readHostname() || this.readMobileModel() || this.label(this.type);
-    }
-    /** 空名或三种语言的类型名都视为自动生成，允许升级；用户命名保持不动。 */
-    private isGeneratedName(name: string): boolean {
-        const trimmed = (name || '').trim();
-        if (!trimmed) return true;
-        const generated = new Set(['Computer', 'Tablet', 'Phone', '电脑', '平板', '手机']);
-        for (const type of DEVICE_TYPES) generated.add(this.label(type));
-        return generated.has(trimmed);
     }
     private readHostname(): string {
         if (!Platform.isDesktopApp) return '';
@@ -112,20 +108,124 @@ export class DeviceManager {
         }
         return '';
     }
+    /** 空名或三种语言的类型名都视为自动生成，允许升级；用户命名保持不动。 */
+    private isGeneratedName(name: string): boolean {
+        const trimmed = (name || '').trim();
+        if (!trimmed) return true;
+        const generated = new Set(['Computer', 'Tablet', 'Phone', '电脑', '平板', '手机']);
+        for (const type of DEVICE_TYPES) generated.add(this.label(type));
+        return generated.has(trimmed);
+    }
 
-    /** 当前设备实际生效的配置（类型 + 单设备覆盖） / Effective config for one device. */
-    effective(type: DeviceType, deviceId?: string): DevicePreset {
-        const preset = this.data.presets[type];
-        if (!deviceId) return clonePreset(preset);
-        const device = this.data.devices.find(item => item.id === deviceId);
-        return resolveScope(preset, device?.type === type ? device.overrides : undefined);
+    /* ---------- 预设与绑定 / Presets and binding ---------- */
+
+    presetsFor(type: DeviceType): DevicePreset[] { return this.data.presets[type]; }
+    presetById(id: string): { type: DeviceType; preset: DevicePreset } | null { return findPreset(this.data.presets, id); }
+    boundPreset(): DevicePreset | null {
+        return this.presetById(this.boundPresetId)?.preset ?? null;
     }
+    /** 平台标识刷新时把旧记录迁到新 id，避免设备列表累积幽灵条目。 */
+    private migrateDeviceRecord(previousId: string): void {
+        if (!previousId || previousId === this.id) return;
+        const devices = this.data.devices;
+        const previous = devices.find(device => device.id === previousId);
+        if (!previous) return;
+        const current = devices.find(device => device.id === this.id);
+        if (current) {
+            // 新 id 已有记录：旧记录是同一安装的上一身份，直接移除。
+            this.data.devices = devices.filter(device => device !== previous);
+            return;
+        }
+        previous.id = this.id;
+    }
+
+    /** 本机没有可绑定的预设时，回落到该类型的第一份。 */
+    private ensureBinding(storedPresetId: string, notifyFallback = false): void {
+        const found = storedPresetId ? this.presetById(storedPresetId) : null;
+        if (found && found.type === this.type) { this.boundPresetId = found.preset.id; return; }
+        const fallback = this.presetsFor(this.type)[0];
+        this.boundPresetId = fallback?.id ?? '';
+        if (notifyFallback && storedPresetId && fallback) {
+            new Notice(this.manager.translator.t('设备_预设回退', { name: fallback.name }));
+        }
+    }
+    async bindPreset(id: string): Promise<void> {
+        await this.run(async () => {
+            const found = this.presetById(id);
+            if (!found) throw new Error(this.manager.translator.t('设备_未找到'));
+            await this.closeProjection();
+            if (found.type !== this.type) {
+                this.type = found.type;
+                const device = this.data.devices.find(item => item.id === this.id);
+                if (device) device.type = found.type;
+            }
+            this.boundPresetId = found.preset.id;
+            this.selection = scopeKey(this.boundPresetId);
+            this.persistIdentity();
+            if (this.data.enabled) await this.applyCurrent();
+            await this.manager.saveSettings({ captureDevice: false });
+        });
+    }
+    async createPreset(type: DeviceType, sourceId?: string): Promise<string | null> {
+        return this.run(async () => {
+            const list = this.presetsFor(type);
+            const bound = list.find(item => item.id === this.boundPresetId);
+            const source = (sourceId ? list.find(item => item.id === sourceId) : undefined) ?? bound ?? list[0];
+            const base = source ? clonePreset(source) : snapshotPreset(this.manager.settings, { appearance: this.readLiveAppearance() });
+            const id = `preset-${type}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+            list.push({ ...base, id, name: this.uniquePresetName(type, `${this.label(type)} ${list.length + 1}`) });
+            this.data.presets[type] = list;
+            await this.manager.saveSettings({ captureDevice: false });
+            return id;
+        });
+    }
+    async duplicatePreset(id: string): Promise<string | null> {
+        return this.run(async () => {
+            const found = this.presetById(id);
+            if (!found) return null;
+            const list = this.presetsFor(found.type);
+            const copyId = `preset-${found.type}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+            const name = this.uniquePresetName(found.type, `${found.preset.name} ${this.manager.translator.t('设备_副本后缀')}`);
+            list.push({ ...clonePreset(found.preset), id: copyId, name });
+            this.data.presets[found.type] = list;
+            await this.manager.saveSettings({ captureDevice: false });
+            return copyId;
+        });
+    }
+    private uniquePresetName(type: DeviceType, base: string): string {
+        const names = new Set(this.presetsFor(type).map(preset => preset.name));
+        if (!names.has(base)) return base;
+        let index = 2;
+        while (names.has(`${base} ${index}`)) index += 1;
+        return `${base} ${index}`;
+    }
+    async renamePreset(id: string, name: string): Promise<void> {
+        const found = this.presetById(id);
+        if (!found || !name.trim()) throw new Error(this.manager.translator.t('设备_名称为空'));
+        found.preset.name = name.trim();
+        await this.manager.saveSettings();
+    }
+    async deletePreset(id: string): Promise<void> {
+        await this.run(async () => {
+            const found = this.presetById(id);
+            if (!found) return;
+            const list = this.presetsFor(found.type);
+            if (list.length <= 1) throw new Error(this.manager.translator.t('设备_至少保留预设'));
+            this.data.presets[found.type] = list.filter(item => item.id !== id);
+            if (this.boundPresetId === id) {
+                this.boundPresetId = this.presetsFor(found.type)[0]?.id ?? '';
+                this.persistIdentity();
+                if (this.data.enabled) await this.applyCurrent();
+            }
+            if (this.selection === scopeKey(id)) this.selection = scopeKey(this.boundPresetId);
+            await this.manager.saveSettings({ captureDevice: false });
+        });
+    }
+
     effectiveForScope(scope: DeviceScope): DevicePreset {
-        return this.effective(scope.type, scope.deviceId);
+        return clonePreset(this.presetById(scope.presetId)?.preset ?? this.presetsFor(scope.type)[0]);
     }
-    isLiveScope(scope: DeviceScope): boolean {
-        return scope.deviceId ? scope.deviceId === this.id : scope.type === this.type;
-    }
+    isLiveScope(scope: DeviceScope): boolean { return scope.presetId === this.boundPresetId; }
     isProjectingForeign(page?: ScopePage): boolean {
         if (!this.projection) return false;
         return page ? this.projection.page === page : true;
@@ -134,42 +234,41 @@ export class DeviceManager {
     /* ---------- 作用域选择 / Scope selection ---------- */
 
     scopeOptions(): DeviceScope[] {
-        const options: DeviceScope[] = DEVICE_TYPES.map(type => ({ key: scopeKey(type), type }));
-        for (const device of this.data.devices) {
-            options.push({ key: scopeKey(device.type, device.id), type: device.type, deviceId: device.id });
+        const options: DeviceScope[] = [];
+        for (const type of DEVICE_TYPES) {
+            for (const preset of this.presetsFor(type)) {
+                options.push({ key: scopeKey(preset.id), type, presetId: preset.id });
+            }
         }
         return options;
     }
     scopeLabel(scope: DeviceScope): string {
-        if (!scope.deviceId) return this.label(scope.type);
-        const device = this.data.devices.find(item => item.id === scope.deviceId);
-        const name = device?.name || scope.deviceId;
-        return `${name} · ${this.label(scope.type)}${scope.deviceId === this.id ? ` (${this.manager.translator.t('设备_本机')})` : ''}`;
+        const preset = this.presetById(scope.presetId)?.preset;
+        const name = preset?.name || scope.presetId;
+        return `${name} · ${this.label(scope.type)}`;
     }
     selectedScopeKey(_page: ScopePage): string {
-        const key = this.selection;
-        const parsed = key ? parseScopeKey(key) : null;
-        if (parsed && this.resolveScopeKey(key)) return key;
-        return scopeKey(this.type);
+        const parsed = this.selection ? parseScopeKey(this.selection) : null;
+        if (parsed && this.presetById(parsed.presetId)) return this.selection;
+        return scopeKey(this.boundPresetId);
     }
     selectedScope(page: ScopePage): DeviceScope {
-        return this.resolveScopeKey(this.selectedScopeKey(page)) ?? { key: scopeKey(this.type), type: this.type };
-    }
-    private resolveScopeKey(key: string): DeviceScope | null {
-        const scope = parseScopeKey(key);
-        if (!scope) return null;
-        if (!scope.deviceId) return scope;
-        const device = this.data.devices.find(item => item.id === scope.deviceId);
-        return device ? { key, type: device.type, deviceId: device.id } : null;
+        const parsed = parseScopeKey(this.selectedScopeKey(page));
+        const found = parsed ? this.presetById(parsed.presetId) : null;
+        if (found) return { key: scopeKey(found.preset.id), type: found.type, presetId: found.preset.id };
+        const fallback = this.presetsFor(this.type)[0];
+        return { key: scopeKey(fallback.id), type: this.type, presetId: fallback.id };
     }
 
     /** 切换一栏的编辑作用域：先落盘旧作用域，再投影新作用域。 */
     async selectScope(page: ScopePage, key: string): Promise<void> {
-        const scope = this.resolveScopeKey(key);
-        if (!scope) return;
+        const parsed = parseScopeKey(key);
+        const found = parsed ? this.presetById(parsed.presetId) : null;
+        if (!found) return;
+        const scope: DeviceScope = { key: scopeKey(found.preset.id), type: found.type, presetId: found.preset.id };
         await this.run(async () => {
             await this.closeProjection();
-            this.selection = key;
+            this.selection = scope.key;
             if (this.data.enabled && !this.isLiveScope(scope)) this.project(scope, page);
             await this.manager.saveSettings({ captureDevice: false });
         });
@@ -195,17 +294,13 @@ export class DeviceManager {
         }
     }
 
-    private pluginStates(): Record<string, DevicePluginState> {
-        return Object.fromEntries(this.manager.settings.Plugins.map(plugin => [plugin.id, { enabled: plugin.enabled, delay: plugin.delay }]));
-    }
-
-    /** 关闭投影：把外域改动写回该作用域，并恢复本机实时值。 */
+    /** 关闭投影：把外域改动写回该预设，并恢复本机实时值。 */
     async closeProjection(): Promise<void> {
         const projection = this.projection;
         if (!projection) return;
         const settings = this.manager.settings;
         this.projection = undefined;
-        this.storeScopeSnapshot(projection.scope, {
+        this.storeSnapshot(projection.scope.presetId, {
             ribbon: settings.RIBBON_SETTINGS,
             ribbonEnabled: settings.RIBBON_MANAGER_ENABLED,
             plugins: this.pluginStates(),
@@ -218,7 +313,6 @@ export class DeviceManager {
     noteActivePage(page: string): void {
         if (this.projection && this.projection.page !== page) void this.closeProjection().catch(error => this.report(error));
     }
-
     /** 栏目重新渲染时补投影，避免从其他页返回后丢掉外域视图。 */
     ensureProjection(page: ScopePage): void {
         if (!this.ready || !this.data.enabled) return;
@@ -239,37 +333,16 @@ export class DeviceManager {
         }
     }
 
-    /**
-     * 写入作用域快照。单设备只保存与所属类型不同的类别（稀疏覆盖），
-     * 只打开作用域、什么都没改时不会生成覆盖。
-     */
-    private storeScopeSnapshot(scope: DeviceScope, snapshot: LiveSnapshot): void {
-        const target = { ...snapshot };
-        if (scope.deviceId) {
-            const device = this.data.devices.find(item => item.id === scope.deviceId);
-            if (!device) return;
-            const typePreset = this.data.presets[scope.type];
-            const overrides = { ...(device.overrides ?? {}) };
-            const plugins = { ...(overrides.plugins ?? {}) };
-            for (const [id, state] of Object.entries(target.plugins)) {
-                const base = typePreset.plugins[id];
-                const detached = Boolean(overrides.plugins && Object.prototype.hasOwnProperty.call(overrides.plugins, id));
-                if (detached || !base || base.enabled !== state.enabled || base.delay !== state.delay) plugins[id] = { ...state };
-            }
-            if (Object.keys(plugins).length) overrides.plugins = plugins;
-            if (overrides.ribbon || JSON.stringify(target.ribbon) !== JSON.stringify(typePreset.ribbon)) {
-                overrides.ribbon = cloneRibbon(target.ribbon);
-            }
-            if (overrides.ribbonEnabled !== undefined || target.ribbonEnabled !== typePreset.ribbonEnabled) {
-                overrides.ribbonEnabled = target.ribbonEnabled;
-            }
-            device.overrides = overrides;
-            return;
-        }
-        const preset = this.data.presets[scope.type];
-        preset.ribbon = cloneRibbon(target.ribbon);
-        preset.ribbonEnabled = target.ribbonEnabled;
-        preset.plugins = { ...preset.plugins, ...target.plugins };
+    private storeSnapshot(presetId: string, snapshot: LiveSnapshot): void {
+        const found = this.presetById(presetId);
+        if (!found) return;
+        found.preset.ribbon = cloneRibbon(snapshot.ribbon);
+        found.preset.ribbonEnabled = snapshot.ribbonEnabled;
+        found.preset.plugins = { ...found.preset.plugins, ...snapshot.plugins };
+    }
+
+    private pluginStates(): Record<string, DevicePluginState> {
+        return Object.fromEntries(this.manager.settings.Plugins.map(plugin => [plugin.id, { enabled: plugin.enabled, delay: plugin.delay }]));
     }
 
     /* ---------- 外观作用域 / Scoped appearance ---------- */
@@ -284,9 +357,7 @@ export class DeviceManager {
         return { theme, snippets };
     }
     scopeAppearance(page: ScopePage): ScopedAppearance {
-        const scope = this.selectedScope(page);
-        const preset = this.effectiveForScope(scope);
-        return cloneAppearance(preset.appearance);
+        return cloneAppearance(this.effectiveForScope(this.selectedScope(page)).appearance);
     }
     /** 读写当前栏目的外观状态：外域只存储，本机实时应用。 */
     writeAppearance(page: ScopePage, patch: { theme?: string; snippets?: Record<string, boolean> }): Promise<void> {
@@ -294,8 +365,7 @@ export class DeviceManager {
             const scope = this.selectedScope(page);
             const live = this.isLiveScope(scope);
             if (live) {
-                const theme = patch.theme;
-                if (typeof theme === 'string') this.customCss()?.setTheme?.(theme);
+                if (typeof patch.theme === 'string') this.customCss()?.setTheme?.(patch.theme);
                 for (const [snippetId, enabled] of Object.entries(patch.snippets ?? {})) {
                     this.customCss()?.setCssEnabledStatus?.(snippetId, enabled);
                 }
@@ -303,19 +373,10 @@ export class DeviceManager {
             const next = live ? { ...this.readLiveAppearance() } : this.scopeAppearance(page);
             if (typeof patch.theme === 'string') next.theme = patch.theme;
             Object.assign(next.snippets, patch.snippets ?? {});
-            this.storeAppearance(scope, next);
+            const found = this.presetById(scope.presetId);
+            if (found) found.preset.appearance = cloneAppearance(next);
             await this.manager.saveSettings({ captureDevice: false });
         });
-    }
-    private storeAppearance(scope: DeviceScope, appearance: ScopedAppearance): void {
-        if (scope.deviceId) {
-            const device = this.data.devices.find(item => item.id === scope.deviceId);
-            if (!device) return;
-            device.overrides = device.overrides ?? {};
-            device.overrides.appearance = cloneAppearance(appearance);
-            return;
-        }
-        this.data.presets[scope.type].appearance = cloneAppearance(appearance);
     }
 
     /* ---------- 捕获 / Capture ---------- */
@@ -324,46 +385,15 @@ export class DeviceManager {
         if (!this.ready || !this.data.enabled || this.busy) return;
         const projection = this.projection;
         if (projection) {
-            this.storeScopeSnapshot(projection.scope, {
+            this.storeSnapshot(projection.scope.presetId, {
                 ribbon: this.manager.settings.RIBBON_SETTINGS,
                 ribbonEnabled: this.manager.settings.RIBBON_MANAGER_ENABLED,
                 plugins: this.pluginStates(),
             });
             return;
         }
-        this.captureCurrent();
-    }
-
-    /** 本机捕获：类型作用域写类型预设；单设备作用域只写与类型不同的项目。 */
-    private captureCurrent(): void {
-        const settings = this.manager.settings;
-        const appearance = this.readLiveAppearance();
-        const scope = this.selectedScope('plugins');
-        if (scope.deviceId === this.id) {
-            const snapshot: LiveSnapshot = {
-                ribbon: settings.RIBBON_SETTINGS,
-                ribbonEnabled: settings.RIBBON_MANAGER_ENABLED,
-                plugins: this.pluginStates(),
-            };
-            this.storeScopeSnapshot(scope, snapshot);
-            this.syncTypeForSharedCategories(snapshot, appearance);
-            return;
-        }
-        capturePreset(this.data.presets[this.type], settings, { appearance });
-    }
-
-    /** 未覆盖的项目继续由类型预设保存，避免单设备作用域把类型数据截断。 */
-    private syncTypeForSharedCategories(snapshot: LiveSnapshot, appearance: ScopedAppearance): void {
-        const typePreset = this.data.presets[this.type];
-        const overrides = this.data.devices.find(item => item.id === this.id)?.overrides;
-        for (const [id, state] of Object.entries(snapshot.plugins)) {
-            if (!overrides?.plugins || !Object.prototype.hasOwnProperty.call(overrides.plugins, id)) {
-                typePreset.plugins[id] = state;
-            }
-        }
-        if (!overrides?.ribbon) typePreset.ribbon = snapshot.ribbon;
-        if (overrides?.ribbonEnabled === undefined) typePreset.ribbonEnabled = snapshot.ribbonEnabled;
-        if (!overrides?.appearance) typePreset.appearance = cloneAppearance(appearance);
+        const bound = this.boundPreset();
+        if (bound) capturePreset(bound, this.manager.settings, { appearance: this.readLiveAppearance() });
     }
 
     /** 保存时写回的“本机真实值”；投影期间不能让外域值污染 data.json。 */
@@ -381,13 +411,16 @@ export class DeviceManager {
         };
     }
 
+    /* ---------- 身份 / Identity ---------- */
+
     private persistIdentity(): void {
         const storage = this.manager.app as unknown as LocalStorageApp;
-        storage.saveLocalStorage(this.storageKey, { id: this.id, type: this.type, platformId: this.platformIdentity });
+        storage.saveLocalStorage(this.storageKey, { id: this.id, type: this.type,
+            platformId: this.platformIdentity, presetId: this.boundPresetId });
     }
     private platformIdentity = '';
 
-    private async loadIdentity(): Promise<void> {
+    private async loadIdentity(): Promise<StoredIdentity | undefined> {
         const storage = this.manager.app as unknown as LocalStorageApp;
         let stored: StoredIdentity | undefined;
         try {
@@ -405,6 +438,41 @@ export class DeviceManager {
         else if (storedId) this.id = storedId;
         else this.id = this.randomId();
         this.type = stored && isDeviceType(stored.type) ? stored.type : detectDeviceType(Platform);
+        return stored;
+    }
+
+    /** 旧版单设备覆盖一次性合并进对应类型的首份预设。 */
+    private migrateLegacyOverrides(legacy: unknown): void {
+        const rawDevices = (legacy as { devices?: unknown } | undefined)?.devices;
+        if (!Array.isArray(rawDevices)) return;
+        const raw = rawDevices.find(item => (item as { id?: unknown })?.id === this.id) as
+            { overrides?: Record<string, unknown> } | undefined;
+        const overrides = raw?.overrides;
+        if (!overrides) return;
+        const target = this.presetsFor(this.type)[0];
+        if (!target) return;
+        const plugins = overrides.plugins as Record<string, { enabled?: unknown; delay?: unknown }> | undefined;
+        if (plugins && typeof plugins === 'object') {
+            for (const [id, state] of Object.entries(plugins)) {
+                if (!state || typeof state.enabled !== 'boolean') continue;
+                target.plugins[id] = { enabled: state.enabled, delay: typeof state.delay === 'string' ? state.delay : '' };
+            }
+        }
+        if (Array.isArray(overrides.ribbon)) {
+            const ribbon = overrides.ribbon as unknown[];
+            if (ribbon.every(item => item && typeof item === 'object')) target.ribbon = cloneRibbon(ribbon as RibbonItem[]);
+        }
+        if (typeof overrides.ribbonEnabled === 'boolean') target.ribbonEnabled = overrides.ribbonEnabled;
+        const appearance = overrides.appearance as { theme?: unknown; snippets?: unknown } | undefined;
+        if (appearance && typeof appearance === 'object') {
+            if (typeof appearance.theme === 'string') target.appearance.theme = appearance.theme;
+            if (appearance.snippets && typeof appearance.snippets === 'object') {
+                for (const [id, enabled] of Object.entries(appearance.snippets as Record<string, unknown>)) {
+                    if (typeof enabled === 'boolean') target.appearance.snippets[id] = enabled;
+                }
+            }
+        }
+        if (this.manager.settings.DEBUG) console.log('[BPM] Migrated legacy device overrides into preset', target.id);
     }
 
     /** 移动端用 Capacitor 的设备标识做稳定身份；桌面端没有该插件。 */
@@ -429,7 +497,6 @@ export class DeviceManager {
             const digest = await subtle.digest('SHA-256', data);
             return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
         }
-        // 极简 FNV-1a 兜底：只用于测试环境，避免依赖 WebCrypto。
         let hash = 0x811c9dc5;
         for (let index = 0; index < input.length; index += 1) {
             hash ^= input.charCodeAt(index);
@@ -453,10 +520,10 @@ export class DeviceManager {
     }
 
     /** 统一串行入口，阻止连续触控交叉应用；Serialize all preset mutations. */
-    async run(task: () => Promise<void>): Promise<void> {
+    async run<T>(task: () => Promise<T>): Promise<T> {
         if (this.busy) throw new Error(this.manager.translator.t('设备_忙碌'));
         this.busy = true;
-        try { await task(); } finally { this.busy = false; }
+        try { return await task(); } finally { this.busy = false; }
     }
 
     async setEnabled(enabled: boolean): Promise<void> {
@@ -470,13 +537,18 @@ export class DeviceManager {
         });
     }
 
-    async savePreset(type: DeviceType, preset: DevicePreset): Promise<void> {
+    async savePresetById(id: string, preset: DevicePreset): Promise<void> {
         await this.run(async () => {
-            const previous = this.data.presets[type];
-            this.data.presets[type] = clonePreset(preset);
+            const found = this.presetById(id);
+            if (!found) throw new Error(this.manager.translator.t('设备_未找到'));
+            const previous = found.preset;
+            this.data.presets[found.type] = this.presetsFor(found.type).map(item => item.id === id ? clonePreset(preset) : item);
             try { await this.manager.saveSettings({ captureDevice: false }); }
-            catch (error) { this.data.presets[type] = previous; throw error; }
-            if (this.data.enabled && type === this.type) await this.applyCurrent();
+            catch (error) {
+                this.data.presets[found.type] = this.presetsFor(found.type).map(item => item.id === id ? previous : item);
+                throw error;
+            }
+            if (this.data.enabled && id === this.boundPresetId) await this.applyCurrent();
         });
     }
 
@@ -485,11 +557,18 @@ export class DeviceManager {
             await this.closeProjection();
             const device = this.data.devices.find(item => item.id === id);
             if (!device) throw new Error(this.manager.translator.t('设备_未找到'));
-            if (id === this.id && this.data.enabled) this.captureCurrent();
             const previous = device.type;
             const previousType = this.type;
+            const previousPreset = this.boundPresetId;
+            const previousSelection = this.selection;
             if (id === this.id) {
+                if (this.data.enabled) {
+                    const bound = this.boundPreset();
+                    if (bound) capturePreset(bound, this.manager.settings, { appearance: this.readLiveAppearance() });
+                }
                 this.type = type;
+                this.ensureBinding(this.boundPresetId);
+                this.selection = scopeKey(this.boundPresetId);
                 this.persistIdentity();
             }
             device.type = type;
@@ -497,6 +576,8 @@ export class DeviceManager {
             catch (error) {
                 device.type = previous;
                 this.type = previousType;
+                this.boundPresetId = previousPreset;
+                this.selection = previousSelection;
                 if (id === this.id) {
                     try { this.persistIdentity(); } catch (storageError) { this.report(storageError); }
                 }
@@ -519,29 +600,20 @@ export class DeviceManager {
         await this.manager.saveSettings();
     }
 
-    /** 单设备恢复跟随类型：删除覆盖层。 */
-    async resetOverrides(id: string): Promise<void> {
-        await this.run(async () => {
-            const device = this.data.devices.find(item => item.id === id);
-            if (!device) return;
-            delete device.overrides;
-            if (id === this.id && this.data.enabled) await this.applyCurrent();
-            await this.manager.saveSettings({ captureDevice: false });
-        });
-    }
-
     async apply(): Promise<void> { await this.run(() => this.applyCurrent()); }
 
-    /** 应用本机作用域：投影设置、重算插件运行态，再把新登记的项写回。 */
+    /** 应用本机绑定的预设：投影设置、重算插件运行态，再把新登记的项写回。 */
     private async applyCurrent(): Promise<void> {
         this.applyEffective();
         await this.manager.applyDeviceConfiguration();
-        this.captureCurrent();
+        const bound = this.boundPreset();
+        if (bound) capturePreset(bound, this.manager.settings, { appearance: this.readLiveAppearance() });
         await this.manager.saveSettings({ captureDevice: false });
     }
 
     private applyEffective(): void {
-        const preset = this.effective(this.type, this.id);
+        const preset = this.boundPreset();
+        if (!preset) return;
         applyPresetToSettings(preset, this.manager.settings, this.manager.manifest.id);
         this.applyAppearance(preset.appearance);
     }
@@ -550,7 +622,6 @@ export class DeviceManager {
         const customCss = this.customCss();
         if (!customCss) return;
         try {
-            // 主题为空串表示回到默认主题，必须显式写回。
             if (customCss.theme !== appearance.theme) customCss.setTheme?.(appearance.theme);
             const live = this.readLiveAppearance();
             const enabled = new Set(Object.entries(appearance.snippets).filter(([, flag]) => flag).map(([id]) => id));

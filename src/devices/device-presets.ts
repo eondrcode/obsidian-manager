@@ -11,32 +11,27 @@ export interface ScopedAppearance {
     snippets: Record<string, boolean>;
 }
 
+/** 命名预设：同一设备类型可以有多个，本机手动绑定其中一个 / Named presets per device type. */
 export interface DevicePreset {
+    id: string;
+    name: string;
     plugins: Record<string, DevicePluginState>;
     ribbon: RibbonItem[];
     ribbonEnabled: boolean;
     appearance: ScopedAppearance;
 }
 
-/** 单设备只保存自己动过的那几类；未动过的继续跟随设备类型 / Sparse per-scope overrides. */
-export interface DeviceOverride {
-    plugins?: Record<string, DevicePluginState>;
-    ribbon?: RibbonItem[];
-    ribbonEnabled?: boolean;
-    appearance?: Partial<ScopedAppearance>;
-}
-
+/** 设备记录只用于展示与手动纠正类型，不再承载单设备配置。 */
 export interface ManagedDevice {
     id: string;
     name: string;
     type: DeviceType;
     lastSeen: number;
-    overrides?: DeviceOverride;
 }
 
 export interface DeviceManagement {
     enabled: boolean;
-    presets: Record<DeviceType, DevicePreset>;
+    presets: Record<DeviceType, DevicePreset[]>;
     devices: ManagedDevice[];
 }
 
@@ -44,8 +39,14 @@ export type ScopePage = 'plugins' | 'themes' | 'ribbon';
 export interface DeviceScope {
     key: string;
     type: DeviceType;
-    deviceId?: string;
+    presetId: string;
 }
+
+export const DEFAULT_PRESET_NAMES: Record<DeviceType, string> = {
+    computer: 'Computer',
+    tablet: 'Tablet',
+    phone: 'Phone',
+};
 
 export function isDeviceType(value: unknown): value is DeviceType {
     return value === 'computer' || value === 'tablet' || value === 'phone';
@@ -54,19 +55,29 @@ export function detectDeviceType(platform: { isMobileApp: boolean; isTablet: boo
     return platform.isMobileApp ? (platform.isTablet ? 'tablet' : 'phone') : 'computer';
 }
 
-export function scopeKey(type: DeviceType, deviceId?: string): string {
-    return deviceId ? `device:${deviceId}` : `type:${type}`;
+export function scopeKey(presetId: string): string {
+    return `preset:${presetId}`;
 }
-export function parseScopeKey(key: string): DeviceScope | null {
-    if (key.startsWith('type:')) {
-        const type = key.slice(5);
-        return isDeviceType(type) ? { key, type } : null;
-    }
-    if (key.startsWith('device:')) {
-        const deviceId = key.slice(7);
-        return deviceId ? { key, type: 'computer', deviceId } : null;
+export function parseScopeKey(key: string): { key: string; presetId: string } | null {
+    if (!key.startsWith('preset:')) return null;
+    const presetId = key.slice(7);
+    return presetId ? { key, presetId } : null;
+}
+
+/** 在全部类型中查找预设；Find a preset across all types. */
+export function findPreset(presets: Record<DeviceType, DevicePreset[]>, id: string): { type: DeviceType; preset: DevicePreset } | null {
+    for (const type of DEVICE_TYPES) {
+        const preset = presets[type]?.find(item => item.id === id);
+        if (preset) return { type, preset };
     }
     return null;
+}
+export function allPresets(presets: Record<DeviceType, DevicePreset[]>): Array<{ type: DeviceType; preset: DevicePreset }> {
+    const result: Array<{ type: DeviceType; preset: DevicePreset }> = [];
+    for (const type of DEVICE_TYPES) {
+        for (const preset of presets[type] ?? []) result.push({ type, preset });
+    }
+    return result;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -109,6 +120,8 @@ export function cloneAppearance(appearance: ScopedAppearance): ScopedAppearance 
 }
 export function clonePreset(preset: DevicePreset): DevicePreset {
     return {
+        id: preset.id,
+        name: preset.name,
         plugins: Object.fromEntries(Object.entries(preset.plugins).map(([id, state]) => [id, { ...state }])),
         ribbon: normalizeRibbon(preset.ribbon, []),
         ribbonEnabled: preset.ribbonEnabled,
@@ -119,9 +132,15 @@ export function clonePreset(preset: DevicePreset): DevicePreset {
 export interface PresetExtras {
     appearance?: ScopedAppearance;
 }
+export interface PresetMeta {
+    id?: string;
+    name?: string;
+}
 /** 快照当前运行设置；外观由调用方补充 / Snapshot runtime settings. */
-export function snapshotPreset(settings: ManagerSettings, extras: PresetExtras = {}): DevicePreset {
+export function snapshotPreset(settings: ManagerSettings, extras: PresetExtras = {}, meta: PresetMeta = {}): DevicePreset {
     return clonePreset({
+        id: meta.id ?? '',
+        name: meta.name ?? '',
         plugins: Object.fromEntries(settings.Plugins.map(plugin => [plugin.id, { enabled: plugin.enabled, delay: plugin.delay }])),
         ribbon: settings.RIBBON_SETTINGS,
         ribbonEnabled: settings.RIBBON_MANAGER_ENABLED,
@@ -129,82 +148,61 @@ export function snapshotPreset(settings: ManagerSettings, extras: PresetExtras =
     });
 }
 
-/** 只接纳固定类型及合法字段；Narrow synced data before using it. */
+function normalizePreset(raw: unknown, baseline: DevicePreset, type: DeviceType, index: number, usedIds: Set<string>): DevicePreset {
+    const preset = clonePreset(baseline);
+    preset.id = '';
+    preset.name = '';
+    if (isRecord(raw)) {
+        if (isRecord(raw.plugins)) {
+            for (const [id, state] of Object.entries(raw.plugins)) {
+                if (isRecord(state) && typeof state.enabled === 'boolean') {
+                    Object.defineProperty(preset.plugins, id, { value: {
+                        enabled: state.enabled, delay: typeof state.delay === 'string' ? state.delay : '',
+                    }, enumerable: true, writable: true, configurable: true });
+                }
+            }
+        }
+        if (typeof raw.ribbonEnabled === 'boolean') preset.ribbonEnabled = raw.ribbonEnabled;
+        if (Array.isArray(raw.ribbon)) preset.ribbon = normalizeRibbon(raw.ribbon, preset.ribbon);
+        preset.appearance = normalizeAppearance(raw.appearance, preset.appearance);
+        if (typeof raw.name === 'string' && raw.name.trim()) preset.name = raw.name.trim();
+        if (typeof raw.id === 'string' && raw.id.trim()) preset.id = raw.id.trim();
+    }
+    if (!preset.name) preset.name = index === 0 ? DEFAULT_PRESET_NAMES[type] : `${DEFAULT_PRESET_NAMES[type]} ${index + 1}`;
+    if (!preset.id || usedIds.has(preset.id)) {
+        const base = `preset-${type}${index ? `-${index}` : ''}`;
+        let candidate = base;
+        let suffix = 2;
+        while (usedIds.has(candidate)) candidate = `${base}-${suffix++}`;
+        preset.id = candidate;
+    }
+    usedIds.add(preset.id);
+    return preset;
+}
+
+/** 只接纳固定类型及合法字段；兼容旧版「每类一份预设」的数据。 */
 export function normalizeDeviceManagement(value: unknown, baseline: DevicePreset): DeviceManagement {
     const source = isRecord(value) ? value : {};
     const rawPresets = isRecord(source.presets) ? source.presets : {};
-    const presets = {} as Record<DeviceType, DevicePreset>;
+    const usedIds = new Set<string>();
+    const presets = {} as Record<DeviceType, DevicePreset[]>;
     for (const type of DEVICE_TYPES) {
         const raw = rawPresets[type];
-        const preset = clonePreset(baseline);
-        if (isRecord(raw)) {
-            if (isRecord(raw.plugins)) {
-                for (const [id, state] of Object.entries(raw.plugins)) {
-                    if (isRecord(state) && typeof state.enabled === 'boolean') {
-                        Object.defineProperty(preset.plugins, id, { value: {
-                            enabled: state.enabled, delay: typeof state.delay === 'string' ? state.delay : '',
-                        }, enumerable: true, writable: true, configurable: true });
-                    }
-                }
-            }
-            if (typeof raw.ribbonEnabled === 'boolean') preset.ribbonEnabled = raw.ribbonEnabled;
-            if (Array.isArray(raw.ribbon)) preset.ribbon = normalizeRibbon(raw.ribbon, preset.ribbon);
-            preset.appearance = normalizeAppearance(raw.appearance, preset.appearance);
-        }
-        presets[type] = preset;
+        const list = Array.isArray(raw) ? raw : isRecord(raw) ? [raw] : [];
+        presets[type] = list.length
+            ? list.map((item, index) => normalizePreset(item, baseline, type, index, usedIds))
+            : [normalizePreset({}, baseline, type, 0, usedIds)];
     }
     const devices: ManagedDevice[] = [];
     if (Array.isArray(source.devices)) {
         for (const raw of source.devices) {
             if (!isRecord(raw) || typeof raw.id !== 'string' || !raw.id || typeof raw.name !== 'string'
                 || !isDeviceType(raw.type) || devices.some(device => device.id === raw.id)) continue;
-            const device: ManagedDevice = { id: raw.id, name: raw.name, type: raw.type,
-                lastSeen: typeof raw.lastSeen === 'number' && Number.isFinite(raw.lastSeen) ? raw.lastSeen : 0 };
-            const overrides = normalizeOverride(raw.overrides, presets[raw.type]);
-            if (overrides) device.overrides = overrides;
-            devices.push(device);
+            devices.push({ id: raw.id, name: raw.name, type: raw.type,
+                lastSeen: typeof raw.lastSeen === 'number' && Number.isFinite(raw.lastSeen) ? raw.lastSeen : 0 });
         }
     }
     return { enabled: source.enabled === true, presets, devices };
-}
-
-function normalizeOverride(value: unknown, typePreset: DevicePreset): DeviceOverride | undefined {
-    if (!isRecord(value)) return undefined;
-    const overrides: DeviceOverride = {};
-    if (isRecord(value.plugins)) {
-        const plugins: Record<string, DevicePluginState> = {};
-        for (const [id, state] of Object.entries(value.plugins)) {
-            if (isRecord(state) && typeof state.enabled === 'boolean') {
-                plugins[id] = { enabled: state.enabled, delay: typeof state.delay === 'string' ? state.delay : '' };
-            }
-        }
-        overrides.plugins = plugins;
-    }
-    if (Array.isArray(value.ribbon)) overrides.ribbon = normalizeRibbon(value.ribbon, typePreset.ribbon);
-    if (typeof value.ribbonEnabled === 'boolean') overrides.ribbonEnabled = value.ribbonEnabled;
-    if (isRecord(value.appearance)) {
-        overrides.appearance = {
-            theme: typeof value.appearance.theme === 'string' ? value.appearance.theme : undefined,
-            snippets: isRecord(value.appearance.snippets) ? recordOfBooleans(value.appearance.snippets) : undefined,
-        };
-    }
-    return Object.keys(overrides).length ? overrides : undefined;
-}
-
-/** 类型预设与单设备覆盖合并；未被覆盖的字段继续跟随类型。 */
-export function resolveScope(typePreset: DevicePreset, overrides?: DeviceOverride): DevicePreset {
-    const preset = clonePreset(typePreset);
-    if (!overrides) return preset;
-    if (overrides.plugins) preset.plugins = { ...preset.plugins, ...cloneJson(overrides.plugins) };
-    if (overrides.ribbon) preset.ribbon = normalizeRibbon(overrides.ribbon, preset.ribbon);
-    if (typeof overrides.ribbonEnabled === 'boolean') preset.ribbonEnabled = overrides.ribbonEnabled;
-    if (overrides.appearance) {
-        preset.appearance = {
-            theme: overrides.appearance.theme ?? preset.appearance.theme,
-            snippets: { ...preset.appearance.snippets, ...(overrides.appearance.snippets ?? {}) },
-        };
-    }
-    return preset;
 }
 
 /** 保留未安装插件，避免另一设备的配置被裁剪；Keep remote-only plugin choices. */

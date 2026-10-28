@@ -3,8 +3,8 @@ import type Manager from '../main';
 import { DEVICE_TYPES, DeviceScope, ScopePage, scopeKey } from './device-presets';
 
 /**
- * 三栏共用的作用域选择器，复用管理器筛选栏的自定义下拉（非原生 select）。
- * Shared scope selector built from the manager's own filter dropdown, not a native select.
+ * 三栏共用的预设选择器：按设备类型分组列出命名预设，复用管理器筛选栏的自定义下拉。
+ * Shared preset selector grouped by device type, built from the manager's own dropdown.
  */
 export class DeviceScopeBar {
     private closeMenu: (() => void) | null = null;
@@ -41,6 +41,15 @@ export class DeviceScopeBar {
         trigger.setAttribute('aria-expanded', 'false');
         trigger.setAttribute('aria-label', `${t('设备_作用域短')}: ${devices.scopeLabel(scope)}`);
         trigger.createSpan({ cls: 'manager-multiselect-filter__summary', text: devices.scopeLabel(scope) });
+        if (enabled) {
+            // 一眼区分“本机正在使用”与“只保存到其他预设”。
+            trigger.createSpan({
+                cls: 'manager-multiselect-filter__count',
+                text: devices.isLiveScope(scope) ? t('设备_本机') : t('设备_仅保存'),
+            });
+        } else {
+            trigger.createSpan({ cls: 'manager-multiselect-filter__count', text: t('设备_未启用_短') });
+        }
         setIcon(trigger.createSpan('manager-multiselect-filter__chevron'), 'chevron-down');
         trigger.disabled = !enabled;
 
@@ -55,7 +64,7 @@ export class DeviceScopeBar {
             open = false;
             root.removeClass('is-open');
             menu.removeClass('is-fixed');
-            menu.setCssStyles({ top: '', left: '', minWidth: '' });
+            menu.setCssStyles({ top: '', bottom: '', left: '', minWidth: '' });
             field.removeClass('is-filter-menu-open');
             sectionEl?.removeClass('is-filter-menu-open');
             containerEl?.removeClass('has-open-filter-menu');
@@ -77,9 +86,12 @@ export class DeviceScopeBar {
             open = true;
             // 菜单挂在滚动容器里会被裁剪，打开时改为固定定位到触发按钮下方。
             const rect = trigger.getBoundingClientRect();
+            // 下方空间不足时向上展开，避免菜单超出视口。
+            const openUp = window.innerHeight - rect.bottom < 220 && rect.top > 220;
             menu.addClass('is-fixed');
             menu.setCssStyles({
-                top: `${rect.bottom + 4}px`,
+                top: openUp ? '' : `${rect.bottom + 4}px`,
+                bottom: openUp ? `${window.innerHeight - rect.top + 4}px` : '',
                 left: `${rect.left}px`,
                 minWidth: `${Math.max(220, rect.width)}px`,
             });
@@ -98,46 +110,32 @@ export class DeviceScopeBar {
             if (event.key === 'Escape') { event.preventDefault(); close(); }
         });
 
-        const addOption = (entry: DeviceScope) => {
-            const selected = entry.key === scope.key;
+        const addOption = (entry: DeviceScope, name: string) => {
+            const selected = entry.presetId === scope.presetId;
             const option = menu.createEl('button', { cls: 'manager-multiselect-filter__option' });
             option.type = 'button';
             option.setAttribute('role', 'option');
             option.setAttribute('aria-selected', `${selected}`);
             option.toggleClass('is-selected', selected);
             setIcon(option.createSpan('manager-multiselect-filter__check'), selected ? 'check' : 'circle');
-            option.createSpan({ cls: 'manager-multiselect-filter__option-label', text: devices.scopeLabel(entry) });
+            option.createSpan({ cls: 'manager-multiselect-filter__option-label', text: name });
             if (!enabled) option.disabled = true;
             option.addEventListener('click', () => {
                 close();
                 if (selected) return;
-                void devices.selectScope(page, entry.key).then(() => this.onChange()).catch(error => devices.report(error));
+                void devices.selectScope(page, scopeKey(entry.presetId)).then(() => this.onChange()).catch(error => devices.report(error));
             });
         };
 
-        // 分组标题复用筛选菜单的次级文本样式。
-        const addGroupLabel = (text: string) => {
+        for (const type of DEVICE_TYPES) {
+            const presets = devices.presetsFor(type);
             const row = menu.createDiv('manager-filter-field__text');
-            row.setText(text);
+            row.setText(devices.label(type));
             row.addClass('manager-device-scope__group');
-        };
-        addGroupLabel(t('设备_作用域类型组'));
-        for (const type of DEVICE_TYPES) addOption({ key: scopeKey(type), type });
-        addGroupLabel(t('设备_作用域设备组'));
-        for (const device of devices.data.devices) {
-            addOption({ key: scopeKey(device.type, device.id), type: device.type, deviceId: device.id });
-        }
-
-        if (enabled && scope.deviceId) {
-            const reset = group.createEl('button', { cls: 'manager-filter-operator-toggle' });
-            reset.type = 'button';
-            reset.setAttribute('aria-label', t('设备_跟随类型'));
-            reset.setAttribute('title', t('设备_跟随类型'));
-            setIcon(reset, 'rotate-ccw');
-            reset.addEventListener('click', () => {
-                if (!scope.deviceId) return;
-                void devices.resetOverrides(scope.deviceId).then(() => this.onChange()).catch(error => devices.report(error));
-            });
+            for (const preset of presets) {
+                addOption({ key: scopeKey(preset.id), type, presetId: preset.id },
+                    `${preset.name}${preset.id === devices.boundPresetId ? ` (${t('设备_本机')})` : ''}`);
+            }
         }
     }
 }

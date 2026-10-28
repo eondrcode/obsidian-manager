@@ -6,8 +6,8 @@ import { detectDeviceType, DEVICE_TYPES, DeviceType, isDeviceType } from './devi
 const ICONS: Record<DeviceType, string> = { computer: 'monitor', tablet: 'tablet', phone: 'smartphone' };
 
 /**
- * 设备管理只负责身份、类型与设备清单；插件与 Ribbon 已移到各自栏目的设备下拉。
- * Identity, type and device list only; plugins and Ribbon moved to their own scoped tabs.
+ * 设备管理：本机类型、命名预设与设备清单。单设备配置已取消。
+ * Device type, named presets and the device list; per-device configuration is gone.
  */
 export class DevicePanel {
     private selected: DeviceType;
@@ -59,7 +59,7 @@ export class DevicePanel {
             button.toggleClass('is-active', selected);
             setIcon(button.createSpan('manager-repo-page__switch-icon'), ICONS[type]);
             button.createSpan({ text: this.manager.devices.label(type), cls: 'manager-repo-page__switch-label' });
-            button.createSpan({ text: `${this.manager.devices.data.devices.filter(device => device.type === type).length}`,
+            button.createSpan({ text: `${this.manager.devices.presetsFor(type).length}`,
                 cls: 'manager-repo-page__switch-count' });
             button.addEventListener('click', () => {
                 if (selected) return;
@@ -67,6 +67,7 @@ export class DevicePanel {
                 this.render(this.root);
             });
         }
+        this.renderPresets(page);
         this.renderDevices(page);
     }
 
@@ -85,6 +86,51 @@ export class DevicePanel {
         }
     }
 
+    private renderPresets(page: HTMLElement): void {
+        const devices = this.manager.devices;
+        const card = page.createDiv('manager-vault-card');
+        new Setting(card).setName(this.t('设备_预设', { type: devices.label(this.selected) })).setHeading();
+        card.createEl('p', { cls: 'setting-item-description', text: this.t('设备_预设说明') });
+        new Setting(card).setName(this.t('设备_预设操作'))
+            .addButton(button => button.setButtonText(this.t('设备_新建预设')).onClick(() => {
+                void this.action(async () => { await devices.createPreset(this.selected); });
+            }));
+
+        for (const preset of devices.presetsFor(this.selected)) {
+            const bound = preset.id === devices.boundPresetId;
+            let name = preset.name;
+            const row = new Setting(card).setName(preset.name)
+                .setDesc(bound ? this.t('设备_已绑定') : this.t('设备_未绑定'));
+            row.addText(text => text.setValue(name).setPlaceholder(this.t('通用_名称_文本')).onChange(value => { name = value; }));
+            row.addExtraButton(button => button.setIcon('save').setTooltip(this.t('设备_保存名称')).onClick(() => {
+                void this.action(() => devices.renamePreset(preset.id, name));
+            }));
+            row.addExtraButton(button => button.setIcon(bound ? 'check' : 'pin').setTooltip(bound ? this.t('设备_已绑定') : this.t('设备_绑定本机'))
+                .setDisabled(bound)
+                .onClick(() => {
+                    if (bound) return;
+                    void this.action(async () => {
+                        if (this.selected !== devices.type) {
+                            const confirmed = await confirmWithModal(this.manager.app, this.manager,
+                                this.t('设备_绑定换类型确认', { type: devices.label(this.selected) }));
+                            if (!confirmed) return;
+                        }
+                        await devices.bindPreset(preset.id);
+                    });
+                }));
+            row.addExtraButton(button => button.setIcon('copy').setTooltip(this.t('设备_复制预设')).onClick(() => {
+                void this.action(async () => { await devices.duplicatePreset(preset.id); });
+            }));
+            row.addExtraButton(button => button.setIcon('trash-2').setTooltip(this.t('设备_删除预设')).onClick(() => {
+                void this.action(async () => {
+                    if (await confirmWithModal(this.manager.app, this.manager, this.t('设备_删除预设确认', { name: preset.name }))) {
+                        await devices.deletePreset(preset.id);
+                    }
+                });
+            }));
+        }
+    }
+
     private renderDevices(page: HTMLElement): void {
         const card = page.createDiv('manager-vault-card');
         new Setting(card).setName(this.t('设备_列表')).setHeading();
@@ -99,12 +145,6 @@ export class DevicePanel {
             row.addExtraButton(button => button.setIcon('save').setTooltip(this.t('设备_保存名称')).onClick(() => {
                 void this.action(() => this.manager.devices.rename(device.id, name));
             }));
-            row.addDropdown(dropdown => {
-                DEVICE_TYPES.forEach(type => dropdown.addOption(type, this.manager.devices.label(type)));
-                dropdown.setValue(device.type).onChange(value => {
-                    if (isDeviceType(value)) void this.action(() => this.manager.devices.assign(device.id, value));
-                });
-            });
             if (!current) row.addExtraButton(button => button.setIcon('trash-2').setTooltip(this.t('设备_移除')).onClick(() => {
                 void this.action(async () => {
                     if (await confirmWithModal(this.manager.app, this.manager, this.t('设备_移除确认', { name: device.name }))) {
