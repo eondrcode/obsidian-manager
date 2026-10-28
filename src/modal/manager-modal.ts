@@ -2127,6 +2127,7 @@ export class ManagerModal extends Modal {
     private deviceTabEl?: HTMLButtonElement;
     private devicePanel?: DevicePanel;
     private deviceScopeBars = new Map<ScopePage, DeviceScopeBar>();
+    private deviceScopeHostInline?: HTMLElement;
     private ribbonTabEl?: HTMLButtonElement;
     private troubleshootTabEl?: HTMLButtonElement;
     private ribbonPage?: RibbonModal;
@@ -2596,6 +2597,10 @@ export class ManagerModal extends Modal {
             this.handleSearchChange(value);
         });
         searchBar.controlEl.appendChild(filterControlGroup);
+
+        // 桌面端插件页：设备预设选择器放在搜索框右侧，搜索框相应收窄。
+        this.deviceScopeHostInline = searchLine.createDiv("manager-device-scope manager-device-scope--inline");
+        this.renderDeviceScope(this.deviceScopeHostInline, 'plugins', true);
 
         const sortControl = createFilterSelectField(t("通用_排序_文本"), "arrow-up-down", "search");
         sortControl.closest(".manager-filter-field")?.addClass("manager-filter-field--sort");
@@ -3100,7 +3105,11 @@ export class ManagerModal extends Modal {
         const page: ManagerPage = "plugins";
         if (!this.isRenderCurrent(renderGeneration, page)) return;
         this.enterScopePage('plugins');
-        this.renderDeviceScope(this.pageEl.createDiv("manager-plugin-scope"), 'plugins');
+        if (Platform.isMobileApp || !this.deviceScopeHostInline) {
+            this.renderDeviceScope(this.pageEl.createDiv("manager-plugin-scope"), 'plugins');
+        } else {
+            this.renderDeviceScope(this.deviceScopeHostInline, 'plugins', true);
+        }
         if (this.settings.DEBUG) console.log("[BPM] render showData manifests size:", Object.keys(this.appPlugins.manifests).length);
         const uniquePlugins = this.getUniquePluginManifests();
         const manifestById = new Map(uniquePlugins.map((plugin) => [plugin.id, plugin]));
@@ -7942,13 +7951,13 @@ export class ManagerModal extends Modal {
     }
 
     /** 五栏共用的设备作用域选择器；Shared scope selector for the five scoped pages. */
-    private renderDeviceScope(container: HTMLElement, page: ScopePage): void {
+    private renderDeviceScope(container: HTMLElement, page: ScopePage, inline = false): void {
         let bar = this.deviceScopeBars.get(page);
         if (!bar) {
             bar = new DeviceScopeBar(this.manager, () => this.renderContent());
             this.deviceScopeBars.set(page, bar);
         }
-        bar.render(container, page);
+        bar.render(container, page, inline);
     }
 
     private enterScopePage(page: ScopePage): void {

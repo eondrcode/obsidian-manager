@@ -14112,3 +14112,16 @@ body.theme-dark .manager-transfer-segment[data-state="active"]:hover {
     max-height: min(280px, 48vh);
     z-index: 1200;
 }
+
+/* 插件页：设备预设选择器并入搜索行，搜索框随宽度收缩。 */
+.manager-search-line .manager-device-scope--inline {
+    flex: 0 1 230px;
+    min-width: 170px;
+    max-width: 230px;
+    min-height: 34px;
+}
+
+.manager-device-scope--inline .manager-filter-field {
+    width: 100%;
+    height: 100%;
+}

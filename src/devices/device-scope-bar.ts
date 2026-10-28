@@ -11,7 +11,7 @@ export class DeviceScopeBar {
 
     constructor(private readonly manager: Manager, private readonly onChange: () => void) {}
 
-    render(container: HTMLElement, page: ScopePage): void {
+    render(container: HTMLElement, page: ScopePage, inline = false): void {
         this.closeMenu?.();
         this.closeMenu = null;
         const devices = this.manager.devices;
@@ -22,9 +22,16 @@ export class DeviceScopeBar {
             ? (devices.isLiveScope(scope) ? t('设备_作用域本机说明', { scope: devices.scopeLabel(scope) }) : t('设备_作用域其他说明', { scope: devices.scopeLabel(scope) }))
             : t('设备_作用域未启用');
 
-        const host = container.createDiv('manager-device-scope');
-        const line = host.createDiv('manager-search-line');
-        const field = line.createDiv('manager-filter-field manager-filter-field--select manager-filter-field--sort');
+        // 插件页把选择器直接放进搜索行；其他栏目沿用独立一行。
+        const host = inline ? container : container.createDiv('manager-device-scope');
+        if (inline) {
+            container.empty();
+            container.addClass('manager-device-scope');
+            container.addClass('manager-device-scope--inline');
+        }
+        const field = inline
+            ? host.createDiv('manager-filter-field manager-filter-field--select')
+            : (host.createDiv('manager-search-line')).createDiv('manager-filter-field manager-filter-field--select manager-filter-field--sort');
         field.setAttribute('title', description);
         field.setAttribute('aria-label', description);
         const label = field.createDiv('manager-filter-field__label');
