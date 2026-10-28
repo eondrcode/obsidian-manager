@@ -13,6 +13,7 @@ export class DevicePanel {
     private selected: DeviceType;
     private root!: HTMLElement;
     private busy = false;
+    private refreshing = false;
 
     constructor(private readonly manager: Manager) { this.selected = manager.devices.type; }
     private t(key: string, vars?: Record<string, string | number>): string { return this.manager.translator.t(key, vars); }
@@ -84,6 +85,18 @@ export class DevicePanel {
         }
         this.renderPresets(page);
         this.renderDevices(page);
+        void this.refreshFromDisk();
+    }
+
+    /** 打开设备页时并回其他设备刚同步过来的记录 / Pull records synced in by other devices. */
+    private async refreshFromDisk(): Promise<void> {
+        if (this.refreshing) return;
+        this.refreshing = true;
+        try {
+            const changed = await this.manager.devices.mergeDeviceRecords();
+            if (changed && this.root.isConnected) this.render(this.root);
+        } catch (error) { this.manager.devices.report(error); }
+        finally { this.refreshing = false; }
     }
 
     private async action(task: () => Promise<void>): Promise<void> {

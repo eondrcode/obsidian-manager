@@ -30,7 +30,20 @@ const record = (id, enabled, tags = []) => ({ id, name: id, desc: '', group: '',
 const ribbon = { bpmUniqueId: 'a', name: 'A', icon: 'star', visible: true, order: 0, ribbonIdMap: { en: 'a' } };
 const firstOf = (settings, type) => settings.DEVICE_MANAGEMENT.presets[type][0];
 const keyOf = (settings, type) => `preset:${firstOf(settings, type).id}`;
-async function fixture() {
+const DEVICES_DIR = '.obsidian/better-plugins-manager-device-';
+/** 最小 DataAdapter：设备记录按文件夹里的 JSON 文件同步 / In-memory adapter for device files. */
+function memoryAdapter(files = {}) {
+    return {
+        files,
+        async exists(path) { return Object.prototype.hasOwnProperty.call(files, path); },
+        async mkdir() {},
+        async list(dir) { return { files: Object.keys(files).filter(path => path.startsWith(`${dir}/`)), folders: [] }; },
+        async read(path) { if (!(path in files)) throw new Error('ENOENT'); return files[path]; },
+        async write(path, data) { files[path] = data; },
+        async remove(path) { delete files[path]; },
+    };
+}
+async function fixture(options = {}) {
     platform.isMobileApp = false;
     platform.isTablet = false;
     const settings = structuredClone(DEFAULT_SETTINGS);
@@ -43,6 +56,7 @@ async function fixture() {
     manager.manifest = { id: 'self' };
     manager.translator = { t: (key, vars) => `${key}${vars?.names || ''}` };
     manager.app = { loadLocalStorage: () => local, saveLocalStorage: (_key, value) => { local = value; } };
+    if (options.adapter) manager.app.vault = { configDir: '.obsidian', adapter: options.adapter };
     manager.appPlugins = {
         manifests: Object.fromEntries(settings.Plugins.map(plugin => [plugin.id, { id: plugin.id, name: plugin.name }])),
         enabledPlugins: new Set(['self', 'a', 'ignored']),
@@ -457,4 +471,55 @@ test('empty saves do not mark a preset configured, real edits do', async () => {
     settings.Plugins.find(plugin => plugin.id === 'a').enabled = false;
     await manager.saveSettings();
     assert.equal(firstOf(settings, 'computer').configured, true);
+});
+
+test('device records from other devices are merged from their own files', async () => {
+    const adapter = memoryAdapter({
+        [`${DEVICES_DIR}other.json`]: JSON.stringify({ id: 'other', name: 'Tablet', type: 'tablet', lastSeen: 10 }),
+        [`${DEVICES_DIR}broken.json`]: JSON.stringify({ id: 'broken', name: 5, type: 'tablet', lastSeen: 1 }),
+        [`${DEVICES_DIR}notes.txt`]: 'ignored',
+    });
+    const { manager, settings } = await fixture({ adapter });
+    const devices = settings.DEVICE_MANAGEMENT.devices;
+    assert.ok(devices.some(device => device.id === 'other'));
+    assert.equal(devices.some(device => device.id === 'broken'), false);
+    assert.equal(devices.filter(device => device.id === 'other').length, 1);
+    // 本机记录也要写成文件，供其他设备读取。
+    const own = JSON.parse(adapter.files[`${DEVICES_DIR}${manager.devices.id}.json`]);
+    assert.equal(own.id, manager.devices.id);
+});
+
+test('a device removed in this session is not resurrected and its file is deleted', async () => {
+    const adapter = memoryAdapter({
+        [`${DEVICES_DIR}old.json`]: JSON.stringify({ id: 'old', name: 'Old phone', type: 'phone', lastSeen: 5 }),
+    });
+    const { manager, settings } = await fixture({ adapter });
+    assert.ok(settings.DEVICE_MANAGEMENT.devices.some(device => device.id === 'old'));
+    await manager.devices.remove('old');
+    assert.equal(settings.DEVICE_MANAGEMENT.devices.some(device => device.id === 'old'), false);
+    assert.equal(`${DEVICES_DIR}old.json` in adapter.files, false);
+    await manager.devices.mergeDeviceRecords();
+    assert.equal(settings.DEVICE_MANAGEMENT.devices.some(device => device.id === 'old'), false);
+});
+
+test('merging keeps the local name and refreshes the heartbeat of a known device', async () => {
+    const adapter = memoryAdapter({
+        [`${DEVICES_DIR}known.json`]: JSON.stringify({ id: 'known', name: 'Original', type: 'tablet', lastSeen: 9 }),
+    });
+    const { manager, settings } = await fixture({ adapter });
+    await manager.devices.rename('known', 'Renamed here');
+    adapter.files[`${DEVICES_DIR}known.json`] = JSON.stringify({ id: 'known', name: 'Original', type: 'tablet', lastSeen: 20 });
+    await manager.devices.mergeDeviceRecords();
+    const record = settings.DEVICE_MANAGEMENT.devices.find(device => device.id === 'known');
+    assert.equal(record.name, 'Renamed here');
+    assert.equal(record.lastSeen, 20);
+    assert.equal(settings.DEVICE_MANAGEMENT.devices.filter(device => device.id === 'known').length, 1);
+});
+
+test('renaming this device rewrites its own record file', async () => {
+    const adapter = memoryAdapter();
+    const { manager } = await fixture({ adapter });
+    await manager.devices.rename(manager.devices.id, 'Renamed device');
+    const own = JSON.parse(adapter.files[`${DEVICES_DIR}${manager.devices.id}.json`]);
+    assert.equal(own.name, 'Renamed device');
 });

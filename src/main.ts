@@ -874,6 +874,8 @@ export default class Manager extends Plugin {
     public async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
     public async saveSettings(options: { captureDevice?: boolean } = {}) {
         if (options.captureDevice !== false) this.devices?.capture();
+        // 其他设备同步过来的设备记录只存在于磁盘，先并回内存再整份写回。
+        await this.devices?.mergeDeviceRecords();
         // 投影其他设备时，data.json 只写本机真实值；外域值留在 DEVICE_MANAGEMENT。
         await this.saveData(this.devices?.persistedSettings() ?? this.settings);
     }

@@ -4,7 +4,17 @@ import type { RibbonGroup, RibbonItem } from '../data/types';
 import { applyPresetToSettings, capturePreset, cloneAppearance, clonePreset,
     allPresets, detectDeviceType, DEVICE_TYPES, DeviceManagement, DevicePluginState, DevicePreset, DeviceScope, DeviceType,
     findPreset, isDeviceType, normalizeDeviceManagement, parseScopeKey, scopeKey, ScopedAppearance,
-    ScopePage, snapshotPreset, normalizeRibbonGroups } from './device-presets';
+    ScopePage, snapshotPreset, normalizeRibbonGroups, ManagedDevice } from './device-presets';
+
+/** 磁盘上的设备记录在写回前要校验，避免坏数据进入设置 / Validate records read back from disk. */
+const isManagedDevice = (value: unknown): value is ManagedDevice => {
+    if (!value || typeof value !== 'object') return false;
+    const record = value as Record<string, unknown>;
+    return typeof record.id === 'string' && record.id.length > 0
+        && typeof record.name === 'string'
+        && typeof record.lastSeen === 'number' && Number.isFinite(record.lastSeen)
+        && typeof record.type === 'string' && isDeviceType(record.type);
+};
 
 type LocalStorageApp = { loadLocalStorage(key: string): unknown; saveLocalStorage(key: string, value: unknown): void; };
 type CustomCssLike = {
@@ -36,6 +46,8 @@ export class DeviceManager {
     public boundPresetId = '';
     private ready = false;
     private readonly storageKey = 'better-plugins-manager-device';
+    /** 本次会话里手动删除的设备，合并磁盘记录时不得复活 / IDs removed in this session. */
+    private readonly removedDeviceIds = new Set<string>();
     private selection = '';
     private projection?: Projection;
 
@@ -73,6 +85,9 @@ export class DeviceManager {
             this.applyEffective();
         }
         this.ready = true;
+        // 记录文件是跨设备的唯一通道：启动时先收别人的，再写自己的。
+        await this.mergeDeviceRecords();
+        await this.persistOwnDevice();
     }
 
     /* ---------- 预设复用 / Reuse ---------- */
@@ -646,6 +661,7 @@ export class DeviceManager {
                 this.persistIdentity();
             }
             device.type = type;
+            if (id === this.id) await this.persistOwnDevice();
             try { await this.manager.saveSettings({ captureDevice: false }); }
             catch (error) {
                 device.type = previous;
@@ -665,13 +681,97 @@ export class DeviceManager {
         const device = this.data.devices.find(item => item.id === id);
         if (!device || !name.trim()) throw new Error(this.manager.translator.t('设备_名称为空'));
         device.name = name.trim();
+        // 只有本机记录由本机写盘，改名其他设备保持本地展示。
+        if (id === this.id) await this.persistOwnDevice();
         await this.manager.saveSettings();
     }
 
     async remove(id: string): Promise<void> {
         if (id === this.id) return;
+        this.removedDeviceIds.add(id);
         this.data.devices = this.data.devices.filter(device => device.id !== id);
+        await this.removeDeviceFile(id);
         await this.manager.saveSettings();
+    }
+
+    /* ---------- 设备记录文件 / Device record files ---------- */
+
+    /** 记录文件放在 .obsidian 根目录：同步工具会处理这里的 JSON，插件子目录里的额外文件会漏掉。 */
+    private deviceFilePath(id: string): string | undefined {
+        const configDir = this.manager.app?.vault?.configDir;
+        if (!configDir) return undefined;
+        return `${configDir}/better-plugins-manager-device-${id}.json`;
+    }
+
+    private deviceFilePrefix(): string | undefined {
+        const configDir = this.manager.app?.vault?.configDir;
+        if (!configDir) return undefined;
+        return `${configDir}/better-plugins-manager-device-`;
+    }
+
+    private async writeDeviceFile(device: ManagedDevice): Promise<void> {
+        const path = this.deviceFilePath(device.id);
+        const adapter = this.manager.app?.vault?.adapter;
+        if (!path || !adapter) return;
+        try {
+            await adapter.write(path, JSON.stringify(device, null, 2));
+        } catch (error) { this.report(error); }
+    }
+
+    private async removeDeviceFile(id: string): Promise<void> {
+        const path = this.deviceFilePath(id);
+        const adapter = this.manager.app?.vault?.adapter;
+        if (!path || !adapter) return;
+        try {
+            if (await adapter.exists(path)) await adapter.remove(path);
+        } catch (error) { this.report(error); }
+    }
+
+    /** 本机记录与名称/类型变化后立即写盘，其他设备才能同步到。 */
+    private async persistOwnDevice(): Promise<void> {
+        const own = this.data.devices.find(device => device.id === this.id);
+        if (own) await this.writeDeviceFile(own);
+    }
+
+    /**
+     * 读取其他设备写入的记录文件并并回内存。
+     * 设备记录不走 data.json：那份文件容易被同步规则排除，且多设备共享会互相覆盖。
+     * Merge device records from their own files (one file per device).
+     */
+    async mergeDeviceRecords(): Promise<boolean> {
+        if (!this.ready) return false;
+        const configDir = this.manager.app?.vault?.configDir;
+        const prefix = this.deviceFilePrefix();
+        const adapter = this.manager.app?.vault?.adapter;
+        if (!configDir || !prefix || !adapter) return false;
+        let listed: { files: string[] } | undefined;
+        try {
+            listed = await adapter.list(configDir);
+        } catch {
+            return false;
+        }
+        let changed = false;
+        for (const path of listed?.files ?? []) {
+            if (!path.startsWith(prefix) || !path.endsWith('.json')) continue;
+            let parsed: unknown;
+            try {
+                parsed = JSON.parse(await adapter.read(path));
+            } catch {
+                continue;
+            }
+            if (!isManagedDevice(parsed) || parsed.id === this.id) continue;
+            if (this.removedDeviceIds.has(parsed.id)) continue;
+            const incoming: ManagedDevice = parsed;
+            const known = this.data.devices.find(device => device.id === incoming.id);
+            if (known) {
+                // 名称与类型以本机为准，只更新上线时间 / Keep local name/type, refresh the heartbeat.
+                if (incoming.lastSeen > known.lastSeen) { known.lastSeen = incoming.lastSeen; changed = true; }
+                continue;
+            }
+            this.data.devices.push({ ...incoming });
+            changed = true;
+        }
+        return changed;
     }
 
     async apply(): Promise<void> { await this.run(() => this.applyCurrent()); }
