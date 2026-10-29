@@ -13889,6 +13889,7 @@ body.is-phone .manager-container.manager-container--main.manager-container--mobi
 
 .manager-container .manager-theme-overview .manager-appearance-tabs {
     flex: 0 0 auto;
+    justify-content: flex-start !important;
 }
 
 .manager-container .manager-theme-overview .manager-appearance-section__list {
@@ -14148,6 +14149,43 @@ body.is-phone .manager-container.manager-container--main.manager-container--mobi
     min-height: 34px;
 }
 
+.manager-device-scope .manager-filter-field__control {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.manager-device-scope .manager-filter-select-group {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.manager-device-scope__quick-apply {
+    display: inline-flex;
+    flex: 0 0 34px;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    background: var(--background-primary);
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.manager-device-scope__quick-apply:hover:not(:disabled) {
+    color: var(--text-accent);
+    border-color: var(--interactive-accent);
+}
+
+.manager-device-scope__quick-apply:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .manager-device-scope--inline .manager-filter-field {
     width: 100%;
     height: 100%;
@@ -14324,6 +14362,40 @@ body.is-phone .manager-container.manager-container--main.manager-container--mobi
     overscroll-behavior-x: contain;
     scrollbar-width: thin;
     -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 760px) {
+    .ribbon-manager-modal .ribbon-manager-filter-bar {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+    }
+
+    .ribbon-manager-modal .ribbon-manager-filter-group {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
+        touch-action: pan-x pan-y;
+    }
+
+    .ribbon-manager-modal .ribbon-manager-filter-right {
+        justify-content: space-between;
+        width: 100%;
+    }
+
+    .ribbon-manager-modal .ribbon-manager-search-container,
+    .ribbon-manager-modal .ribbon-search-wrapper,
+    .ribbon-manager-modal .ribbon-search-input {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .ribbon-manager-modal .ribbon-manager-filter-group > .ribbon-filter-btn {
+        min-height: 40px;
+        touch-action: manipulation;
+    }
 }
 
 .ribbon-manager-filter-group > .ribbon-filter-btn,

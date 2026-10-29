@@ -1,6 +1,6 @@
 import { DevicePanel } from '../devices/device-panel';
 import { DeviceScopeBar } from '../devices/device-scope-bar';
-import type { ScopePage } from '../devices/device-presets';
+import type { DevicePluginFilters, ScopePage } from '../devices/device-presets';
 import {
     App,
     ButtonComponent,
@@ -693,6 +693,17 @@ export class ManagerModal extends Modal {
         this.settings.FILTER_DELAY_VALUES = delayValues;
         this.settings.FILTER_DELAY = delayValues[0] || "";
         this.settings.FILTER_DELAY_OPERATOR = this.getDelayFilterOperator();
+    }
+
+    /** Read the active session filters for device preset capture, even when persistence is off. */
+    public getCurrentDeviceFilters(): DevicePluginFilters {
+        return {
+            search: this.searchText || '',
+            status: this.getStatusFilterValues(), statusOperator: this.getStatusFilterOperator(),
+            group: this.getGroupFilterValues(), groupOperator: this.getGroupFilterOperator(),
+            tag: this.getTagFilterValues(), tagOperator: this.getTagFilterOperator(),
+            delay: this.getDelayFilterValues(), delayOperator: this.getDelayFilterOperator(),
+        };
     }
 
     public usePersistedFiltersAsSessionFilters() {

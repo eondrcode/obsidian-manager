@@ -1,6 +1,6 @@
-import { setIcon } from 'obsidian';
+import { Menu, Notice, setIcon } from 'obsidian';
 import type Manager from '../main';
-import { DEVICE_TYPES, DeviceScope, ScopePage, scopeKey } from './device-presets';
+import { DEVICE_TYPES, DeviceScope, ScopePage, scopeKey, DeviceType } from './device-presets';
 
 /**
  * 三栏共用的预设选择器：按设备类型分组列出命名预设，复用管理器筛选栏的自定义下拉。
@@ -59,6 +59,17 @@ export class DeviceScopeBar {
         }
         setIcon(trigger.createSpan('manager-multiselect-filter__chevron'), 'chevron-down');
         trigger.disabled = !enabled;
+
+        const quickApply = control.createEl('button', { cls: 'manager-device-scope__quick-apply' });
+        quickApply.type = 'button';
+        quickApply.setAttribute('aria-label', t('设备_快速应用'));
+        quickApply.setAttribute('title', t('设备_快速应用'));
+        setIcon(quickApply, 'copy-check');
+        quickApply.disabled = !enabled;
+        quickApply.addEventListener('click', event => {
+            event.stopPropagation();
+            this.openQuickApplyMenu(event, page);
+        });
 
         const menu = root.createDiv('manager-multiselect-filter__menu');
         menu.setAttribute('role', 'listbox');
@@ -144,6 +155,38 @@ export class DeviceScopeBar {
                     `${preset.name}${preset.id === devices.boundPresetId ? ` (${t('设备_本机')})` : ''}`);
             }
         }
+    }
+
+    /** 先选目标类型、再选预设、最后选取当前窗口或选中预设为来源。 */
+    private openQuickApplyMenu(event: MouseEvent, page: ScopePage): void {
+        const devices = this.manager.devices;
+        const typeMenu = new Menu();
+        for (const type of DEVICE_TYPES) {
+            typeMenu.addItem(item => item.setTitle(devices.label(type)).setIcon(type === 'computer' ? 'monitor' : type === 'tablet' ? 'tablet' : 'smartphone')
+                .onClick(() => this.openQuickApplyPresetMenu(event, page, type)));
+        }
+        typeMenu.showAtMouseEvent(event);
+    }
+
+    private openQuickApplyPresetMenu(event: MouseEvent, page: ScopePage, type: DeviceType): void {
+        const devices = this.manager.devices;
+        const t = (key: string, vars?: Record<string, string | number>) => this.manager.translator.t(key, vars);
+        const presetMenu = new Menu();
+        for (const preset of devices.presetsFor(type)) {
+            presetMenu.addItem(item => item.setTitle(preset.name).setIcon('settings-2').onClick(() => {
+                const sourceMenu = new Menu();
+                sourceMenu.addItem(source => source.setTitle(t('设备_快速应用_当前窗口')).setIcon('panels-top-left').onClick(() => {
+                    void devices.quickApply(preset.id, page, 'window').then(() => new Notice(t('设备_快速应用完成', { target: preset.name })))
+                        .catch(error => devices.report(error));
+                }));
+                sourceMenu.addItem(source => source.setTitle(t('设备_快速应用_当前作用域')).setIcon('copy').onClick(() => {
+                    void devices.quickApply(preset.id, page, 'scope').then(() => new Notice(t('设备_快速应用完成', { target: preset.name })))
+                        .catch(error => devices.report(error));
+                }));
+                sourceMenu.showAtMouseEvent(event);
+            }));
+        }
+        presetMenu.showAtMouseEvent(event);
     }
 }
 

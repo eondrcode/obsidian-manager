@@ -192,7 +192,7 @@ export class DevicePanel {
             const current = device.id === this.manager.devices.id;
             let name = device.name;
             const row = new Setting(card).setName(current ? `${device.name} · ${this.t('设备_本机')}` : device.name)
-                .setDesc(`${this.t('设备_最近上线')}: ${device.lastSeen ? new Date(device.lastSeen).toLocaleString() : '—'}`);
+                .setDesc(`${this.t('设备_系统平台')}: ${this.t(`设备_平台_${device.platform || 'unknown'}`)} · ${this.t('设备_最近上线')}: ${device.lastSeen ? new Date(device.lastSeen).toLocaleString() : '—'}`);
             row.addText(text => text.setValue(name).setPlaceholder(this.t('通用_名称_文本')).onChange(value => { name = value; }));
             row.addExtraButton(button => button.setIcon('save').setTooltip(this.t('设备_保存名称')).onClick(() => {
                 void this.action(() => this.manager.devices.rename(device.id, name));

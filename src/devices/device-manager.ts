@@ -2,7 +2,7 @@ import { Notice, Platform } from 'obsidian';
 import type Manager from '../main';
 import type { RibbonGroup, RibbonItem } from '../data/types';
 import { applyPresetToSettings, capturePreset, cloneAppearance, clonePreset,
-    allPresets, detectDeviceType, DEVICE_TYPES, DeviceManagement, DevicePluginState, DevicePreset, DeviceScope, DeviceType,
+    allPresets, detectDeviceType, detectSystemPlatform, DEVICE_TYPES, DeviceManagement, DevicePluginFilters, DevicePluginState, DevicePreset, DeviceScope, DeviceType,
     findPreset, isDeviceType, normalizeDeviceManagement, parseScopeKey, scopeKey, ScopedAppearance,
     ScopePage, snapshotPreset, normalizeRibbonGroups, ManagedDevice } from './device-presets';
 
@@ -13,7 +13,8 @@ const isManagedDevice = (value: unknown): value is ManagedDevice => {
     return typeof record.id === 'string' && record.id.length > 0
         && typeof record.name === 'string'
         && typeof record.lastSeen === 'number' && Number.isFinite(record.lastSeen)
-        && typeof record.type === 'string' && isDeviceType(record.type);
+        && typeof record.type === 'string' && isDeviceType(record.type)
+        && (record.platform === undefined || typeof record.platform === 'string');
 };
 
 type LocalStorageApp = { loadLocalStorage(key: string): unknown; saveLocalStorage(key: string, value: unknown): void; };
@@ -31,6 +32,7 @@ interface LiveSnapshot {
     ribbonGroups: RibbonGroup[];
     ribbonEnabled: boolean;
     plugins: Record<string, DevicePluginState>;
+    filters: DevicePluginFilters;
 }
 interface Projection {
     page: ScopePage;
@@ -72,10 +74,11 @@ export class DeviceManager {
         const known = this.data.devices.find(device => device.id === this.id);
         if (known) {
             this.type = known.type;
+            known.platform = detectSystemPlatform(Platform);
             known.lastSeen = Date.now();
             if (this.isGeneratedName(known.name)) known.name = this.detectDeviceName();
         } else {
-            this.data.devices.push({ id: this.id, type: this.type, name: this.detectDeviceName(), lastSeen: Date.now() });
+            this.data.devices.push({ id: this.id, type: this.type, platform: detectSystemPlatform(Platform), name: this.detectDeviceName(), lastSeen: Date.now() });
         }
         this.migrateLegacyOverrides(legacy);
         this.ensureBinding(typeof stored?.presetId === 'string' ? stored.presetId : '', true);
@@ -116,19 +119,45 @@ export class DeviceManager {
     /** 手动复用某个预设的配置（保留目标预设的 id 与名称）。 */
     async copyConfig(targetId: string, sourceId: string): Promise<void> {
         await this.run(async () => {
+            if (this.projection) await this.closeProjection();
             const target = this.presetById(targetId);
             const source = this.presetById(sourceId);
             if (!target || !source || targetId === sourceId) return;
-            const copy = clonePreset(source.preset);
-            target.preset.plugins = copy.plugins;
-            target.preset.ribbon = copy.ribbon;
-            target.preset.ribbonGroups = copy.ribbonGroups;
-            target.preset.ribbonEnabled = copy.ribbonEnabled;
-            target.preset.appearance = copy.appearance;
-            target.preset.configured = true;
+            this.replacePresetConfig(target.preset, source.preset);
             if (this.data.enabled && targetId === this.boundPresetId) await this.applyCurrent();
             await this.manager.saveSettings({ captureDevice: false });
         });
+    }
+
+    /** Apply the current editor or its selected preset to a target preset. */
+    async quickApply(targetId: string, page: ScopePage, source: 'window' | 'scope'): Promise<void> {
+        const scope = this.selectedScope(page);
+        if (source === 'scope') {
+            await this.copyConfig(targetId, scope.presetId);
+            return;
+        }
+        await this.run(async () => {
+            const target = this.presetById(targetId);
+            if (!target) throw new Error(this.manager.translator.t('设备_未找到'));
+            const current = snapshotPreset(this.manager.settings, { appearance: this.isLiveScope(scope)
+                ? this.readLiveAppearance() : this.scopeAppearance(page) }, { configured: true });
+            current.filters = this.pluginFilters();
+            if (this.projection) await this.closeProjection();
+            this.replacePresetConfig(target.preset, current);
+            if (this.data.enabled && targetId === this.boundPresetId) await this.applyCurrent();
+            await this.manager.saveSettings({ captureDevice: false });
+        });
+    }
+
+    private replacePresetConfig(target: DevicePreset, source: DevicePreset): void {
+        const copy = clonePreset(source);
+        target.plugins = copy.plugins;
+        target.filters = copy.filters;
+        target.ribbon = copy.ribbon;
+        target.ribbonGroups = copy.ribbonGroups;
+        target.ribbonEnabled = copy.ribbonEnabled;
+        target.appearance = copy.appearance;
+        target.configured = true;
     }
 
     label(type: DeviceType): string { return this.manager.translator.t(`设备_${type}`); }
@@ -345,6 +374,7 @@ export class DeviceManager {
                 ribbonGroups: normalizeRibbonGroups(settings.RIBBON_GROUPS),
                 ribbonEnabled: settings.RIBBON_MANAGER_ENABLED,
                 plugins: this.pluginStates(),
+                filters: this.pluginFilters(),
             },
         };
         const preset = this.effectiveForScope(scope);
@@ -355,6 +385,7 @@ export class DeviceManager {
             const state = Object.prototype.hasOwnProperty.call(preset.plugins, plugin.id) ? preset.plugins[plugin.id] : undefined;
             if (state) { plugin.enabled = state.enabled; plugin.delay = state.delay; }
         }
+        this.restorePluginFilters(preset.filters);
     }
 
     /** 关闭投影：把外域改动写回该预设，并恢复本机实时值。 */
@@ -368,6 +399,7 @@ export class DeviceManager {
             ribbonGroups: settings.RIBBON_GROUPS,
             ribbonEnabled: settings.RIBBON_MANAGER_ENABLED,
             plugins: this.pluginStates(),
+            filters: this.pluginFilters(),
         });
         this.restoreLive(projection.live);
         await this.manager.saveSettings({ captureDevice: false });
@@ -392,6 +424,7 @@ export class DeviceManager {
         settings.RIBBON_SETTINGS = live.ribbon;
         settings.RIBBON_GROUPS = live.ribbonGroups;
         settings.RIBBON_MANAGER_ENABLED = live.ribbonEnabled;
+        this.restorePluginFilters(live.filters);
         for (const plugin of settings.Plugins) {
             const state = live.plugins[plugin.id];
             if (state) { plugin.enabled = state.enabled; plugin.delay = state.delay; }
@@ -401,27 +434,55 @@ export class DeviceManager {
     private storeSnapshot(presetId: string, snapshot: LiveSnapshot): void {
         const found = this.presetById(presetId);
         if (!found) return;
-        const before = JSON.stringify([found.preset.plugins, found.preset.ribbon, found.preset.ribbonGroups, found.preset.ribbonEnabled]);
+        const before = JSON.stringify([found.preset.plugins, found.preset.filters, found.preset.ribbon, found.preset.ribbonGroups, found.preset.ribbonEnabled]);
         found.preset.ribbon = cloneRibbon(snapshot.ribbon);
         found.preset.ribbonGroups = normalizeRibbonGroups(snapshot.ribbonGroups);
         found.preset.ribbonEnabled = snapshot.ribbonEnabled;
         found.preset.plugins = { ...found.preset.plugins, ...snapshot.plugins };
-        if (!found.preset.configured && before !== JSON.stringify([found.preset.plugins, found.preset.ribbon, found.preset.ribbonGroups, found.preset.ribbonEnabled])) {
+        found.preset.filters = snapshot.filters;
+        if (!found.preset.configured && before !== JSON.stringify([found.preset.plugins, found.preset.filters, found.preset.ribbon, found.preset.ribbonGroups, found.preset.ribbonEnabled])) {
             found.preset.configured = true;
         }
     }
 
     /** 捕获时只有值真的变了才标记“已配置”，避免空保存把新类型锁死。 */
     private captureInto(preset: DevicePreset, extras: { appearance?: ScopedAppearance }): void {
-        const before = JSON.stringify([preset.plugins, preset.ribbon, preset.ribbonGroups, preset.ribbonEnabled, preset.appearance]);
+        const before = JSON.stringify([preset.plugins, preset.filters, preset.ribbon, preset.ribbonGroups, preset.ribbonEnabled, preset.appearance]);
         capturePreset(preset, this.manager.settings, extras);
-        if (!preset.configured && before !== JSON.stringify([preset.plugins, preset.ribbon, preset.ribbonGroups, preset.ribbonEnabled, preset.appearance])) {
+        preset.filters = this.pluginFilters();
+        if (!preset.configured && before !== JSON.stringify([preset.plugins, preset.filters, preset.ribbon, preset.ribbonGroups, preset.ribbonEnabled, preset.appearance])) {
             preset.configured = true;
         }
     }
 
     private pluginStates(): Record<string, DevicePluginState> {
         return Object.fromEntries(this.manager.settings.Plugins.map(plugin => [plugin.id, { enabled: plugin.enabled, delay: plugin.delay }]));
+    }
+    private pluginFilters(): DevicePluginFilters {
+        const active = this.manager.managerModal?.getCurrentDeviceFilters();
+        if (active) return active;
+        const settings = this.manager.settings;
+        const values = (items: string[] | undefined, fallback: string): string[] => [...(items?.length ? items : [fallback]).filter(Boolean)];
+        return {
+            search: settings.FILTER_SEARCH || '',
+            status: values(settings.FILTER_STATUS_VALUES, settings.FILTER_STATUS || 'all'), statusOperator: settings.FILTER_STATUS_OPERATOR,
+            group: values(settings.FILTER_GROUP_VALUES, settings.FILTER_GROUP || ''), groupOperator: settings.FILTER_GROUP_OPERATOR,
+            tag: values(settings.FILTER_TAG_VALUES, settings.FILTER_TAG || ''), tagOperator: settings.FILTER_TAG_OPERATOR,
+            delay: values(settings.FILTER_DELAY_VALUES, settings.FILTER_DELAY || ''), delayOperator: settings.FILTER_DELAY_OPERATOR,
+        };
+    }
+    private restorePluginFilters(filters: DevicePluginFilters): void {
+        const settings = this.manager.settings;
+        settings.FILTER_SEARCH = filters.search;
+        settings.FILTER_STATUS_VALUES = [...filters.status]; settings.FILTER_STATUS = filters.status[0] || 'all';
+        settings.FILTER_STATUS_OPERATOR = filters.statusOperator;
+        settings.FILTER_GROUP_VALUES = [...filters.group]; settings.FILTER_GROUP = filters.group[0] || '';
+        settings.FILTER_GROUP_OPERATOR = filters.groupOperator;
+        settings.FILTER_TAG_VALUES = [...filters.tag]; settings.FILTER_TAG = filters.tag[0] || '';
+        settings.FILTER_TAG_OPERATOR = filters.tagOperator;
+        settings.FILTER_DELAY_VALUES = [...filters.delay]; settings.FILTER_DELAY = filters.delay[0] || '';
+        settings.FILTER_DELAY_OPERATOR = filters.delayOperator;
+        this.manager.managerModal?.usePersistedFiltersAsSessionFilters();
     }
 
     /* ---------- 外观作用域 / Scoped appearance ---------- */
@@ -472,6 +533,7 @@ export class DeviceManager {
                 ribbonGroups: this.manager.settings.RIBBON_GROUPS,
                 ribbonEnabled: this.manager.settings.RIBBON_MANAGER_ENABLED,
                 plugins: this.pluginStates(),
+                filters: this.pluginFilters(),
             });
             return;
         }
@@ -492,6 +554,19 @@ export class DeviceManager {
             RIBBON_SETTINGS: this.projection.live.ribbon,
             RIBBON_GROUPS: this.projection.live.ribbonGroups,
             RIBBON_MANAGER_ENABLED: this.projection.live.ribbonEnabled,
+            FILTER_SEARCH: this.projection.live.filters.search,
+            FILTER_STATUS: this.projection.live.filters.status[0] || 'all',
+            FILTER_STATUS_VALUES: this.projection.live.filters.status,
+            FILTER_STATUS_OPERATOR: this.projection.live.filters.statusOperator,
+            FILTER_GROUP: this.projection.live.filters.group[0] || '',
+            FILTER_GROUP_VALUES: this.projection.live.filters.group,
+            FILTER_GROUP_OPERATOR: this.projection.live.filters.groupOperator,
+            FILTER_TAG: this.projection.live.filters.tag[0] || '',
+            FILTER_TAG_VALUES: this.projection.live.filters.tag,
+            FILTER_TAG_OPERATOR: this.projection.live.filters.tagOperator,
+            FILTER_DELAY: this.projection.live.filters.delay[0] || '',
+            FILTER_DELAY_VALUES: this.projection.live.filters.delay,
+            FILTER_DELAY_OPERATOR: this.projection.live.filters.delayOperator,
         };
     }
 

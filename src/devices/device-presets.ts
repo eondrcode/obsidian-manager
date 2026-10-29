@@ -1,9 +1,22 @@
 import type { ManagerSettings } from '../settings/data';
+import type { FilterOperator } from '../settings/data';
 import type { RibbonGroup, RibbonItem } from '../data/types';
 
 export const DEVICE_TYPES = ['computer', 'tablet', 'phone'] as const;
 export type DeviceType = typeof DEVICE_TYPES[number];
 export interface DevicePluginState { enabled: boolean; delay: string; }
+/** Plugin-list filters are part of a device preset so desktop choices can be reused on mobile. */
+export interface DevicePluginFilters {
+    search: string;
+    status: string[];
+    statusOperator: FilterOperator;
+    group: string[];
+    groupOperator: FilterOperator;
+    tag: string[];
+    tagOperator: FilterOperator;
+    delay: string[];
+    delayOperator: FilterOperator;
+}
 
 /** 外观运行状态：主题名与各 CSS 片段的显式开关 / Runtime appearance applied per scope. */
 export interface ScopedAppearance {
@@ -18,6 +31,7 @@ export interface DevicePreset {
     /** 是否已经配置过（决定新类型能否自动复用）；Set once the user edits its settings. */
     configured: boolean;
     plugins: Record<string, DevicePluginState>;
+    filters: DevicePluginFilters;
     ribbon: RibbonItem[];
     ribbonGroups: RibbonGroup[];
     ribbonEnabled: boolean;
@@ -29,6 +43,7 @@ export interface ManagedDevice {
     id: string;
     name: string;
     type: DeviceType;
+    platform?: string;
     lastSeen: number;
 }
 
@@ -56,6 +71,14 @@ export function isDeviceType(value: unknown): value is DeviceType {
 }
 export function detectDeviceType(platform: { isMobileApp: boolean; isTablet: boolean }): DeviceType {
     return platform.isMobileApp ? (platform.isTablet ? 'tablet' : 'phone') : 'computer';
+}
+export function detectSystemPlatform(platform: { isMacOS?: boolean; isWin?: boolean; isLinux?: boolean; isIosApp?: boolean; isAndroidApp?: boolean }): string {
+    if (platform.isIosApp) return 'ios';
+    if (platform.isAndroidApp) return 'android';
+    if (platform.isMacOS) return 'macos';
+    if (platform.isWin) return 'windows';
+    if (platform.isLinux) return 'linux';
+    return 'unknown';
 }
 
 export function scopeKey(presetId: string): string {
@@ -156,11 +179,54 @@ export function clonePreset(preset: DevicePreset): DevicePreset {
         name: preset.name,
         configured: preset.configured === true,
         plugins: Object.fromEntries(Object.entries(preset.plugins).map(([id, state]) => [id, { ...state }])),
+        filters: cloneFilters(preset.filters),
         ribbon: normalizeRibbon(preset.ribbon, []),
         ribbonGroups: normalizeRibbonGroups(preset.ribbonGroups),
         ribbonEnabled: preset.ribbonEnabled,
         appearance: cloneAppearance(preset.appearance),
     };
+}
+
+function normalizeFilterValues(value: unknown): string[] {
+    return Array.isArray(value) ? [...new Set(value.filter((item): item is string => typeof item === 'string' && item.length > 0))] : [];
+}
+function normalizeOperator(value: unknown): FilterOperator { return value === 'not-contains' ? 'not-contains' : 'contains'; }
+function cloneFilters(filters: DevicePluginFilters): DevicePluginFilters {
+    return { ...filters, status: [...filters.status], group: [...filters.group], tag: [...filters.tag], delay: [...filters.delay] };
+}
+function normalizeFilters(value: unknown, baseline: DevicePluginFilters): DevicePluginFilters {
+    if (!isRecord(value)) return cloneFilters(baseline);
+    return {
+        search: typeof value.search === 'string' ? value.search : baseline.search,
+        status: normalizeFilterValues(value.status), statusOperator: normalizeOperator(value.statusOperator),
+        group: normalizeFilterValues(value.group), groupOperator: normalizeOperator(value.groupOperator),
+        tag: normalizeFilterValues(value.tag), tagOperator: normalizeOperator(value.tagOperator),
+        delay: normalizeFilterValues(value.delay), delayOperator: normalizeOperator(value.delayOperator),
+    };
+}
+function filtersFromSettings(settings: ManagerSettings): DevicePluginFilters {
+    return {
+        search: settings.FILTER_SEARCH || '',
+        status: normalizeFilterValues(settings.FILTER_STATUS_VALUES?.length ? settings.FILTER_STATUS_VALUES : [settings.FILTER_STATUS]),
+        statusOperator: normalizeOperator(settings.FILTER_STATUS_OPERATOR),
+        group: normalizeFilterValues(settings.FILTER_GROUP_VALUES?.length ? settings.FILTER_GROUP_VALUES : [settings.FILTER_GROUP]),
+        groupOperator: normalizeOperator(settings.FILTER_GROUP_OPERATOR),
+        tag: normalizeFilterValues(settings.FILTER_TAG_VALUES?.length ? settings.FILTER_TAG_VALUES : [settings.FILTER_TAG]),
+        tagOperator: normalizeOperator(settings.FILTER_TAG_OPERATOR),
+        delay: normalizeFilterValues(settings.FILTER_DELAY_VALUES?.length ? settings.FILTER_DELAY_VALUES : [settings.FILTER_DELAY]),
+        delayOperator: normalizeOperator(settings.FILTER_DELAY_OPERATOR),
+    };
+}
+function applyFiltersToSettings(filters: DevicePluginFilters, settings: ManagerSettings): void {
+    settings.FILTER_SEARCH = filters.search;
+    settings.FILTER_STATUS_VALUES = [...filters.status]; settings.FILTER_STATUS = filters.status[0] || 'all';
+    settings.FILTER_STATUS_OPERATOR = filters.statusOperator;
+    settings.FILTER_GROUP_VALUES = [...filters.group]; settings.FILTER_GROUP = filters.group[0] || '';
+    settings.FILTER_GROUP_OPERATOR = filters.groupOperator;
+    settings.FILTER_TAG_VALUES = [...filters.tag]; settings.FILTER_TAG = filters.tag[0] || '';
+    settings.FILTER_TAG_OPERATOR = filters.tagOperator;
+    settings.FILTER_DELAY_VALUES = [...filters.delay]; settings.FILTER_DELAY = filters.delay[0] || '';
+    settings.FILTER_DELAY_OPERATOR = filters.delayOperator;
 }
 
 export interface PresetExtras {
@@ -178,6 +244,7 @@ export function snapshotPreset(settings: ManagerSettings, extras: PresetExtras =
         name: meta.name ?? '',
         configured: meta.configured === true,
         plugins: Object.fromEntries(settings.Plugins.map(plugin => [plugin.id, { enabled: plugin.enabled, delay: plugin.delay }])),
+        filters: filtersFromSettings(settings),
         ribbon: settings.RIBBON_SETTINGS,
         ribbonGroups: settings.RIBBON_GROUPS,
         ribbonEnabled: settings.RIBBON_MANAGER_ENABLED,
@@ -202,6 +269,7 @@ function normalizePreset(raw: unknown, baseline: DevicePreset, type: DeviceType,
         if (typeof raw.ribbonEnabled === 'boolean') preset.ribbonEnabled = raw.ribbonEnabled;
         if (Array.isArray(raw.ribbon)) preset.ribbon = normalizeRibbon(raw.ribbon, preset.ribbon);
         if (Array.isArray(raw.ribbonGroups)) preset.ribbonGroups = normalizeRibbonGroups(raw.ribbonGroups);
+        preset.filters = normalizeFilters(raw.filters, preset.filters);
         preset.appearance = normalizeAppearance(raw.appearance, preset.appearance);
         if (typeof raw.name === 'string' && raw.name.trim()) preset.name = raw.name.trim();
         if (typeof raw.id === 'string' && raw.id.trim()) preset.id = raw.id.trim();
@@ -226,6 +294,7 @@ function normalizePreset(raw: unknown, baseline: DevicePreset, type: DeviceType,
 function settingsEqual(a: DevicePreset, b: DevicePreset): boolean {
     const canonical = (preset: DevicePreset) => JSON.stringify({
         plugins: Object.keys(preset.plugins).sort().map(id => [id, preset.plugins[id].enabled, preset.plugins[id].delay]),
+        filters: preset.filters,
         ribbon: preset.ribbon,
         ribbonGroups: preset.ribbonGroups,
         ribbonEnabled: preset.ribbonEnabled,
@@ -255,6 +324,7 @@ export function normalizeDeviceManagement(value: unknown, baseline: DevicePreset
             if (!isRecord(raw) || typeof raw.id !== 'string' || !raw.id || typeof raw.name !== 'string'
                 || !isDeviceType(raw.type) || devices.some(device => device.id === raw.id)) continue;
             devices.push({ id: raw.id, name: raw.name, type: raw.type,
+                platform: typeof raw.platform === 'string' ? raw.platform : 'unknown',
                 lastSeen: typeof raw.lastSeen === 'number' && Number.isFinite(raw.lastSeen) ? raw.lastSeen : 0 });
         }
     }
@@ -265,6 +335,7 @@ export function normalizeDeviceManagement(value: unknown, baseline: DevicePreset
 export function capturePreset(preset: DevicePreset, settings: ManagerSettings, extras: PresetExtras = {}): void {
     const snapshot = snapshotPreset(settings, extras ?? {});
     preset.plugins = { ...preset.plugins, ...snapshot.plugins };
+    preset.filters = cloneFilters(snapshot.filters);
     preset.ribbon = snapshot.ribbon;
     preset.ribbonGroups = snapshot.ribbonGroups;
     preset.ribbonEnabled = snapshot.ribbonEnabled;
@@ -281,4 +352,5 @@ export function applyPresetToSettings(preset: DevicePreset, settings: ManagerSet
     settings.RIBBON_SETTINGS = clonePreset(preset).ribbon;
     settings.RIBBON_GROUPS = clonePreset(preset).ribbonGroups;
     settings.RIBBON_MANAGER_ENABLED = preset.ribbonEnabled;
+    applyFiltersToSettings(preset.filters, settings);
 }

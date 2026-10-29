@@ -464,6 +464,52 @@ test('copying another preset replaces settings but keeps id and name', async () 
     assert.equal(copied.configured, true);
 });
 
+test('quick apply copies the current editor filters into a target device preset', async () => {
+    const { manager, settings } = await fixture();
+    const target = firstOf(settings, 'phone');
+    settings.FILTER_SEARCH = 'mobile';
+    settings.FILTER_STATUS_VALUES = ['enabled'];
+    settings.FILTER_STATUS_OPERATOR = 'not-contains';
+    settings.FILTER_GROUP_VALUES = ['reading'];
+    settings.FILTER_TAG_VALUES = ['work'];
+    settings.FILTER_DELAY_VALUES = ['later'];
+    await manager.devices.quickApply(target.id, 'plugins', 'window');
+    assert.equal(target.filters.search, 'mobile');
+    assert.deepEqual(target.filters.status, ['enabled']);
+    assert.equal(target.filters.statusOperator, 'not-contains');
+    assert.deepEqual(target.filters.group, ['reading']);
+    assert.deepEqual(target.filters.tag, ['work']);
+    assert.deepEqual(target.filters.delay, ['later']);
+});
+
+test('device scope projection applies preset filters and restores the live filters', async () => {
+    const { manager, settings } = await fixture();
+    const tablet = firstOf(settings, 'tablet');
+    tablet.filters.search = 'tablet search';
+    tablet.filters.status = ['disabled'];
+    settings.DEVICE_MANAGEMENT.enabled = true;
+    settings.FILTER_SEARCH = 'desktop search';
+    settings.FILTER_STATUS_VALUES = ['enabled'];
+    await manager.devices.selectScope('plugins', keyOf(settings, 'tablet'));
+    assert.equal(settings.FILTER_SEARCH, 'tablet search');
+    assert.deepEqual(settings.FILTER_STATUS_VALUES, ['disabled']);
+    settings.FILTER_SEARCH = 'edited tablet search';
+    settings.FILTER_STATUS_VALUES = ['all'];
+    await manager.devices.closeProjection();
+    assert.equal(tablet.filters.search, 'edited tablet search');
+    assert.deepEqual(tablet.filters.status, ['all']);
+    assert.equal(settings.FILTER_SEARCH, 'desktop search');
+    assert.deepEqual(settings.FILTER_STATUS_VALUES, ['enabled']);
+});
+
+test('system platform detection distinguishes desktop operating systems and mobile platforms', () => {
+    assert.equal(model.detectSystemPlatform({ isWin: true }), 'windows');
+    assert.equal(model.detectSystemPlatform({ isMacOS: true }), 'macos');
+    assert.equal(model.detectSystemPlatform({ isLinux: true }), 'linux');
+    assert.equal(model.detectSystemPlatform({ isAndroidApp: true }), 'android');
+    assert.equal(model.detectSystemPlatform({ isIosApp: true }), 'ios');
+});
+
 test('empty saves do not mark a preset configured, real edits do', async () => {
     const { manager, settings } = await fixture();
     await manager.devices.setEnabled(true);
