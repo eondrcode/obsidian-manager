@@ -727,6 +727,9 @@ export class ManagerModal extends Modal {
         // 作用域切换时，空搜索词也是目标预设的有效状态；不能回退到上一个作用域。
         // An empty search is a valid preset value and must not inherit the previous scope.
         this.searchText = this.settings.FILTER_SEARCH || "";
+        // 输入框显示值必须跟着目标预设走，否则会出现「框里还是旧词、列表已按新预设过滤」。
+        const searchInput = this.searchEl?.inputEl;
+        if (searchInput && searchInput.value !== this.searchText) searchInput.value = this.searchText;
     }
 
     private migratePersistedFilterValues() {
