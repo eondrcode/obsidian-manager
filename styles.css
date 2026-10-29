@@ -2182,6 +2182,17 @@ body.is-tablet .manager-container--mobile .bpm-mobile-filter-fields .manager-fil
     background: transparent;
 }
 
+/* 放大镜与清除按钮都按输入框高度垂直居中 */
+.manager-container--mobile .bpm-mobile-header__search .search-input-container::before {
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.manager-container--mobile .bpm-mobile-header__search .search-input-clear-button {
+    top: 50%;
+    transform: translateY(-50%);
+}
+
 /* 列表项描述优化 */
 .manager-container--mobile .manager-item__description-container {
     display: block;
@@ -14694,6 +14705,87 @@ body.is-tablet button.manager-device-scope__quick-apply {
     padding: 8px;
     color: var(--text-muted);
     font-size: 12px;
+}
+
+/* 移动端 Ribbon 弹窗高度有限：收起说明文字、压缩分组区，把高度让给列表 */
+.ribbon-manager-modal--compact .manager-hidden-toolbar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 8px 10px;
+}
+
+.ribbon-manager-modal--compact .manager-hidden-toolbar__desc,
+.ribbon-manager-modal--compact .ribbon-manager-groups > .setting-item .setting-item-description {
+    display: none;
+}
+
+.ribbon-manager-modal--compact .manager-hidden-toolbar__title {
+    font-size: 15px;
+}
+
+.ribbon-manager-modal--compact .ribbon-manager-groups {
+    gap: 2px;
+    margin-bottom: 6px;
+    padding: 6px 8px;
+}
+
+.ribbon-manager-modal--compact .ribbon-manager-groups > .setting-item {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px;
+}
+
+.ribbon-manager-modal--compact .ribbon-manager-groups > .setting-item .setting-item-info {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ribbon-manager-modal--compact .ribbon-manager-groups > .setting-item .setting-item-control {
+    flex: 0 0 auto;
+    width: auto;
+    flex-wrap: nowrap;
+}
+
+.ribbon-manager-modal--compact .ribbon-manager-groups__empty {
+    padding: 4px 6px;
+}
+
+.ribbon-manager-modal--compact .draggable-item {
+    gap: 8px;
+    padding: 8px;
+}
+
+/* 手机端：边栏编排 / Ribbon 分组改为窗口，主面板只留入口按钮 */
+.ribbon-manager-mobile-sections {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.ribbon-manager-mobile-sections button {
+    flex: 1 1 0;
+    min-height: 44px;
+    justify-content: center;
+}
+
+.ribbon-layout-window__desc {
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.ribbon-layout-window__actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
+
+.ribbon-groups-window .ribbon-manager-groups {
+    margin: 0;
 }
 
 .ribbon-manager-groups__empty-icon {

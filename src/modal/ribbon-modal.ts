@@ -1,4 +1,4 @@
-import { App, Modal, Setting, setIcon, getIconIds, FuzzySuggestModal, ButtonComponent, ExtraButtonComponent, TextComponent, ToggleComponent } from "obsidian";
+import { App, Modal, Platform, Setting, setIcon, getIconIds, FuzzySuggestModal, ButtonComponent, ExtraButtonComponent, TextComponent, ToggleComponent } from "obsidian";
 import Manager from "main";
 import { RibbonItem } from "../data/types";
 import { confirmWithModal } from "../utils";
@@ -52,6 +52,8 @@ export class RibbonModal extends Modal {
 
         this.manager.ribbonModal = this;
         this.modalEl.addClass("ribbon-manager-modal");
+        // 移动端弹窗高度有限：压缩说明文字与分组区的留白，把空间留给列表。
+        if (Platform.isMobileApp) this.modalEl.addClass("ribbon-manager-modal--compact");
         this.titleEl.setText(this.manager.translator.t("Ribbon_标题"));
         await this.syncRibbonItems();
         this.display();
@@ -101,8 +103,12 @@ export class RibbonModal extends Modal {
         contentEl.empty();
         if (!this.manager.isRibbonManagerEnabled()) return;
 
-        if (showToolbar) this.renderToolbar(contentEl);
-        this.renderGroups(contentEl);
+        // 手机端把「边栏编排 / Ribbon 分组」窗口化，列表占满剩余高度。
+        if (showToolbar) {
+            if (Platform.isMobileApp) this.renderMobileSectionsBar(contentEl);
+            else this.renderToolbar(contentEl);
+        }
+        if (!Platform.isMobileApp) this.renderGroups(contentEl);
         this.renderDraggableList(contentEl);
     }
 
@@ -126,26 +132,83 @@ export class RibbonModal extends Modal {
         });
     }
 
+    /** 手机端：用两个按钮代替常驻的「边栏编排 / Ribbon 分组」区域，列表获得更多高度。 */
+    private renderMobileSectionsBar(containerEl: HTMLElement): void {
+        const t = (k: string) => this.manager.translator.t(k);
+        const bar = containerEl.createDiv("ribbon-manager-mobile-sections");
+        const layoutBtn = new ButtonComponent(bar);
+        layoutBtn.setIcon("sliders-horizontal").setButtonText(t("Ribbon_功能编排_标题"));
+        layoutBtn.onClick(() => this.openLayoutWindow());
+        const groupsBtn = new ButtonComponent(bar);
+        groupsBtn.setIcon("folder-tree").setButtonText(t("Ribbon_分组"));
+        groupsBtn.onClick(() => this.openGroupsWindow());
+    }
+
+    private openLayoutWindow(): void {
+        const t = (k: string) => this.manager.translator.t(k);
+        const modal = new Modal(this.app);
+        modal.modalEl.addClass("ribbon-layout-window");
+        modal.onOpen = () => {
+            modal.titleEl.setText(t("Ribbon_功能编排_标题"));
+            modal.contentEl.empty();
+            modal.contentEl.createEl("p", { cls: "ribbon-layout-window__desc", text: t("Ribbon_功能编排_说明") });
+            const actions = modal.contentEl.createDiv("ribbon-layout-window__actions");
+            const resetBtn = new ButtonComponent(actions);
+            resetBtn.setIcon("rotate-ccw").setButtonText(t("通用_重置_文本"));
+            resetBtn.onClick(async () => {
+                if (!(await confirmWithModal(this.app, this.manager, t("Ribbon_重置_确认")))) return;
+                await this.resetRibbonLayout();
+                modal.close();
+            });
+        };
+        modal.open();
+    }
+
+    private groupsModalEl?: HTMLElement;
+
+    private openGroupsWindow(): void {
+        const t = (k: string) => this.manager.translator.t(k);
+        const modal = new Modal(this.app);
+        modal.modalEl.addClass("ribbon-groups-window");
+        modal.onOpen = () => {
+            modal.titleEl.setText(t("Ribbon_分组"));
+            this.groupsModalEl = modal.contentEl;
+            this.renderGroups(modal.contentEl, true);
+        };
+        modal.onClose = () => { this.groupsModalEl = undefined; };
+        modal.open();
+    }
+
+    private refreshGroupsWindow(): void {
+        const el = this.groupsModalEl;
+        if (!el || !el.isConnected) return;
+        el.empty();
+        this.renderGroups(el, true);
+    }
+
     /** Group settings use native controls / 分组编辑使用 Obsidian 原生控件。 */
     /** 分组变更：先同步排序入口，再应用原生状态，最后落盘。 */
     private commitRibbonGroups(): void {
         this.manager.syncRibbonGroupItems();
         this.manager.applyRibbonSettings();
         void this.manager.saveSettings();
+        this.refreshGroupsWindow();
     }
 
-    private renderGroups(containerEl: HTMLElement): void {
+    private renderGroups(containerEl: HTMLElement, inWindow = false): void {
         const groups = this.manager.settings.RIBBON_GROUPS;
         const section = containerEl.createDiv('ribbon-manager-groups');
         const t = (key: string, vars?: Record<string, string | number>) => this.manager.translator.t(key, vars);
-        new Setting(section).setName(t('Ribbon_分组')).setDesc(t('Ribbon_分组说明'))
-            .addExtraButton(button => {
+        const header = new Setting(section).setName(t('Ribbon_分组')).setDesc(t('Ribbon_分组说明'));
+        if (!inWindow) {
+            header.addExtraButton(button => {
                 button.setIcon(this.groupsCollapsed ? 'chevron-right' : 'chevron-down')
                     .setTooltip(t(this.groupsCollapsed ? 'Ribbon_展开分组' : 'Ribbon_收起分组'))
                     .onClick(() => { this.groupsCollapsed = !this.groupsCollapsed; this.displayWithoutSearch(); });
                 button.extraSettingsEl.addClass('ribbon-group-toggle');
-            })
-            .addButton(button => {
+            });
+        }
+        header.addButton(button => {
                 button.setIcon('plus').setTooltip(t('Ribbon_添加分组')).onClick(() => {
                     groups.push({ id: `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
                         name: t('Ribbon_新分组'), icon: 'folder', members: [] });
@@ -155,7 +218,7 @@ export class RibbonModal extends Modal {
                 });
                 button.buttonEl.addClass('ribbon-group-add');
             });
-        if (this.groupsCollapsed) return;
+        if (this.groupsCollapsed && !inWindow) return;
         const body = section.createDiv('ribbon-manager-groups__body');
         if (!groups.length) {
             const empty = body.createDiv('ribbon-manager-groups__empty');
@@ -290,8 +353,12 @@ export class RibbonModal extends Modal {
         contentEl.empty();
         if (!this.manager.isRibbonManagerEnabled()) return;
 
-        if (showToolbar) this.renderToolbar(contentEl);
-        this.renderGroups(contentEl);
+        // 手机端把「边栏编排 / Ribbon 分组」窗口化，列表占满剩余高度。
+        if (showToolbar) {
+            if (Platform.isMobileApp) this.renderMobileSectionsBar(contentEl);
+            else this.renderToolbar(contentEl);
+        }
+        if (!Platform.isMobileApp) this.renderGroups(contentEl);
         this.renderDraggableList(contentEl);
     }
 
