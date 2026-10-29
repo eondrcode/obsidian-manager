@@ -261,10 +261,7 @@ class ManagerCommandService {
             id: "manager-view",
             name: this.manager.translator.t("命令_管理面板_描述"),
             callback: async () => {
-                const { ManagerModal } = await import("./modal/manager-modal.js");
-                const modal = new ManagerModal(this.app, this.manager);
-                this.manager.managerModal = modal;
-                modal.open();
+                await this.manager.openManagerModal();
             },
         });
 

@@ -231,6 +231,8 @@ test('failed persistence does not rebind or overwrite the saved preset', async (
     const { manager, settings } = await fixture();
     await manager.devices.setEnabled(true);
     const before = structuredClone(firstOf(settings, 'computer'));
+    // 设备记录不再写 data.json，只有其它设置变化时才会落盘；先制造一处真实改动。
+    settings.GROUPS = [{ id: 'g1', name: 'G1', color: '#000000' }];
     manager.saveData = async () => { throw new Error('disk full'); };
     await assert.rejects(manager.devices.assign(manager.devices.id, 'tablet'), /disk full/);
     assert.equal(manager.devices.type, 'computer');

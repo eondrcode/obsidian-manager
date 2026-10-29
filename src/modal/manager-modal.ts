@@ -364,7 +364,8 @@ export class ManagerModal extends Modal {
     actionCollapsed = false;
     filterCollapsed = false;
     private reloadingManifests = false;
-    private mobileFiltersCollapsed = true;
+    /** 平板宽度足够，过滤器默认展开；手机保持收起。 */
+    private mobileFiltersCollapsed = !Platform.isTablet;
     private isCheckingPluginUpdates = false;
     private renderGeneration = 0;
     private searchRenderTimer?: number;
@@ -723,7 +724,9 @@ export class ManagerModal extends Modal {
         this.groupOperator = this.normalizeFilterOperator(this.settings.FILTER_GROUP_OPERATOR);
         this.tagOperator = this.normalizeFilterOperator(this.settings.FILTER_TAG_OPERATOR);
         this.delayOperator = this.normalizeFilterOperator(this.settings.FILTER_DELAY_OPERATOR);
-        this.searchText = this.settings.FILTER_SEARCH || this.searchText || "";
+        // 作用域切换时，空搜索词也是目标预设的有效状态；不能回退到上一个作用域。
+        // An empty search is a valid preset value and must not inherit the previous scope.
+        this.searchText = this.settings.FILTER_SEARCH || "";
     }
 
     private migratePersistedFilterValues() {
@@ -1079,6 +1082,92 @@ export class ManagerModal extends Modal {
         renderOptions();
         updateButton();
         return control;
+    }
+
+    /** 筛选字段的共用结构：图标 + 标签 + 控件，桌面过滤行与移动端过滤面板共用。 */
+    private createFilterField(parent: HTMLElement, label: string, icon: string, variant: "select" | "search" | "compound" = "select"): HTMLElement {
+        const field = parent.createDiv("manager-filter-field");
+        field.addClass(`manager-filter-field--${variant}`);
+        const labelEl = field.createDiv("manager-filter-field__label");
+        const iconEl = labelEl.createSpan({ cls: "manager-filter-field__icon" });
+        setIcon(iconEl, icon);
+        labelEl.createSpan({ cls: "manager-filter-field__text", text: label });
+        return field.createDiv("manager-filter-field__control");
+    }
+
+    private createFilterSelectField(parent: HTMLElement, label: string, icon: string, variant: "select" | "search" | "compound" = "select"): HTMLElement {
+        return this.createFilterField(parent, label, icon, variant).createDiv("manager-filter-select-group");
+    }
+
+    private renderPluginFilterControls(
+        controls: { status: HTMLElement; group: HTMLElement; tag: HTMLElement; delay?: HTMLElement },
+        refreshLayout: () => void
+    ) {
+        const t = (key: string) => this.manager.translator.t(key);
+        const createOperatorToggle = (container: HTMLElement, value: FilterOperator, ariaLabel: string, onChange: (value: string) => void): FilterOperatorControl => {
+            const options = this.getFilterOperatorOptions();
+            const buttonEl = container.createEl("button", { cls: "manager-filter-operator-toggle" });
+            buttonEl.type = "button";
+            let currentValue = this.normalizeFilterOperator(value);
+            const updateButton = () => {
+                const isExclude = currentValue === "not-contains";
+                buttonEl.empty();
+                setIcon(buttonEl, isExclude ? "circle-slash" : "check");
+                buttonEl.toggleClass("is-exclude", isExclude);
+                buttonEl.toggleClass("is-include", !isExclude);
+                buttonEl.setAttribute("aria-label", `${ariaLabel}: ${options[currentValue]}`);
+                buttonEl.setAttribute("aria-pressed", `${isExclude}`);
+                buttonEl.setAttribute("title", options[currentValue]);
+            };
+            buttonEl.addEventListener("click", () => {
+                currentValue = currentValue === "contains" ? "not-contains" : "contains";
+                updateButton();
+                onChange(currentValue);
+                refreshLayout();
+                void this.reloadShowData();
+            });
+            updateButton();
+            return { setValue: (nextValue: FilterOperator) => {
+                currentValue = this.normalizeFilterOperator(nextValue);
+                updateButton();
+            } };
+        };
+        const createFilter = (
+            type: "status" | "group" | "tag" | "delay",
+            container: HTMLElement,
+            options: Array<[string, string]>,
+            allValue: string,
+            ariaLabel: string,
+            operatorLabel: string,
+            getValues: () => string[],
+            getOperator: () => FilterOperator,
+            setValues: (values: string[]) => void,
+            setOperator: (value: string) => void
+        ) => {
+            const operatorControl = createOperatorToggle(container, getOperator(), operatorLabel, setOperator);
+            if (type === "status") this.statusOperatorControl = operatorControl;
+            const control = this.createMultiSelectFilter(container, options, getValues(), allValue, options[0]?.[1] || t("筛选_全部_描述"), ariaLabel, values => {
+                setValues(values);
+                refreshLayout();
+                void this.reloadShowData();
+            });
+            if (type === "status") this.statusMultiSelect = control;
+            else if (type === "group") this.groupMultiSelect = control;
+            else if (type === "tag") this.tagMultiSelect = control;
+            else this.delayMultiSelect = control;
+        };
+
+        const allLabel = t("筛选_全部_描述");
+        createFilter("status", controls.status, Object.entries(this.getStatusFilterOptions()), "all", t("筛选_状态_标签"), t("筛选_状态取反_标签"),
+            () => this.getStatusFilterValues(), () => this.getStatusFilterOperator(), values => this.setStatusFilterValues(values), value => this.setStatusFilterOperator(value));
+        createFilter("group", controls.group, this.getGroupFilterOptions(allLabel), "", t("筛选_分组_标签"), t("筛选_分组取反_标签"),
+            () => this.getGroupFilterValues(), () => this.getGroupFilterOperator(), values => this.setGroupFilterValues(values), value => this.setGroupFilterOperator(value));
+        createFilter("tag", controls.tag, this.getTagFilterOptions(allLabel), "", t("筛选_标签_标签"), t("筛选_标签取反_标签"),
+            () => this.getTagFilterValues(), () => this.getTagFilterOperator(), values => this.setTagFilterValues(values), value => this.setTagFilterOperator(value));
+        if (controls.delay && this.settings.DELAY) {
+            createFilter("delay", controls.delay, this.getDelayFilterOptions(allLabel, true), "", t("筛选_延迟_标签"), t("筛选_延迟取反_标签"),
+                () => this.getDelayFilterValues(), () => this.getDelayFilterOperator(), values => this.setDelayFilterValues(values), value => this.setDelayFilterOperator(value));
+        }
     }
 
     private openSupportQQGroup() {
@@ -2548,55 +2637,10 @@ export class ManagerModal extends Modal {
         this.syncPageChrome();
         const searchLine = searchBar.controlEl.createDiv("manager-search-line");
         const filterControlGroup = searchBar.controlEl.createDiv("manager-filter-control-group");
-        const createFilterField = (label: string, icon: string, variant: "select" | "search" | "compound" = "select") => {
-            const parent = variant === "search" ? searchLine : filterControlGroup;
-            const field = parent.createDiv("manager-filter-field");
-            field.addClass(`manager-filter-field--${variant}`);
-            const labelEl = field.createDiv("manager-filter-field__label");
-            const iconEl = labelEl.createSpan({ cls: "manager-filter-field__icon" });
-            setIcon(iconEl, icon);
-            labelEl.createSpan({ cls: "manager-filter-field__text", text: label });
-            const controlEl = field.createDiv("manager-filter-field__control");
-            return controlEl;
-        };
-        const createFilterSelectField = (label: string, icon: string, variant: "select" | "search" | "compound" = "select") => {
-            const controlEl = createFilterField(label, icon, variant);
-            const selectGroup = controlEl.createDiv("manager-filter-select-group");
-            return selectGroup;
-        };
-        const createOperatorToggle = (container: HTMLElement, value: FilterOperator, ariaLabel: string, onChange: (value: string) => void): FilterOperatorControl => {
-            const options = this.getFilterOperatorOptions();
-            const buttonEl = container.createEl("button", { cls: "manager-filter-operator-toggle" });
-            buttonEl.type = "button";
-            let currentValue = this.normalizeFilterOperator(value);
-
-            const updateButton = () => {
-                const isExclude = currentValue === "not-contains";
-                buttonEl.empty();
-                setIcon(buttonEl, isExclude ? "circle-slash" : "check");
-                buttonEl.toggleClass("is-exclude", isExclude);
-                buttonEl.toggleClass("is-include", !isExclude);
-                buttonEl.setAttribute("aria-label", `${ariaLabel}: ${options[currentValue]}`);
-                buttonEl.setAttribute("aria-pressed", `${isExclude}`);
-                buttonEl.setAttribute("title", options[currentValue]);
-            };
-
-            buttonEl.addEventListener("click", () => {
-                currentValue = currentValue === "contains" ? "not-contains" : "contains";
-                updateButton();
-                onChange(currentValue);
-                void this.reloadShowData();
-            });
-            updateButton();
-
-            return {
-                setValue: (nextValue: FilterOperator) => {
-                    currentValue = this.normalizeFilterOperator(nextValue);
-                    updateButton();
-                },
-            };
-        };
-
+        const createFilterField = (label: string, icon: string, variant: "select" | "search" | "compound" = "select") =>
+            this.createFilterField(variant === "search" ? searchLine : filterControlGroup, label, icon, variant);
+        const createFilterSelectField = (label: string, icon: string, variant: "select" | "search" | "compound" = "select") =>
+            this.createFilterSelectField(variant === "search" ? searchLine : filterControlGroup, label, icon, variant);
         // [搜索行] 搜索框
         const searchField = createFilterField(t("通用_搜索_文本"), "search", "search");
         this.searchEl = new SearchComponent(searchField);
@@ -2624,44 +2668,12 @@ export class ManagerModal extends Modal {
             void this.setPluginOverviewSort(value);
         });
 
-        // 过滤器
+        // 过滤器控件由桌面和移动端共用，容器只决定各自的布局。
         const statusControl = createFilterSelectField(t("通用_状态_文本"), "list-filter", "compound");
-        this.statusOperatorControl = createOperatorToggle(statusControl, this.getStatusFilterOperator(), t("筛选_状态取反_标签"), (value) => this.setStatusFilterOperator(value));
-        const statusOptions = Object.entries(this.getStatusFilterOptions());
-        this.statusMultiSelect = this.createMultiSelectFilter(statusControl, statusOptions, this.getStatusFilterValues(), "all", this.getStatusFilterOptions()["all"], t("筛选_状态_标签"), (values) => {
-            this.setStatusFilterValues(values);
-            void this.reloadShowData();
-        });
-
-
-        // [过滤行] 分组选择列表
-        const groups = this.getGroupFilterOptions(this.manager.translator.t("筛选_全部_描述"));
         const groupControl = createFilterSelectField(t("通用_分组_文本"), "folder-tree", "compound");
-        createOperatorToggle(groupControl, this.getGroupFilterOperator(), t("筛选_分组取反_标签"), (value) => this.setGroupFilterOperator(value));
-        this.groupMultiSelect = this.createMultiSelectFilter(groupControl, groups, this.getGroupFilterValues(), "", groups[0]?.[1] || t("筛选_全部_描述"), t("筛选_分组_标签"), (values) => {
-            this.setGroupFilterValues(values);
-            void this.reloadShowData();
-        });
-
-        // [过滤行] 标签选择列表
-        const tags = this.getTagFilterOptions(this.manager.translator.t("筛选_全部_描述"));
         const tagControl = createFilterSelectField(t("通用_标签_文本"), "tags", "compound");
-        createOperatorToggle(tagControl, this.getTagFilterOperator(), t("筛选_标签取反_标签"), (value) => this.setTagFilterOperator(value));
-        this.tagMultiSelect = this.createMultiSelectFilter(tagControl, tags, this.getTagFilterValues(), "", tags[0]?.[1] || t("筛选_全部_描述"), t("筛选_标签_标签"), (values) => {
-            this.setTagFilterValues(values);
-            void this.reloadShowData();
-        });
-
-        // [过滤行] 延迟选择列表
-        if (this.settings.DELAY) {
-            const delays = this.getDelayFilterOptions(this.manager.translator.t("筛选_全部_描述"), true);
-            const delayControl = createFilterSelectField(t("通用_延迟_文本"), "timer", "compound");
-            createOperatorToggle(delayControl, this.getDelayFilterOperator(), t("筛选_延迟取反_标签"), (value) => this.setDelayFilterOperator(value));
-            this.delayMultiSelect = this.createMultiSelectFilter(delayControl, delays, this.getDelayFilterValues(), "", delays[0]?.[1] || t("筛选_全部_描述"), t("筛选_延迟_标签"), (values) => {
-                this.setDelayFilterValues(values);
-                void this.reloadShowData();
-            });
-        }
+        const delayControl = this.settings.DELAY ? createFilterSelectField(t("通用_延迟_文本"), "timer", "compound") : undefined;
+        this.renderPluginFilterControls({ status: statusControl, group: groupControl, tag: tagControl, delay: delayControl }, () => undefined);
     }
 
     private showHeadMobile() {
@@ -2866,15 +2878,17 @@ export class ManagerModal extends Modal {
         });
 
         const filterHeader = header.createDiv("bpm-mobile-header__filters-toggle");
+        const filterIcon = filterHeader.createSpan({ cls: "bpm-mobile-header__filters-icon" });
+        setIcon(filterIcon, "filter");
+        filterHeader.createSpan({ text: t("通用_过滤_文本"), cls: "bpm-mobile-header__filters-label" });
         const arrow = filterHeader.createSpan({ cls: "bpm-mobile-header__filters-arrow" });
-        arrow.setText(this.mobileFiltersCollapsed ? "▼" : "▲");
-        filterHeader.createSpan({ text: t("通用_过滤_文本") });
+        setIcon(arrow, this.mobileFiltersCollapsed ? "chevron-down" : "chevron-up");
         filterHeader.toggleClass("is-open", !this.mobileFiltersCollapsed);
         filterHeader.addEventListener("click", () => {
             this.mobileFiltersCollapsed = !this.mobileFiltersCollapsed;
             filterPanel.toggleClass("is-collapsed", this.mobileFiltersCollapsed);
             filterHeader.toggleClass("is-open", !this.mobileFiltersCollapsed);
-            arrow.setText(this.mobileFiltersCollapsed ? "▼" : "▲");
+            setIcon(arrow, this.mobileFiltersCollapsed ? "chevron-down" : "chevron-up");
         });
 
         // 激活筛选标签区域
@@ -2946,36 +2960,11 @@ export class ManagerModal extends Modal {
         updateActiveFilters();
 
         const filterPanel = header.createDiv(`bpm-mobile-header__filters${this.mobileFiltersCollapsed ? " is-collapsed" : ""}`);
-        const addMobileOperatorToggle = (setting: Setting, value: FilterOperator, ariaLabel: string, onChange: (value: string) => void) => {
-            const options = this.getFilterOperatorOptions();
-            const buttonEl = setting.controlEl.createEl("button", { cls: "manager-filter-operator-toggle" });
-            buttonEl.type = "button";
-            let currentValue = this.normalizeFilterOperator(value);
-
-            const updateButton = () => {
-                const isExclude = currentValue === "not-contains";
-                buttonEl.empty();
-                setIcon(buttonEl, isExclude ? "circle-slash" : "check");
-                buttonEl.toggleClass("is-exclude", isExclude);
-                buttonEl.toggleClass("is-include", !isExclude);
-                buttonEl.setAttribute("aria-label", `${ariaLabel}: ${options[currentValue]}`);
-                buttonEl.setAttribute("aria-pressed", `${isExclude}`);
-                buttonEl.setAttribute("title", options[currentValue]);
-            };
-
-            buttonEl.addEventListener("click", () => {
-                currentValue = currentValue === "contains" ? "not-contains" : "contains";
-                updateButton();
-                onChange(currentValue);
-                this.showHeadMobile();
-                void this.reloadShowData();
-            });
-            updateButton();
-        };
-
-        // 状态
-        const sortSetting = new Setting(filterPanel).setName(t("通用_排序_文本"));
-        const sortDropdown = new DropdownComponent(sortSetting.controlEl);
+        // 移动端复用桌面端的字段式过滤器：图标 + 标签 + 复合多选控件。
+        const filterFields = filterPanel.createDiv("bpm-mobile-filter-fields");
+        const sortControl = this.createFilterSelectField(filterFields, t("通用_排序_文本"), "arrow-up-down");
+        sortControl.closest(".manager-filter-field")?.addClass("manager-filter-field--sort");
+        const sortDropdown = new DropdownComponent(sortControl);
         this.addOrderedOptions(sortDropdown, this.getPluginOverviewSortOptions());
         sortDropdown.setValue(this.getPluginOverviewSort());
         sortDropdown.onChange((value) => {
@@ -2985,46 +2974,11 @@ export class ManagerModal extends Modal {
             })();
         });
 
-        const statusSetting = new Setting(filterPanel).setName(t("通用_状态_文本"));
-        addMobileOperatorToggle(statusSetting, this.getStatusFilterOperator(), t("筛选_状态取反_标签"), (value) => this.setStatusFilterOperator(value));
-        const statusOptions = Object.entries(this.getStatusFilterOptions());
-        this.createMultiSelectFilter(statusSetting.controlEl, statusOptions, this.getStatusFilterValues(), "all", this.getStatusFilterOptions()["all"], t("筛选_状态_标签"), (values) => {
-            this.setStatusFilterValues(values);
-            this.showHeadMobile();
-            void this.reloadShowData();
-        });
-
-        // 分组
-        const groups = this.getGroupFilterOptions(t("筛选_全部_描述"));
-        const groupSetting = new Setting(filterPanel).setName(t("通用_分组_文本"));
-        addMobileOperatorToggle(groupSetting, this.getGroupFilterOperator(), t("筛选_分组取反_标签"), (value) => this.setGroupFilterOperator(value));
-        this.createMultiSelectFilter(groupSetting.controlEl, groups, this.getGroupFilterValues(), "", groups[0]?.[1] || t("筛选_全部_描述"), t("筛选_分组_标签"), (values) => {
-            this.setGroupFilterValues(values);
-            this.showHeadMobile();
-            void this.reloadShowData();
-        });
-
-        // 标签
-        const tags = this.getTagFilterOptions(t("筛选_全部_描述"));
-        const tagSetting = new Setting(filterPanel).setName(t("通用_标签_文本"));
-        addMobileOperatorToggle(tagSetting, this.getTagFilterOperator(), t("筛选_标签取反_标签"), (value) => this.setTagFilterOperator(value));
-        this.createMultiSelectFilter(tagSetting.controlEl, tags, this.getTagFilterValues(), "", tags[0]?.[1] || t("筛选_全部_描述"), t("筛选_标签_标签"), (values) => {
-            this.setTagFilterValues(values);
-            this.showHeadMobile();
-            void this.reloadShowData();
-        });
-
-        // 延迟
-        if (this.settings.DELAY) {
-            const delays = this.getDelayFilterOptions(t("筛选_全部_描述"));
-            const delaySetting = new Setting(filterPanel).setName(t("通用_延迟_文本"));
-            addMobileOperatorToggle(delaySetting, this.getDelayFilterOperator(), t("筛选_延迟取反_标签"), (value) => this.setDelayFilterOperator(value));
-            this.createMultiSelectFilter(delaySetting.controlEl, delays, this.getDelayFilterValues(), "", delays[0]?.[1] || t("筛选_全部_描述"), t("筛选_延迟_标签"), (values) => {
-                this.setDelayFilterValues(values);
-                this.showHeadMobile();
-                void this.reloadShowData();
-            });
-        }
+        const statusControl = this.createFilterField(filterFields, t("通用_状态_文本"), "list-filter", "compound");
+        const groupControl = this.createFilterField(filterFields, t("通用_分组_文本"), "folder-tree", "compound");
+        const tagControl = this.createFilterField(filterFields, t("通用_标签_文本"), "tags", "compound");
+        const delayControl = this.settings.DELAY ? this.createFilterField(filterFields, t("通用_延迟_文本"), "timer", "compound") : undefined;
+        this.renderPluginFilterControls({ status: statusControl, group: groupControl, tag: tagControl, delay: delayControl }, () => this.showHeadMobile());
     }
 
     /** 移动端底部操作栏 */

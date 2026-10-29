@@ -139,16 +139,22 @@ export class RibbonModal extends Modal {
         const section = containerEl.createDiv('ribbon-manager-groups');
         const t = (key: string, vars?: Record<string, string | number>) => this.manager.translator.t(key, vars);
         new Setting(section).setName(t('Ribbon_分组')).setDesc(t('Ribbon_分组说明'))
-            .addExtraButton(button => button.setIcon(this.groupsCollapsed ? 'chevron-right' : 'chevron-down')
-                .setTooltip(t(this.groupsCollapsed ? 'Ribbon_展开分组' : 'Ribbon_收起分组'))
-                .onClick(() => { this.groupsCollapsed = !this.groupsCollapsed; this.displayWithoutSearch(); }))
-            .addButton(button => button.setIcon('plus').setTooltip(t('Ribbon_添加分组')).onClick(() => {
-                groups.push({ id: `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-                    name: t('Ribbon_新分组'), icon: 'folder', members: [] });
-                this.groupsCollapsed = false;
-                this.commitRibbonGroups();
-                this.displayWithoutSearch();
-            }));
+            .addExtraButton(button => {
+                button.setIcon(this.groupsCollapsed ? 'chevron-right' : 'chevron-down')
+                    .setTooltip(t(this.groupsCollapsed ? 'Ribbon_展开分组' : 'Ribbon_收起分组'))
+                    .onClick(() => { this.groupsCollapsed = !this.groupsCollapsed; this.displayWithoutSearch(); });
+                button.extraSettingsEl.addClass('ribbon-group-toggle');
+            })
+            .addButton(button => {
+                button.setIcon('plus').setTooltip(t('Ribbon_添加分组')).onClick(() => {
+                    groups.push({ id: `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                        name: t('Ribbon_新分组'), icon: 'folder', members: [] });
+                    this.groupsCollapsed = false;
+                    this.commitRibbonGroups();
+                    this.displayWithoutSearch();
+                });
+                button.buttonEl.addClass('ribbon-group-add');
+            });
         if (this.groupsCollapsed) return;
         const body = section.createDiv('ribbon-manager-groups__body');
         if (!groups.length) {

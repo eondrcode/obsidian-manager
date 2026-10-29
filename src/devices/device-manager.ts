@@ -72,13 +72,15 @@ export class DeviceManager {
         const stored = await this.loadIdentity();
         this.migrateDeviceRecord(typeof stored?.id === 'string' ? stored.id : '');
         const known = this.data.devices.find(device => device.id === this.id);
+        const now = Date.now();
         if (known) {
             this.type = known.type;
             known.platform = detectSystemPlatform(Platform);
-            known.lastSeen = Date.now();
+            // 每 30 分钟才刷新一次上线时间，避免三端频繁写记录文件引发同步抖动。
+            if (now - known.lastSeen > 30 * 60 * 1000) known.lastSeen = now;
             if (this.isGeneratedName(known.name)) known.name = this.detectDeviceName();
         } else {
-            this.data.devices.push({ id: this.id, type: this.type, platform: detectSystemPlatform(Platform), name: this.detectDeviceName(), lastSeen: Date.now() });
+            this.data.devices.push({ id: this.id, type: this.type, platform: detectSystemPlatform(Platform), name: this.detectDeviceName(), lastSeen: now });
         }
         this.migrateLegacyOverrides(legacy);
         this.ensureBinding(typeof stored?.presetId === 'string' ? stored.presetId : '', true);
@@ -88,8 +90,9 @@ export class DeviceManager {
             this.applyEffective();
         }
         this.ready = true;
-        // 记录文件是跨设备的唯一通道：启动时先收别人的，再写自己的。
+        // 记录文件是跨设备的唯一通道：启动时先收别人的，再补写缺失的（含旧版 data.json 里的记录），最后写自己。
         await this.mergeDeviceRecords();
+        await this.bootstrapDeviceFiles();
         await this.persistOwnDevice();
     }
 
@@ -543,6 +546,14 @@ export class DeviceManager {
 
     /** 保存时写回的“本机真实值”；投影期间不能让外域值污染 data.json。 */
     persistedSettings(): Manager['settings'] {
+        const persisted = this.buildPersistedSettings();
+        // 设备记录只走独立文件；写进 data.json 会让三端互相覆盖并触发同步抖动。
+        const management = persisted.DEVICE_MANAGEMENT;
+        if (!management) return persisted;
+        return { ...persisted, DEVICE_MANAGEMENT: { ...management, devices: [] } };
+    }
+
+    private buildPersistedSettings(): Manager['settings'] {
         if (!this.projection) return this.manager.settings;
         const settings = this.manager.settings;
         return {
@@ -788,8 +799,10 @@ export class DeviceManager {
         const path = this.deviceFilePath(device.id);
         const adapter = this.manager.app?.vault?.adapter;
         if (!path || !adapter) return;
+        const serialized = JSON.stringify(device, null, 2);
         try {
-            await adapter.write(path, JSON.stringify(device, null, 2));
+            if (await adapter.exists(path) && await adapter.read(path) === serialized) return;
+            await adapter.write(path, serialized);
         } catch (error) { this.report(error); }
     }
 
@@ -806,6 +819,20 @@ export class DeviceManager {
     private async persistOwnDevice(): Promise<void> {
         const own = this.data.devices.find(device => device.id === this.id);
         if (own) await this.writeDeviceFile(own);
+    }
+
+    /** 旧版设备记录只存在 data.json；升级后补写记录文件，避免它们从列表消失。 */
+    private async bootstrapDeviceFiles(): Promise<void> {
+        const adapter = this.manager.app?.vault?.adapter;
+        if (!adapter) return;
+        for (const device of this.data.devices) {
+            if (this.removedDeviceIds.has(device.id)) continue;
+            const path = this.deviceFilePath(device.id);
+            if (!path) return;
+            try {
+                if (!(await adapter.exists(path))) await this.writeDeviceFile(device);
+            } catch { /* 文件不可写时保持内存记录即可 */ }
+        }
     }
 
     /**

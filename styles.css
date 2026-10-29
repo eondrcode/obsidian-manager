@@ -119,9 +119,14 @@ body.theme-dark {
     border: 2px solid #f97316;
 }
 
+.manager-container {
+    scrollbar-width: var(--scrollbar-native-width);
+    scrollbar-color: var(--scrollbar-thumb-bg) var(--scrollbar-bg);
+}
+
 .manager-container::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: var(--scrollbar-width);
+    height: var(--scrollbar-height);
 }
 
 .manager-container::-webkit-scrollbar-track {
@@ -129,17 +134,13 @@ body.theme-dark {
 }
 
 .manager-container::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--text-muted) 35%, transparent);
-    border-radius: 10px;
-    border: 3px solid transparent;
+    background: var(--scrollbar-thumb-bg);
+    border-radius: var(--scrollbar-radius);
+    border: var(--scrollbar-border-width) solid transparent;
     background-clip: padding-box;
 }
 
-.manager-container::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, var(--text-muted) 55%, transparent);
-    border: 3px solid transparent;
-    background-clip: padding-box;
-}
+.manager-container::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-active-thumb-bg); background-clip: padding-box; }
 
 .manager-container__top {
     position: absolute;
@@ -342,8 +343,8 @@ body.is-tablet .manager-container--mobile .setting-item:not(.manager-item) > .se
     align-items: center;
 }
 
-/* 平板卡片更宽：标题行沿用桌面端的靠左排布，避免图标、名称和徽标被摊到两端 */
-body.is-tablet .manager-container--mobile .manager-item__name-container {
+/* 移动端卡片：标题行与桌面端一致靠左，避免图标、名称和徽标被摊到两端 */
+.manager-container--mobile .manager-item__name-container {
     justify-content: flex-start;
 }
 
@@ -650,9 +651,48 @@ body.is-tablet .manager-container--mobile .manager-item__name-container {
     color: var(--text-accent);
 }
 
+/* 正方形包裹的过滤图标 + 右侧 chevron */
+.manager-container--mobile .bpm-mobile-header__filters-icon {
+    display: inline-flex;
+    flex: 0 0 28px;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 7px;
+    background: var(--background-secondary);
+    color: var(--text-muted);
+}
+
+.manager-container--mobile .bpm-mobile-header__filters-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+.manager-container--mobile .bpm-mobile-header__filters-label {
+    flex: 1 1 auto;
+}
+
+.manager-container--mobile .bpm-mobile-header__filters-toggle.is-open .bpm-mobile-header__filters-icon {
+    border-color: color-mix(in srgb, var(--text-accent) 45%, var(--background-modifier-border));
+    color: var(--text-accent);
+}
+
 .manager-container--mobile .bpm-mobile-header__filters-arrow {
-    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-muted);
     line-height: 1;
+}
+
+.manager-container--mobile .bpm-mobile-header__filters-toggle.is-open .bpm-mobile-header__filters-arrow {
+    color: var(--text-accent);
+}
+
+.manager-container--mobile .bpm-mobile-header__filters-arrow svg {
+    width: 16px;
+    height: 16px;
 }
 
 .manager-container--mobile .bpm-mobile-header__filters {
@@ -678,11 +718,13 @@ body.is-tablet .manager-container--mobile .manager-item__name-container {
 .manager-item-container {
     overflow: auto;
     padding: 8px;
+    scrollbar-width: var(--scrollbar-native-width);
+    scrollbar-color: var(--scrollbar-thumb-bg) var(--scrollbar-bg);
 }
 
 .manager-item-container::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: var(--scrollbar-width);
+    height: var(--scrollbar-height);
 }
 
 .manager-item-container::-webkit-scrollbar-track {
@@ -690,17 +732,13 @@ body.is-tablet .manager-container--mobile .manager-item__name-container {
 }
 
 .manager-item-container::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--text-muted) 35%, transparent);
-    border-radius: 10px;
-    border: 3px solid transparent;
+    background: var(--scrollbar-thumb-bg);
+    border-radius: var(--scrollbar-radius);
+    border: var(--scrollbar-border-width) solid transparent;
     background-clip: padding-box;
 }
 
-.manager-item-container::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, var(--text-muted) 55%, transparent);
-    border: 3px solid transparent;
-    background-clip: padding-box;
-}
+.manager-item-container::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-active-thumb-bg); background-clip: padding-box; }
 
 /* 目录项 */
 .manager-item {
@@ -2022,6 +2060,57 @@ body.is-tablet .manager-container--mobile .manager-item__name-container {
     min-width: 0;
 }
 
+/* 移动端字段式过滤器：与桌面端共用 .manager-filter-field 结构，纵向排列 */
+.manager-container--mobile .bpm-mobile-header__filters .bpm-mobile-filter-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.manager-container--mobile .bpm-mobile-filter-fields .manager-filter-field {
+    flex: 0 0 auto;
+    width: 100%;
+    height: 44px;
+    min-width: 0;
+}
+
+.manager-container--mobile .bpm-mobile-filter-fields .manager-filter-field__control {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    min-width: 0;
+    justify-content: flex-end;
+}
+
+/* 平板与桌面端统一：筛选字段横向排列、自动换行，而不是每行一个 */
+body.is-tablet .manager-container--mobile .bpm-mobile-header__filters .bpm-mobile-filter-fields {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+
+body.is-tablet .manager-container--mobile .bpm-mobile-filter-fields .manager-filter-field {
+    flex: 1 1 200px;
+    width: auto;
+    max-width: 100%;
+}
+
+/* 设备选择器保持紧凑，不铺满整行 */
+.manager-container--mobile .manager-plugin-scope .manager-search-line {
+    max-width: 420px;
+}
+
+.manager-container--mobile .bpm-mobile-header__filters .manager-multiselect-filter {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.manager-container--mobile .bpm-mobile-header__filters .manager-multiselect-filter__trigger {
+    width: 100%;
+    min-width: 0;
+    min-height: 34px;
+}
+
 .manager-container--mobile .bpm-mobile-header__filters .dropdown {
     width: 100%;
     max-width: 280px;
@@ -2086,7 +2175,8 @@ body.is-tablet .manager-container--mobile .manager-item__name-container {
 }
 
 .manager-container--mobile .bpm-mobile-header__search .search-input-container input {
-    padding: 10px 12px;
+    /* 左侧让出 Obsidian 的搜索放大镜，右侧让出清除按钮 */
+    padding: 10px 36px;
     font-size: 15px;
     border-radius: 10px;
     background: transparent;
@@ -8589,6 +8679,26 @@ body.is-tablet .manager-container--mobile .manager-item__name-container {
     flex-direction: column;
     gap: var(--bpm-item-gap);
     padding: 0;
+    overflow: auto;
+    scrollbar-width: var(--scrollbar-native-width);
+    scrollbar-color: var(--scrollbar-thumb-bg) var(--scrollbar-bg);
+}
+
+.ribbon-manager-modal {
+    scrollbar-width: var(--scrollbar-native-width);
+    scrollbar-color: var(--scrollbar-thumb-bg) var(--scrollbar-bg);
+}
+
+.ribbon-manager-modal::-webkit-scrollbar,
+.ribbon-manager-modal .draggable-list-container::-webkit-scrollbar {
+    width: var(--scrollbar-width);
+    height: var(--scrollbar-height);
+}
+
+.ribbon-manager-modal::-webkit-scrollbar-thumb,
+.ribbon-manager-modal .draggable-list-container::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb-bg);
+    border-radius: var(--scrollbar-radius);
 }
 
 /* 说明：Obsidian 原生 .modal:not(.mod-settings) .setting-item:not(.setting-item-heading):where(...)
@@ -8830,7 +8940,39 @@ body.is-tablet .ribbon-manager-control-visibility button {
 }
 
 @media (max-width: 760px) {
-    .ribbon-manager-modal .draggable-item {
+    .ribbon-manager-modal {
+        width: calc(100vw - 16px);
+        max-width: calc(100vw - 16px);
+        max-height: calc(100vh - 24px);
+        margin: 12px 8px;
+    }
+
+    .ribbon-manager-modal .modal-content {
+        min-width: 0;
+        max-height: calc(100vh - 24px);
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .ribbon-manager-modal .ribbon-manager-groups,
+    .ribbon-manager-modal .ribbon-manager-filter-bar {
+        min-width: 0;
+    }
+
+    .ribbon-manager-modal .ribbon-manager-filter-right {
+        align-items: stretch;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .ribbon-manager-modal .ribbon-manager-grouped-toggle,
+    .ribbon-manager-modal .ribbon-manager-search-container {
+        width: 100%;
+        min-width: 0;
+    }
+
+    /* 需压过桌面端 .ribbon-manager-modal .draggable-list-container .setting-item.draggable-item 的 align-items:center */
+    .ribbon-manager-modal .draggable-list-container .setting-item.draggable-item:not(.drag-ghost) {
         align-items: stretch;
         flex-direction: column;
         gap: 12px;
@@ -8844,7 +8986,8 @@ body.is-tablet .ribbon-manager-control-visibility button {
     .ribbon-manager-modal .ribbon-manager-item-control-root,
     .ribbon-manager-modal .ribbon-manager-control-bar {
         width: 100%;
-        justify-content: flex-end;
+        /* 与标题行同一起始边，避免上排左对齐、下排右对齐 */
+        justify-content: flex-start;
     }
 
     .ribbon-manager-modal .ribbon-manager-control-visibility,
@@ -8853,6 +8996,20 @@ body.is-tablet .ribbon-manager-control-visibility button {
         height: 44px;
         min-width: 44px;
         min-height: 44px;
+    }
+
+    .ribbon-manager-modal .draggable-item-content {
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .ribbon-manager-modal .ribbon-manager-item-title-line {
+        align-items: flex-start;
+    }
+
+    .ribbon-manager-modal .ribbon-manager-item-id {
+        overflow-wrap: anywhere;
+        white-space: normal;
     }
 }
 
@@ -13889,7 +14046,21 @@ body.is-phone .manager-container.manager-container--main.manager-container--mobi
 
 .manager-container .manager-theme-overview .manager-appearance-tabs {
     flex: 0 0 auto;
+    /* 从左起始排列；内容超出时可横向滚动，且露出细滚动条 */
+    align-self: flex-start;
+    max-width: 100%;
     justify-content: flex-start !important;
+    scrollbar-width: thin;
+}
+
+.manager-container .manager-theme-overview .manager-appearance-tabs::-webkit-scrollbar {
+    display: block;
+    height: 4px;
+}
+
+.manager-container .manager-theme-overview .manager-appearance-tabs::-webkit-scrollbar-thumb {
+    background: var(--background-modifier-border);
+    border-radius: 2px;
 }
 
 .manager-container .manager-theme-overview .manager-appearance-section__list {
@@ -14098,7 +14269,8 @@ body.is-phone .manager-container.manager-container--main.manager-container--mobi
     height: auto;
     min-height: 34px;
     overflow: auto;
-    scrollbar-width: thin;
+    scrollbar-width: var(--scrollbar-native-width);
+    scrollbar-color: var(--scrollbar-thumb-bg) var(--scrollbar-bg);
     padding-bottom: 2px;
 }
 
@@ -14114,8 +14286,8 @@ body.is-phone .manager-container.manager-container--main.manager-container--mobi
 }
 
 .manager-container .manager-toolbar::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: var(--scrollbar-width);
+    height: var(--scrollbar-height);
 }
 
 .manager-container .manager-toolbar::-webkit-scrollbar-track {
@@ -14123,16 +14295,13 @@ body.is-phone .manager-container.manager-container--main.manager-container--mobi
 }
 
 .manager-container .manager-toolbar::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--text-muted) 35%, transparent);
-    border-radius: 8px;
-    border: 2px solid transparent;
+    background: var(--scrollbar-thumb-bg);
+    border-radius: var(--scrollbar-radius);
+    border: var(--scrollbar-border-width) solid transparent;
     background-clip: padding-box;
 }
 
-.manager-container .manager-toolbar::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, var(--text-muted) 55%, transparent);
-    background-clip: padding-box;
-}
+.manager-container .manager-toolbar::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-active-thumb-bg); background-clip: padding-box; }
 
 .manager-device-scope .manager-multiselect-filter__menu.is-fixed {
     position: fixed;
@@ -14184,6 +14353,17 @@ body.is-phone .manager-container.manager-container--main.manager-container--mobi
 .manager-device-scope__quick-apply:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* 平板的 app.css 给 button:not(.clickable-icon) 加内边距，会把图标挤成 0 宽 */
+body.is-tablet button.manager-device-scope__quick-apply {
+    padding: 0;
+}
+
+.manager-device-scope__quick-apply svg {
+    flex: 0 0 auto;
+    width: 17px;
+    height: 17px;
 }
 
 .manager-device-scope--inline .manager-filter-field {
@@ -14352,6 +14532,32 @@ body.is-phone .manager-container.manager-container--main.manager-container--mobi
     border: 0;
 }
 
+/* 分组标题行的图标按钮：手机端 app.css 会把按钮拉满整行，这里固定为图标尺寸。 */
+.ribbon-manager-modal .ribbon-manager-groups .ribbon-group-add,
+.ribbon-manager-modal .ribbon-manager-groups .ribbon-group-toggle {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    padding: 0;
+}
+
+@media (max-width: 760px) {
+    /* app.css 在窄屏把 .setting-item-control button 拉成 100%，这里必须压过它 */
+    .ribbon-manager-modal .ribbon-manager-groups .setting-item-control .ribbon-group-add,
+    .ribbon-manager-modal .ribbon-manager-groups .setting-item-control .ribbon-group-toggle {
+        flex: 0 0 44px;
+        width: 44px !important;
+        max-width: 44px !important;
+        min-width: 44px;
+        height: 44px;
+        padding: 0;
+    }
+}
+
 /* Ribbon 分组：筛选分组横向滚动，右侧工具与列表不被挤出可视区。 */
 .ribbon-manager-filter-group {
     flex: 1 1 auto;
@@ -14360,7 +14566,8 @@ body.is-phone .manager-container.manager-container--main.manager-container--mobi
     overflow-x: auto;
     overflow-y: hidden;
     overscroll-behavior-x: contain;
-    scrollbar-width: thin;
+    scrollbar-width: var(--scrollbar-native-width);
+    scrollbar-color: var(--scrollbar-thumb-bg) var(--scrollbar-bg);
     -webkit-overflow-scrolling: touch;
 }
 

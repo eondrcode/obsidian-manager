@@ -107,6 +107,9 @@ type SecretStorageLike = {
 type CommunityPluginStatsEntry = Record<string, number | string | undefined>;
 
 export default class Manager extends Plugin {
+    /** Serialize settings writes and remember the last successful payload. */
+    private settingsSaveQueue: Promise<void> = Promise.resolve();
+    private persistedSettingsJson = '';
     private noteTip!: NoteTipFeature;
     public settings!: ManagerSettings;
     public devices!: DeviceManager;
@@ -220,11 +223,8 @@ export default class Manager extends Plugin {
         this.clearLegacyRibbonOverrides();
 
         // 初始化侧边栏图标
-        const ribbonEl = this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), async () => {
-            const { ManagerModal } = await import('./modal/manager-modal.js');
-            const modal = new ManagerModal(this.app, this);
-            this.managerModal = modal;
-            modal.open();
+        const ribbonEl = this.addRibbonIcon('folder-cog', this.translator.t('通用_管理器_文本'), () => {
+            void this.openManagerModal();
         });
         // 悬停备注 Tooltip：悬停图标速览插件备注，右键可自定义
         this.noteTip = new NoteTipFeature(this, ribbonEl);
@@ -871,13 +871,33 @@ export default class Manager extends Plugin {
         }
     }
 
-    public async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
+    public async loadSettings() {
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        this.persistedSettingsJson = JSON.stringify(this.settings);
+    }
     public async saveSettings(options: { captureDevice?: boolean } = {}) {
-        if (options.captureDevice !== false) this.devices?.capture();
-        // 其他设备同步过来的设备记录只存在于磁盘，先并回内存再整份写回。
-        await this.devices?.mergeDeviceRecords();
-        // 投影其他设备时，data.json 只写本机真实值；外域值留在 DEVICE_MANAGEMENT。
-        await this.saveData(this.devices?.persistedSettings() ?? this.settings);
+        const save = async () => {
+            if (options.captureDevice !== false) this.devices?.capture();
+            // 其他设备同步过来的设备记录只存在于磁盘，先并回内存再整份写回。
+            await this.devices?.mergeDeviceRecords();
+            // 投影其他设备时，data.json 只写本机真实值；外域值留在 DEVICE_MANAGEMENT。
+            const settings = this.devices?.persistedSettings() ?? this.settings;
+            const serialized = JSON.stringify(settings);
+            if (serialized === this.persistedSettingsJson) return;
+            await this.saveData(settings);
+            this.persistedSettingsJson = serialized;
+        };
+        const pending = this.settingsSaveQueue.then(save);
+        this.settingsSaveQueue = pending.catch(() => undefined);
+        await pending;
+    }
+
+    /** 打开管理器：命令、功能区图标共用，已打开时先关闭旧实例避免多个弹窗叠加。 */
+    public async openManagerModal(): Promise<void> {
+        const { ManagerModal } = await import('./modal/manager-modal.js');
+        this.managerModal?.close();
+        this.managerModal = new ManagerModal(this.app, this);
+        this.managerModal.open();
     }
 
     /** 设备切换仍使用原生启停与既有延迟队列；Reuse native lifecycle and delay scheduling. */
